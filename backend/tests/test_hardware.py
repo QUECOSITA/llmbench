@@ -13,6 +13,13 @@ def test_parse_nvidia_smi():
     assert vram == 0  # not parsed from this fixture
 
 
+def test_parse_nvidia_smi_vram():
+    sample = "GPU 0: NVIDIA GeForce RTX 4090 (UUID: GPU-xxx)\n    Total              : 24576MiB\n"
+    name, vram = parse_nvidia_smi(sample)
+    assert name == "NVIDIA GeForce RTX 4090"
+    assert vram == 24.0
+
+
 def test_detect_hardware_shape():
     hw = detect_hardware()
     assert "arch" in hw and "cpu_cores" in hw and "ram_total_gb" in hw
