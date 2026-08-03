@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useState } from "react";
 import { Link, Route, Routes } from "react-router-dom";
 import { api } from "./api/client";
 import { INITIAL_STATE, progressReducer, useBenchmarkProgress } from "./ws/useBenchmarkProgress";
+import { useDownloadProgress } from "./ws/useDownloadProgress";
 import { ConfigBank, ConfigRow } from "./components/ConfigBank";
 import { DownloadedSection } from "./components/DownloadedSection";
 import { HardwareBar } from "./components/HardwareBar";
@@ -10,6 +11,8 @@ import { ResultsTable } from "./components/ResultsTable";
 import { RunPanel } from "./components/RunPanel";
 import { Results } from "./pages/Results";
 import "./styles/app.css";
+
+const KNOWN_SERVERS = ["llama.cpp", "vllm", "sglang"] as const;
 
 interface Analysis {
   repo_id?: string;
@@ -31,6 +34,56 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState<Array<{ server_id: string; repo_id: string; status: string }>>([]);
 
+  interface DownloadStatus {
+    status: "downloading" | "downloaded" | "error";
+    line?: string;
+    message?: string;
+    local_path?: string;
+  }
+  const [downloads, setDownloads] = useState<Record<string, DownloadStatus>>({});
+  const downloadActive = Object.values(downloads).some((d) => d.status === "downloading");
+  const downloadEvents = useDownloadProgress(downloadActive);
+
+  useEffect(() => {
+    for (const ev of downloadEvents) {
+      if (!ev.server_id || !ev.repo_id) continue;
+      const key = `${ev.server_id}::${ev.repo_id}`;
+      if (ev.type === "download_log") {
+        setDownloads((prev) =>
+          prev[key] ? { ...prev, [key]: { ...prev[key], line: ev.line } } : prev,
+        );
+      } else if (ev.type === "download_done") {
+        setDownloads((prev) => ({
+          ...prev,
+          [key]: { status: "downloaded", local_path: ev.local_path },
+        }));
+        api.listModels().then((d) => setDownloaded(d.models));
+      } else if (ev.type === "download_error") {
+        setDownloads((prev) => ({
+          ...prev,
+          [key]: { status: "error", message: ev.message },
+        }));
+      }
+    }
+  }, [downloadEvents]);
+
+  const onDownload = useCallback(
+    async (serverId: string) => {
+      if (!analysis?.repo_id) return;
+      const key = `${serverId}::${analysis.repo_id}`;
+      setDownloads((prev) => ({ ...prev, [key]: { status: "downloading" } }));
+      try {
+        await api.downloadModel({ repo_id: analysis.repo_id, server_id: serverId });
+      } catch (err) {
+        setDownloads((prev) => ({
+          ...prev,
+          [key]: { status: "error", message: err instanceof Error ? err.message : String(err) },
+        }));
+      }
+    },
+    [analysis],
+  );
+
   useEffect(() => {
     api.getServers().then((d) => setHardware(d.hardware));
     api.listModels().then((d) => setDownloaded(d.models));
@@ -40,6 +93,7 @@ export function App() {
     const data = await api.analyze(input);
     setAnalysis(data);
     setConfigs([]);
+    setDownloads({});
   }, []);
 
   const onGenerate = useCallback(async (count: number) => {
@@ -116,6 +170,31 @@ export function App() {
                     available {analysis.hardware?.gpu_vram_gb ?? 0} GB VRAM +{" "}
                     {analysis.hardware?.ram_total_gb ?? 0} GB RAM
                   </p>
+                )}
+                {analysis?.repo_id && (
+                  <div className="row" style={{ gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+                    {KNOWN_SERVERS.map((sid) => {
+                      const key = `${sid}::${analysis.repo_id}`;
+                      const dl = downloads[key];
+                      const already = analysis.downloaded?.[sid];
+                      return (
+                        <span key={sid} style={{ fontSize: 12 }}>
+                          <b>{sid}:</b>{" "}
+                          {dl?.status === "downloading" ? (
+                            <span style={{ color: "var(--anode)" }}>
+                              downloading{dl.line ? ` — ${dl.line}` : "…"}
+                            </span>
+                          ) : dl?.status === "downloaded" || already ? (
+                            <span style={{ color: "var(--anode)" }}>downloaded</span>
+                          ) : dl?.status === "error" ? (
+                            <span style={{ color: "var(--accent)" }}>error: {dl.message}</span>
+                          ) : (
+                            <button onClick={() => onDownload(sid)}>Download</button>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
                 )}
               </section>
 

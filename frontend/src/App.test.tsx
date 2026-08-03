@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { App } from "./App";
 
@@ -138,4 +138,42 @@ test("fit warning banner absent when fit_verdict.warning is false", async () => 
   await screen.findByText(/org\/model/i);
 
   expect(screen.queryByText(/headroom tight/i)).not.toBeInTheDocument();
+});
+
+test("download flow: click Download, shows downloading then downloaded and refreshes list", async () => {
+  const { api } = await import("./api/client");
+  const { useDownloadProgress } = await import("./ws/useDownloadProgress");
+  vi.mocked(api.listModels).mockClear();
+  const downloadModelSpy = vi.spyOn(api, "downloadModel");
+  downloadModelSpy.mockClear();
+  downloadModelSpy.mockResolvedValueOnce({ ok: true });
+
+  const view = render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  const downloadBtn = within(screen.getByText("vllm:").closest("span")!).getByText("Download");
+  fireEvent.click(downloadBtn);
+  expect(await screen.findByText(/downloading/i)).toBeInTheDocument();
+  expect(downloadModelSpy).toHaveBeenCalledWith({ repo_id: "org/model", server_id: "vllm" });
+
+  vi.mocked(useDownloadProgress).mockReturnValue([
+    { type: "download_log", server_id: "vllm", repo_id: "org/model", line: "Fetching..." },
+    { type: "download_done", server_id: "vllm", repo_id: "org/model", status: "downloaded", local_path: "/x" },
+  ]);
+  view.rerender(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("downloaded")).toBeInTheDocument();
+  await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(2));
 });
