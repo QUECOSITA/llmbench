@@ -1,21 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api/client";
-
-export interface RunSummary {
-  id: number;
-  repo_id: string;
-  requested_n: number;
-  created_at: string;
-  status: string;
-}
+import { api, RunSummary } from "../api/client";
 
 export function Results({ initialRuns }: { initialRuns?: RunSummary[] }) {
   const [runs, setRuns] = useState<RunSummary[] | null>(initialRuns ?? null);
 
   useEffect(() => {
     if (runs === null) {
-      api.listRuns().then((d) => setRuns(d.runs as RunSummary[])).catch(() => setRuns([]));
+      api.listRuns().then((d) => setRuns(d.runs)).catch(() => setRuns([]));
     }
   }, [runs]);
 

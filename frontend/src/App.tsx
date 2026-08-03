@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import { Link, Route, Routes } from "react-router-dom";
 import { api } from "./api/client";
-import { useBenchmarkProgress } from "./ws/useBenchmarkProgress";
+import { INITIAL_STATE, progressReducer, useBenchmarkProgress } from "./ws/useBenchmarkProgress";
 import { ConfigBank, ConfigRow } from "./components/ConfigBank";
 import { DownloadedSection } from "./components/DownloadedSection";
 import { HardwareBar } from "./components/HardwareBar";
 import { ModelInput } from "./components/ModelInput";
-import { ResultRow, ResultsTable } from "./components/ResultsTable";
+import { ResultsTable } from "./components/ResultsTable";
 import { RunPanel } from "./components/RunPanel";
 import { Results } from "./pages/Results";
 import "./styles/app.css";
@@ -20,33 +20,24 @@ interface Analysis {
   downloaded?: Record<string, boolean>;
 }
 
-interface ProgressState {
-  index: number;
-  total: number;
-  promptTps?: number | null;
-  decodeTps?: number | null;
-}
-
 export function App() {
   const [hardware, setHardware] = useState<Record<string, unknown>>({});
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [n, setN] = useState(4);
   const [configs, setConfigs] = useState<ConfigRow[]>([]);
   const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState<ProgressState | null>(null);
-  const [results, setResults] = useState<ResultRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState<Array<{ server_id: string; repo_id: string; status: string }>>([]);
 
   useEffect(() => {
     api.getServers().then((d) => setHardware(d.hardware));
-    api.listModels().then((d) => setDownloaded(d.models as never[]));
+    api.listModels().then((d) => setDownloaded(d.models));
   }, []);
 
   const onAnalyze = useCallback(async (input: string) => {
-    const data = (await api.analyze(input)) as Analysis;
+    const data = await api.analyze(input);
     setAnalysis(data);
     setConfigs([]);
-    setResults([]);
   }, []);
 
   const onGenerate = useCallback(async (count: number) => {
@@ -59,56 +50,39 @@ export function App() {
       readme_flags: analysis.readme_flags,
     });
     setConfigs(data.configs);
-    setResults([]);
   }, [analysis, hardware]);
 
   const onRun = useCallback(async () => {
     if (!analysis?.repo_id || configs.length === 0) return;
-    setResults([]);
+    setError(null);
     setRunning(true);
-    setProgress({ index: 0, total: configs.length });
-    await api.startBenchmark({
-      repo_id: analysis.repo_id,
-      configs: configs.map((c) => ({
-        server_id: analysis.detected_server,
-        flags: c.flags,
-        serving_command: c.serving_command,
-        bench_command: c.bench_command,
-      })),
-    });
+    try {
+      const { run_id } = await api.startBenchmark({
+        repo_id: analysis.repo_id,
+        configs: configs.map((c) => ({
+          server_id: analysis.detected_server,
+          flags: c.flags,
+          serving_command: c.serving_command,
+          bench_command: c.bench_command,
+        })),
+      });
+      dispatch({ type: "run_started", run_id, total: configs.length });
+    } catch (err) {
+      setRunning(false);
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }, [analysis, configs]);
 
   const events = useBenchmarkProgress(running);
 
+  const [progressState, dispatch] = useReducer(progressReducer, INITIAL_STATE);
+
   useEffect(() => {
     for (const ev of events) {
-      if (ev.type === "run_started") {
-        setRunning(true);
-        setProgress({ index: 0, total: ev.total ?? configs.length });
-        setResults([]);
-      } else if (ev.type === "config_done") {
-        const idx = ev.index ?? 0;
-        setProgress({
-          index: idx,
-          total: ev.total ?? configs.length,
-          promptTps: ev.result?.prompt_processing_tps ?? null,
-          decodeTps: ev.result?.decode_tps ?? null,
-        });
-        setResults((prev) => {
-          const next = [...prev];
-          next[idx] = {
-            server_id: analysis?.detected_server ?? "",
-            flag_conf: configs[idx]?.flags ?? {},
-            prompt_processing_tps: ev.result?.prompt_processing_tps ?? null,
-            decode_tps: ev.result?.decode_tps ?? null,
-          };
-          return next;
-        });
-      } else if (ev.type === "run_done") {
-        setRunning(false);
-      }
+      dispatch(ev);
+      if (ev.type === "run_done") setRunning(false);
     }
-  }, [events, analysis, configs]);
+  }, [events]);
 
   return (
     <div className="instrument">
@@ -150,12 +124,22 @@ export function App() {
                 running={running}
                 canRun={Boolean(analysis?.repo_id) && configs.length > 0}
                 onRun={onRun}
-                progress={progress}
+                progress={
+                  progressState.running || progressState.results.length > 0
+                    ? {
+                        index: progressState.index,
+                        total: progressState.total,
+                        promptTps: progressState.promptTps,
+                        decodeTps: progressState.decodeTps,
+                      }
+                    : null
+                }
               />
+              {error && <p style={{ color: "var(--accent)", fontSize: 12 }}>Error: {error}</p>}
 
               <section className="panel">
                 <span className="panel-cap">05 · RESULTS — RANKED</span>
-                <ResultsTable rows={results} />
+                <ResultsTable rows={progressState.results} />
                 <Link to="/results" className="results-link" style={{ fontSize: 12 }}>
                   view all runs →
                 </Link>
@@ -163,7 +147,7 @@ export function App() {
 
               <DownloadedSection models={downloaded} onRemove={async (s, r) => {
                 await api.removeModel(s, r);
-                setDownloaded((await api.listModels()).models as never[]);
+                setDownloaded((await api.listModels()).models);
               }} />
             </main>
           }
