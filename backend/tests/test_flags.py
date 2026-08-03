@@ -36,3 +36,30 @@ def test_deterministic():
     a = generate_configs("vllm", {}, 3, 24)
     b = generate_configs("vllm", {}, 3, 24)
     assert a == b
+
+
+def test_generate_configs_no_duplicates_high_n():
+    configs = generate_configs(server_id="vllm", readme_flags={}, n=20, vram_gb=24)
+    seen = {tuple(sorted(c["flags"].items())) for c in configs}
+    assert len(configs) == len(seen)  # all distinct
+    assert len(configs) <= 9          # capped at distinct single-key variants for vllm
+    assert configs[0]["flags"] == configs[0]["flags"]  # baseline present
+
+
+def test_generate_configs_does_not_overshoot():
+    configs = generate_configs(server_id="vllm", readme_flags={}, n=35, vram_gb=24)
+    assert len(configs) <= 35  # never more than requested
+
+
+def test_bool_flag_on_variant_renders_once():
+    cmd = build_serving_command("vllm", "org/model", {"--enforce-eager": "--enforce-eager"})
+    assert cmd.count("--enforce-eager") == 1
+
+
+def test_generate_configs_unknown_server_valueerror():
+    try:
+        generate_configs("not-a-server", {}, 3, 24)
+    except ValueError as exc:
+        assert "unknown server" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")

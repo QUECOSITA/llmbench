@@ -54,34 +54,32 @@ def _baseline(server_id: str, readme_flags: dict[str, str], vram_gb: float) -> d
 
 
 def generate_configs(server_id: str, readme_flags: dict[str, str], n: int, vram_gb: float) -> list[dict]:
+    if server_id not in KEY_FLAGS:
+        raise ValueError(f"unknown server {server_id}")
     base = _baseline(server_id, readme_flags, vram_gb)
     configs = [{"flags": dict(base)}]
-    keys = [k for k in KEY_FLAGS[server_id]]
-    idx = 0
-    while len(configs) < n:
-        key = keys[idx % len(keys)]
-        pool = VALUE_POOLS[server_id][key]
+    seen = {tuple(sorted(base.items()))}
+    for key in KEY_FLAGS[server_id]:
         base_val = base[key]
-        for val in pool:
-            if len(configs) >= n:
-                break
+        for val in VALUE_POOLS[server_id][key]:
             sv = str(val)
             if sv == base_val:
                 continue
             cfg = dict(base)
             cfg[key] = sv
+            signature = tuple(sorted(cfg.items()))
+            if signature in seen:
+                continue
+            seen.add(signature)
             configs.append({"flags": cfg})
-        idx += 1
-        if idx > len(keys) * 4:
-            configs.append({"flags": dict(base)})
-    return configs
+    return configs[:n]
 
 
 def _flag_tokens(flags: dict[str, str]) -> list[str]:
     tokens: list[str] = []
     for flag, value in flags.items():
         tokens.append(flag)
-        if value:
+        if value and value != flag:
             tokens.append(value)
     return tokens
 
