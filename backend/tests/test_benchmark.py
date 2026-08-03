@@ -43,3 +43,79 @@ def test_parse_sglang_bench():
     r = parse_sglang_bench(SGLANG_OUT)
     assert r["prompt_processing_tps"] == 1200.0
     assert r["decode_tps"] == 90.1
+
+
+import asyncio
+
+from app.benchmark import BenchmarkRunner
+
+FAKE_BENCH = """\
+model,size,params,backend,test,t,n_threads,batch,ngl,ms,t/s
+x,Q4,7B,CUDA,pp,0,8,512,999,40,1000.0
+x,Q4,7B,CUDA,tg,0,8,512,999,900,80.0
+"""
+
+
+class FakeProcess:
+    def __init__(self, out, rc=0):
+        self._out = out
+        self.returncode = rc
+        self.killed = False
+
+    async def communicate(self):
+        return self._out, ""
+
+    def kill(self):
+        self.killed = True
+
+    async def wait(self):
+        return self.returncode
+
+
+async def test_runner_serial_and_parses(monkeypatch):
+    calls = []
+
+    async def fake_create(*args, **kwargs):
+        calls.append(args)
+        return FakeProcess(FAKE_BENCH.encode())
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    runner = BenchmarkRunner(server_id="llama.cpp", bench_command=["llama-bench", "-m", "x"],
+                             timeout_s=60)
+    result = await runner.run()
+    assert result["status"] == "ok"
+    assert result["decode_tps"] == 80.0
+    assert result["prompt_processing_tps"] == 1000.0
+
+
+async def test_runner_timeout_kills(monkeypatch):
+    class SlowProcess(FakeProcess):
+        def __init__(self):
+            super().__init__(b"")
+            self.waiter = asyncio.Event()
+
+        async def communicate(self):
+            await asyncio.wait_for(self.waiter.wait(), 10)
+            return b"", ""
+
+    async def fake_create(*a, **k):
+        return SlowProcess()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    runner = BenchmarkRunner(server_id="llama.cpp", bench_command=["llama-bench"],
+                             timeout_s=0.05)
+    result = await runner.run()
+    assert result["status"] == "failed"
+
+
+async def test_runner_abort(monkeypatch):
+    async def fake_create(*a, **k):
+        proc = FakeProcess(b"")
+        return proc
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    runner = BenchmarkRunner(server_id="llama.cpp", bench_command=["llama-bench"],
+                             timeout_s=60)
+    runner.abort()
+    result = await runner.run()
+    assert result["status"] == "aborted"

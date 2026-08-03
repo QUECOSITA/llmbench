@@ -1,0 +1,6 @@
+{"prompt": "Write a Python function to check if a string is a valid palindrome."}
+{"prompt": "Fix the off-by-one bug in this loop: for i in range(1, len(a)): print(a[i-1])"}
+{"prompt": "Refactor this function to use list comprehensions."}
+{"prompt": "Explain what the following code does, line by line."}
+{"prompt": "Write a unit test for a function that parses CSV data."}
+{"prompt": "Review this code for potential race conditions."}
