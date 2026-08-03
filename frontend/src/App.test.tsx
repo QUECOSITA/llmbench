@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { App } from "./App";
 
-test("renders the instrument header", () => {
+test("renders the instrument header with panel structure", () => {
   render(<App />);
-  expect(screen.getByText(/LLM\s*BENCH/i)).toBeInTheDocument();
+  const header = screen.getByText(/LLM\s*BENCH/i);
+  expect(header).toBeInTheDocument();
+  expect(document.querySelector(".instrument")).not.toBeNull();
 });
