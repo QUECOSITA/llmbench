@@ -16,7 +16,12 @@ const server = createServer((req, res) => {
     Object.assign(body, {
       repo_id: "org/model", detected_server: "vllm",
       readme_flags: { "--max-model-len": "8192" }, weights_bytes: 4e9,
+      fit_verdict: { stage: "gpu", warning: false, needed_gb: 3.8 },
+      hardware: { gpu_vram_gb: 24, ram_total_gb: 64, gpu_name: "RTX 4090" },
+      downloaded: { "llama.cpp": false, vllm: false, sglang: false },
     });
+  } else if (req.url?.startsWith("/api/models/download")) {
+    Object.assign(body, { ok: true });
   } else if (req.url?.startsWith("/api/configs/generate")) {
     Object.assign(body, {
       configs: [{ flags: { "--max-model-len": "8192" }, serving_command: "vllm serve org/model --max-model-len 8192" }],
