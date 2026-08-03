@@ -69,6 +69,8 @@ def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
             bench_flag = mapped.get(flag, flag)
             if value:
                 cmd += [bench_flag, value]
+            elif flag.startswith("--"):
+                cmd += [bench_flag]
         cmd += ["-p", workload, "-o", "csv", "-r", "2"]
         return cmd
     if server_id == "vllm":
@@ -78,10 +80,12 @@ def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
         for flag, value in flags.items():
             if value:
                 cmd += [flag, value]
+            elif flag.startswith("--"):
+                cmd += [flag]
         return cmd
     if server_id == "sglang":
         cmd = ["python", "-m", "sglang.bench_one_batch_server",
                "--model-path", model_ref, "--input-len", "512", "--output-len", "128",
-               "--batch-size", flags.get("--max-running-requests", "16")]
+               "--batch-size", (flags.get("--max-running-requests") or "16")]
         return cmd
     raise ValueError(f"unknown server {server_id}")

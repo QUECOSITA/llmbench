@@ -29,3 +29,30 @@ def test_build_bench_command_vllm():
 def test_readme_flag_map_aliases():
     assert README_FLAG_MAP["llama.cpp"]["-c"] == "--ctx-size"
     assert README_FLAG_MAP["vllm"]["--max-model-len"] == "--max-model-len"
+
+
+def test_build_bench_command_vllm_bare_bool_flag():
+    cmd = build_bench_command("vllm", "org/model", {"--enforce-eager": ""},
+                              workload="/tmp/p.jsonl", timeout_s=60)
+    assert cmd[0].startswith("python")
+    idx = cmd.index("--enforce-eager")
+    assert idx != -1
+    assert cmd[idx] == "--enforce-eager"
+    assert idx == len(cmd) - 1 or cmd[idx + 1] != "--enforce-eager"
+    assert any("benchmark_throughput" in tok for tok in cmd)
+
+
+def test_build_bench_command_llama_bare_bool_flag():
+    cmd = build_bench_command("llama.cpp", "/models/x.gguf", {"--enforce-eager": ""},
+                              workload="/tmp/prompts.jsonl", timeout_s=60)
+    idx = cmd.index("--enforce-eager")
+    assert idx != -1
+    assert idx == len(cmd) - 1 or cmd[idx + 1] != "--enforce-eager"
+    assert cmd[cmd.index("-p") + 1] == "/tmp/prompts.jsonl"
+    assert cmd[-4:] == ["-o", "csv", "-r", "2"]
+
+
+def test_build_bench_command_sglang_empty_max_running_requests():
+    cmd = build_bench_command("sglang", "org/model", {"--max-running-requests": ""},
+                              workload="/tmp/p.jsonl", timeout_s=60)
+    assert cmd[cmd.index("--batch-size") + 1] == "16"
