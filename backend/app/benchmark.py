@@ -6,16 +6,26 @@ import re
 
 def parse_llama_bench_csv(text: str) -> dict:
     rows = list(csv.DictReader(io.StringIO(text)))
-    pp = next((float(r["t/s"]) for r in rows if r["test"] == "pp"), None)
-    tg = next((float(r["t/s"]) for r in rows if r["test"] == "tg"), None)
+
+    def tps(row):
+        try:
+            return float(row.get("t/s"))
+        except (TypeError, ValueError):
+            return None
+
+    pp = next((tps(r) for r in rows if r.get("test") == "pp"), None)
+    tg = next((tps(r) for r in rows if r.get("test") == "tg"), None)
     return {"prompt_processing_tps": pp, "decode_tps": tg}
 
 
 def parse_vllm_throughput(text: str) -> dict:
-    data = json.loads(text)
+    match = re.findall(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        return {"prompt_processing_tps": None, "decode_tps": None}
+    data = json.loads(match[-1])
     return {
         "prompt_processing_tps": data.get("input_token_throughput"),
-        "decode_tps": data.get("output_token_throughput"),
+        "decode_tps": data.get("tokens_per_second", data.get("output_token_throughput")),
     }
 
 
@@ -77,7 +87,11 @@ class BenchmarkRunner:
         if rc != 0:
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
                     "duration_s": duration, "output": text[-2000:]}
-        parsed = PARSERS[self.server_id](text)
+        try:
+            parsed = PARSERS[self.server_id](text)
+        except Exception:
+            return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
+                    "duration_s": duration, "output": text[-2000:]}
         if parsed["decode_tps"] is None:
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
                     "duration_s": duration, "output": text[-2000:]}

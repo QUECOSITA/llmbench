@@ -13,6 +13,13 @@ def test_parse_llama_bench_csv():
     assert r["decode_tps"] == 86.4
 
 
+def test_parse_llama_bench_csv_schema_drift():
+    csv_text = "build_commit,build_number,cpu_info,t,ms\nabc123,42,cpu,0,100.0\n"
+    r = parse_llama_bench_csv(csv_text)
+    assert r["prompt_processing_tps"] is None
+    assert r["decode_tps"] is None
+
+
 VLLM_OUT = """\
 {
   "elapsed_time": 30.0,
@@ -31,6 +38,24 @@ def test_parse_vllm_throughput():
     r = parse_vllm_throughput(VLLM_OUT)
     assert r["prompt_processing_tps"] == 341.3
     assert r["decode_tps"] == 85.3
+
+
+def test_parse_vllm_throughput_mixed_stdout():
+    r = parse_vllm_throughput("INFO: root: some log line\n" + VLLM_OUT)
+    assert r["prompt_processing_tps"] == 341.3
+    assert r["decode_tps"] == 85.3
+
+
+def test_parse_vllm_throughput_real_keys():
+    r = parse_vllm_throughput('{"tokens_per_second": 99.5, "requests_per_second": 2.1}')
+    assert r["decode_tps"] == 99.5
+    assert r["prompt_processing_tps"] is None
+
+
+def test_parse_vllm_throughput_no_json():
+    r = parse_vllm_throughput("bunch of non-json text")
+    assert r["prompt_processing_tps"] is None
+    assert r["decode_tps"] is None
 
 
 SGLANG_OUT = """\
@@ -119,3 +144,14 @@ async def test_runner_abort(monkeypatch):
     runner.abort()
     result = await runner.run()
     assert result["status"] == "aborted"
+
+
+async def test_runner_parser_error_returns_failed(monkeypatch):
+    async def fake_create(*a, **k):
+        return FakeProcess(b"bunch of non-json text")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    runner = BenchmarkRunner(server_id="vllm", bench_command=["bench"],
+                             timeout_s=60)
+    result = await runner.run()
+    assert result["status"] == "failed"
