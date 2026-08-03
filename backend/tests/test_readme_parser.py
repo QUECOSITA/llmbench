@@ -31,3 +31,16 @@ def test_extract_flag_equals_form():
     flags = extract_flags(text, ["vllm"])
     assert flags["--max-model-len"] == "16384"
     assert flags["--enforce-eager"] == ""
+
+
+def test_extract_flags_adjacent_bool_flags():
+    text = "vllm serve M --enforce-eager --trust-remote-code"
+    flags = extract_flags(text, ["vllm"])
+    assert flags["--enforce-eager"] == ""
+    assert flags["--trust-remote-code"] == ""
+
+
+def test_extract_flags_negative_number_value():
+    text = "sglang.launch_server --mem-fraction-static -0.5"
+    flags = extract_flags(text, ["sglang"])
+    assert flags["--mem-fraction-static"] == "-0.5"

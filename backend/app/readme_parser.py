@@ -15,7 +15,11 @@ _COMMAND_PATTERNS = {
     ],
 }
 
-_FLAG_RE = re.compile(r"(?<![A-Za-z0-9])(-{1,2}[a-z][\w-]*)(?:\s*=\s*(\S+)|(?:\s+(\S+)))?", re.IGNORECASE)
+_FLAG_RE = re.compile(
+    r"(?<![A-Za-z0-9])(-{1,2}[a-z][\w-]*)"
+    r"(?:\s*=\s*(\S+)|(?:\s+((?:-\d+\.?\d*|[^\s-][^\s]*))))?",
+    re.IGNORECASE,
+)
 
 _VALUE_TERMINATORS = {"--", "-m", "-c", "-t", "-b", "-ngl", "&&", "|", ";"}
 
@@ -39,8 +43,17 @@ def top_serving_program(scores: dict[str, int]) -> str | None:
     return winners[0] if len(winners) == 1 else None
 
 
+def _is_negative_number(value: str) -> bool:
+    try:
+        float(value[1:])
+        return True
+    except ValueError:
+        return False
+
+
 def extract_flags(text: str, servers: list[str]) -> dict[str, str]:
-    """Return {flag: value|''} parsed from code blocks mentioning known server commands."""
+    """Return {flag: value|''} parsed from code blocks plus the full text,
+    gated on known server command mentions."""
     flags: dict[str, str] = {}
     blocks = re.findall(r"```[^\n]*\n(.*?)```", text, re.DOTALL) + [text]
     for block in blocks:
@@ -50,6 +63,8 @@ def extract_flags(text: str, servers: list[str]) -> dict[str, str]:
             flag = m.group(1)
             value = (m.group(2) or m.group(3) or "").strip(" '\"")
             if value and value in _VALUE_TERMINATORS:
+                value = ""
+            elif value.startswith("-") and not _is_negative_number(value):
                 value = ""
             flags[flag] = value
     return flags
