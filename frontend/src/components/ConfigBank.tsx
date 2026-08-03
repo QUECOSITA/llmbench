@@ -1,6 +1,7 @@
 export interface ConfigRow {
   flags: Record<string, string>;
   serving_command: string;
+  bench_command?: string[];
 }
 
 interface Props {

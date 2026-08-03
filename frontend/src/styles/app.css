@@ -1,0 +1,22 @@
+.row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.metrics { display: flex; gap: 12px; margin-top: 10px; }
+.bank {
+  flex: 1; border: 1px solid var(--rule-bright); border-radius: var(--radius);
+  padding: 10px; background: var(--panel);
+}
+.digit { font-size: 26px; letter-spacing: .06em; }
+.digit-best { color: var(--accent); }
+.config-row { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; }
+.config-index { color: var(--anode); font-size: 12px; padding-top: 6px; }
+.config-row textarea {
+  background: var(--panel); color: var(--tube);
+  border: 1px solid var(--rule-bright); border-radius: var(--radius); padding: 6px;
+}
+.results-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.results-table th, .results-table td {
+  border-bottom: 1px solid var(--rule); padding: 6px 8px; text-align: left;
+}
+.results-table th { color: var(--anode); font-weight: 400; letter-spacing: .06em; }
+.row-best td { color: var(--accent); }
+.nav-link { color: var(--anode); text-decoration: none; font-size: 11px; letter-spacing: .08em; }
+.results-link { color: var(--accent); text-decoration: none; }

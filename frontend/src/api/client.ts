@@ -21,7 +21,7 @@ export const api = {
   analyze: (input: string) =>
     request<Record<string, unknown>>("/models/analyze", { method: "POST", body: JSON.stringify({ input }) }),
   generateConfigs: (body: unknown) =>
-    request<{ configs: Array<{ flags: Record<string, string>; serving_command: string }> }>("/configs/generate", {
+    request<{ configs: Array<{ flags: Record<string, string>; serving_command: string; bench_command: string[] }> }>("/configs/generate", {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -32,4 +32,6 @@ export const api = {
   listModels: () => request<{ models: unknown[] }>("/models"),
   listRuns: () => request<{ runs: unknown[] }>("/benchmarks"),
   getRun: (runId: number) => request<{ results: unknown[] }>(`/benchmarks/${runId}`),
+  removeModel: (serverId: string, repoId: string) =>
+    request<{ ok: boolean }>(`/models/${serverId}/${encodeURIComponent(repoId)}`, { method: "DELETE" }),
 };

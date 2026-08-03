@@ -16,7 +16,7 @@ export function useBenchmarkProgress(active: boolean) {
 
   useEffect(() => {
     if (!active) return;
-    const ws = new WebSocket("ws://localhost:8000/ws");
+    const ws = new WebSocket("ws://localhost:8000/api/ws");
     wsRef.current = ws;
     ws.onmessage = (msg) => {
       setEvents((prev) => [...prev, JSON.parse(msg.data) as ProgressEvent]);
