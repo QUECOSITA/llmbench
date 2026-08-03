@@ -53,13 +53,16 @@ class BenchmarkRunner:
         self.bench_command = bench_command
         self.timeout_s = timeout_s
         self._aborted = asyncio.Event()
+        self._done = asyncio.Event()
         self._proc: asyncio.subprocess.Process | None = None
 
     def abort(self) -> None:
         self._aborted.set()
 
     async def run(self) -> dict:
+        self._done.clear()
         if self._aborted.is_set():
+            self._done.set()
             return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,
                     "duration_s": 0.0, "output": ""}
         start = asyncio.get_event_loop().time()
@@ -75,24 +78,30 @@ class BenchmarkRunner:
             self._proc.kill()
             await self._proc.wait()
             duration = asyncio.get_event_loop().time() - start
+            self._done.set()
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
                     "duration_s": duration, "output": f"timeout after {self.timeout_s}s"}
         finally:
             self._proc = None
         duration = asyncio.get_event_loop().time() - start
         if self._aborted.is_set():
+            self._done.set()
             return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,
                     "duration_s": duration, "output": ""}
         text = stdout.decode(errors="replace")
         if rc != 0:
+            self._done.set()
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
                     "duration_s": duration, "output": text[-2000:]}
         try:
             parsed = PARSERS[self.server_id](text)
         except Exception:
+            self._done.set()
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
                     "duration_s": duration, "output": text[-2000:]}
         if parsed["decode_tps"] is None:
+            self._done.set()
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
                     "duration_s": duration, "output": text[-2000:]}
+        self._done.set()
         return {"status": "ok", **parsed, "duration_s": duration, "output": text[-2000:]}
