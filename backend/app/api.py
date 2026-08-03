@@ -1,5 +1,8 @@
 import asyncio
+import shutil
 import threading
+from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
@@ -16,6 +19,15 @@ from app.servers import build_bench_command, detect_binaries
 router = APIRouter(prefix="/api")
 
 
+KNOWN_SERVERS = ("llama.cpp", "vllm", "sglang")
+
+
+def _download_command(repo_id: str, server_id: str) -> list[str]:
+    if server_id == "llama.cpp":
+        return ["hf", "download", repo_id, "--include", "*.gguf"]
+    return ["hf", "download", repo_id]
+
+
 class AppState:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -25,6 +37,7 @@ class AppState:
         self._ws_clients: set[WebSocket] = set()
         self._state_lock = threading.Lock()
         self._job_active = False
+        self._download_active = False
 
 
 state: AppState | None = None
@@ -117,6 +130,26 @@ async def delete_model(server_id: str, model_ref: str):
     s = _require_state()
     db_mod.upsert_model(s.conn, repo_id=model_ref, server_id=server_id, format="hf",
                         local_path="", status="missing")
+    return {"ok": True}
+
+
+@router.post("/models/download")
+async def start_download(payload: dict):
+    s = _require_state()
+    repo_id = payload.get("repo_id")
+    server_id = payload.get("server_id")
+    if repo_id is None:
+        raise HTTPException(422, "Missing required field 'repo_id'.")
+    if server_id not in KNOWN_SERVERS:
+        raise HTTPException(422, f"'server_id' must be one of {list(KNOWN_SERVERS)}.")
+    cmd = _download_command(repo_id, server_id)
+    if shutil.which("hf") is None:
+        raise HTTPException(400, f"HF CLI not found. Run: {' '.join(cmd)}")
+    with s._state_lock:
+        if s._download_active:
+            raise HTTPException(409, "A download is already running")
+        s._download_active = True
+    asyncio.create_task(_download_job(s, repo_id, server_id, cmd, payload.get("gguf_filename")))
     return {"ok": True}
 
 

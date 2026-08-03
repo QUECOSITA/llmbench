@@ -222,3 +222,17 @@ def test_full_run_completes_and_persists(client, monkeypatch):
     assert rows[0]["result_status"] == "ok"
     assert rows[0]["prompt_processing_tps"] == 1000.0
     assert rows[0]["decode_tps"] == 80.0
+
+
+def test_download_missing_fields_422(client):
+    assert client.post("/api/models/download", json={}).status_code == 422
+    assert client.post("/api/models/download", json={"repo_id": "org/model"}).status_code == 422
+    assert client.post("/api/models/download",
+                       json={"repo_id": "org/model", "server_id": "nope"}).status_code == 422
+
+
+def test_download_cli_missing_400_with_manual_command(client, monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda *a, **k: None)
+    r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+    assert r.status_code == 400
+    assert "hf download org/model" in r.json()["detail"]
