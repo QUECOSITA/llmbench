@@ -323,3 +323,14 @@ def test_download_llama_resolves_gguf_file(client, tmp_path, monkeypatch):
     start = next(e for e in events if e["type"] == "download_started")
     assert "--include" in start["command"] and "*.gguf" in start["command"]
 
+
+
+def test_download_rejects_duplicate(client, monkeypatch):
+    import app.api as api_mod
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    api_mod.state._download_active = True
+    try:
+        r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+        assert r.status_code == 409
+    finally:
+        api_mod.state._download_active = False
