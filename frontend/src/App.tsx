@@ -18,6 +18,8 @@ interface Analysis {
   gguf_files?: Array<{ path: string; size: number }>;
   weights_bytes?: number;
   downloaded?: Record<string, boolean>;
+  fit_verdict?: { stage: string; warning: boolean; needed_gb: number };
+  hardware?: { gpu_vram_gb?: number; ram_total_gb?: number; gpu_name?: string };
 }
 
 export function App() {
@@ -106,6 +108,13 @@ export function App() {
                   <p style={{ color: "var(--anode)", fontSize: 12 }}>
                     → {analysis.repo_id} · server {analysis.detected_server ?? "manual"} ·{" "}
                     {Object.keys(analysis.readme_flags ?? {}).length} flags
+                  </p>
+                )}
+                {analysis?.fit_verdict?.warning && (
+                  <p style={{ color: "var(--accent)", fontSize: 12, margin: 0 }}>
+                    headroom tight — model needs ~{analysis.fit_verdict.needed_gb} GB (weights + KV cache),
+                    available {analysis.hardware?.gpu_vram_gb ?? 0} GB VRAM +{" "}
+                    {analysis.hardware?.ram_total_gb ?? 0} GB RAM
                   </p>
                 )}
               </section>

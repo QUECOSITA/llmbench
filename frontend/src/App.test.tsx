@@ -12,6 +12,7 @@ vi.mock("./api/client", () => ({
       configs: [{ flags: { "--n-gpu": "1" }, serving_command: "python serve.py", bench_command: [] }],
     }),
     startBenchmark: vi.fn().mockResolvedValue({ run_id: 1 }),
+    downloadModel: vi.fn().mockResolvedValue({ ok: true }),
     removeModel: vi.fn(),
   },
 }));
@@ -20,6 +21,10 @@ vi.mock("./ws/useBenchmarkProgress", async (importOriginal) => {
   const mod = await importOriginal<typeof import("./ws/useBenchmarkProgress")>();
   return { ...mod, useBenchmarkProgress: vi.fn().mockReturnValue([]) };
 });
+
+vi.mock("./ws/useDownloadProgress", () => ({
+  useDownloadProgress: vi.fn().mockReturnValue([]),
+}));
 
 test("renders the instrument header with panel structure", async () => {
   render(
@@ -83,4 +88,54 @@ test("successful run shows initial progress label", async () => {
   await screen.findByText(/python serve/i);
   fireEvent.click(screen.getByText(/run benchmark/i));
   await screen.findByText(/config 1\/1/i);
+});
+
+test("fit warning banner renders when fit_verdict.warning is true", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "vllm",
+    readme_flags: {},
+    fit_verdict: { stage: "no_fit", warning: true, needed_gb: 40.5 },
+    hardware: { gpu_vram_gb: 8, ram_total_gb: 32, gpu_name: "RTX 4090" },
+    downloaded: { "llama.cpp": false, vllm: false, sglang: false },
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+
+  expect(await screen.findByText(/headroom tight/i)).toBeInTheDocument();
+  expect(screen.getByText(/40\.5 GB/)).toBeInTheDocument();
+});
+
+test("fit warning banner absent when fit_verdict.warning is false", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "vllm",
+    readme_flags: {},
+    fit_verdict: { stage: "gpu", warning: false, needed_gb: 3.8 },
+    hardware: { gpu_vram_gb: 24, ram_total_gb: 64, gpu_name: "RTX 4090" },
+    downloaded: { "llama.cpp": false, vllm: false, sglang: false },
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  expect(screen.queryByText(/headroom tight/i)).not.toBeInTheDocument();
 });
