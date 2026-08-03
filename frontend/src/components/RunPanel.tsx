@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function RunPanel({ running, onRun, progress, canRun = true }: Props) {
-  const label = progress ? `config ${progress.index}/${progress.total}` : "";
+  const label = progress ? `config ${progress.index + 1}/${progress.total}` : "";
   return (
     <section className="panel">
       <span className="panel-cap">03 · RUN</span>

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { RunPanel } from "./RunPanel";
 
 test("run button disabled while running", () => {
-  render(<RunPanel running onRun={vi.fn()} progress={{ index: 1, total: 4 }} />);
+  render(<RunPanel running onRun={vi.fn()} progress={{ index: 0, total: 4 }} />);
   expect(screen.getByText(/run benchmark/i)).toBeDisabled();
   expect(screen.getByText(/1\/4/i)).toBeInTheDocument();
 });
