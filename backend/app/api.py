@@ -127,6 +127,8 @@ async def generate(payload: dict):
         n = int(n)
     except (TypeError, ValueError):
         raise HTTPException(422, "'n' must be an integer.")
+    if n < 1:
+        raise HTTPException(422, "'n' must be at least 1.")
     try:
         configs = generate_configs(
             server_id=server_id,

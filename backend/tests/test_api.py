@@ -140,6 +140,15 @@ def test_generate_missing_server_422(client):
     assert r.status_code == 422
 
 
+@pytest.mark.parametrize("n", [0, -1])
+def test_generate_configs_rejects_non_positive_n(client, n):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "vllm", "n": n, "vram_gb": 24.0,
+        "readme_flags": {"--max-model-len": "8192"},
+    })
+    assert r.status_code == 422
+
+
 def test_run_failure_marks_run_failed(client, monkeypatch):
     async def fake_create(*a, **k):
         raise FileNotFoundError("no bench binary")

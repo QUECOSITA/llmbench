@@ -58,6 +58,18 @@ def test_parse_vllm_throughput_no_json():
     assert r["decode_tps"] is None
 
 
+def test_parse_vllm_throughput_two_json_blocks():
+    r = parse_vllm_throughput('{"a":1} and {"tokens_per_second": 42.0}')
+    assert r["prompt_processing_tps"] is None
+    assert r["decode_tps"] == 42.0
+
+
+def test_parse_vllm_throughput_last_block_not_throughput():
+    r = parse_vllm_throughput('{"tokens_per_second": 42.0} and {"a":1}')
+    assert r["prompt_processing_tps"] is None
+    assert r["decode_tps"] is None
+
+
 SGLANG_OUT = """\
 prefill throughput: 1200.00 token/s
 decode throughput: 90.10 token/s

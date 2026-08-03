@@ -19,10 +19,10 @@ def parse_llama_bench_csv(text: str) -> dict:
 
 
 def parse_vllm_throughput(text: str) -> dict:
-    match = re.findall(r"\{.*\}", text, re.DOTALL)
-    if not match:
+    matches = re.findall(r"\{.*?\}", text, re.DOTALL)
+    if not matches:
         return {"prompt_processing_tps": None, "decode_tps": None}
-    data = json.loads(match[-1])
+    data = json.loads(matches[-1])
     return {
         "prompt_processing_tps": data.get("input_token_throughput"),
         "decode_tps": data.get("tokens_per_second", data.get("output_token_throughput")),
