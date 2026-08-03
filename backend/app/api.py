@@ -119,6 +119,74 @@ def _model_status(s: AppState, repo_id: str) -> dict[str, bool]:
     return out
 
 
+def _hf_snapshot_dir(settings: Settings, repo_id: str) -> Path:
+    org, name = repo_id.split("/", 1)
+    base = settings.hf_cache_dir or (Path.home() / ".cache" / "huggingface" / "hub")
+    return base / f"models--{org}--{name}"
+
+
+def _resolve_download_path(s: AppState, repo_id: str, server_id: str,
+                           gguf_filename: str | None) -> tuple[str | None, str | None, int | None]:
+    if server_id == "llama.cpp":
+        gguf_dir = s.settings.resolved_gguf_dir
+        if gguf_filename and (gguf_dir / gguf_filename).exists():
+            p = gguf_dir / gguf_filename
+            return str(p), gguf_filename, p.stat().st_size
+        for p in sorted(gguf_dir.glob("*.gguf")):
+            return str(p), p.name, p.stat().st_size
+        return None, None, None
+    snapshot = _hf_snapshot_dir(s.settings, repo_id)
+    if snapshot.exists():
+        return str(snapshot), None, None
+    return None, None, None
+
+
+async def _download_job(s: AppState, repo_id: str, server_id: str,
+                        cmd: list[str], gguf_filename: str | None):
+    try:
+        await broadcast(s, {"type": "download_started", "server_id": server_id,
+                            "repo_id": repo_id, "command": " ".join(cmd)})
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        assert proc.stdout is not None
+        while True:
+            raw = await proc.stdout.readline()
+            if not raw:
+                break
+            line = raw.decode(errors="replace").rstrip("\n")
+            await broadcast(s, {"type": "download_log", "server_id": server_id,
+                                "repo_id": repo_id, "line": line})
+        rc = await proc.wait()
+        if rc != 0:
+            db_mod.upsert_model(s.conn, repo_id=repo_id, server_id=server_id,
+                                format="hf", local_path="", status="missing")
+            await broadcast(s, {"type": "download_error", "server_id": server_id,
+                                "repo_id": repo_id, "message": f"download exited with code {rc}"})
+            return
+        local_path, gguf_resolved, size = _resolve_download_path(s, repo_id, server_id, gguf_filename)
+        if local_path is None:
+            db_mod.upsert_model(s.conn, repo_id=repo_id, server_id=server_id,
+                                format="hf", local_path="", status="missing")
+            await broadcast(s, {"type": "download_error", "server_id": server_id,
+                                "repo_id": repo_id, "message": "download finished but no artifact was found"})
+            return
+        db_mod.upsert_model(s.conn, repo_id=repo_id, server_id=server_id, format="hf",
+                            local_path=local_path, status="downloaded",
+                            gguf_filename=gguf_resolved, size_bytes=size,
+                            downloaded_at=datetime.now(timezone.utc).isoformat())
+        await broadcast(s, {"type": "download_done", "server_id": server_id,
+                            "repo_id": repo_id, "status": "downloaded", "local_path": local_path})
+    except Exception as e:
+        await broadcast(s, {"type": "download_error", "server_id": server_id,
+                            "repo_id": repo_id, "message": str(e)})
+    finally:
+        with s._state_lock:
+            s._download_active = False
+
+
 @router.get("/models")
 async def models():
     s = _require_state()
@@ -149,7 +217,12 @@ async def start_download(payload: dict):
         if s._download_active:
             raise HTTPException(409, "A download is already running")
         s._download_active = True
-    asyncio.create_task(_download_job(s, repo_id, server_id, cmd, payload.get("gguf_filename")))
+    try:
+        asyncio.create_task(_download_job(s, repo_id, server_id, cmd, payload.get("gguf_filename")))
+    except Exception:
+        with s._state_lock:
+            s._download_active = False
+        raise
     return {"ok": True}
 
 

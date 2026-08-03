@@ -41,6 +41,7 @@ def _poll(predicate, timeout=3.0, interval=0.05):
 @pytest.fixture
 def client(tmp_path):
     settings = Settings(data_dir=tmp_path, gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
                         workload_file=tmp_path / "prompts.jsonl")
     (tmp_path / "prompts.jsonl").write_text("{\"prompt\": \"hi\"}\n")
     with TestClient(create_app(settings)) as c:
@@ -236,3 +237,54 @@ def test_download_cli_missing_400_with_manual_command(client, monkeypatch):
     r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
     assert r.status_code == 400
     assert "hf download org/model" in r.json()["detail"]
+
+
+class FakeDownloadProcess:
+    def __init__(self, lines, rc=0):
+        self._lines = list(lines)
+        self._i = 0
+        self.returncode = rc
+        self.stdout = self
+
+    async def readline(self):
+        if self._i < len(self._lines):
+            line = self._lines[self._i]
+            self._i += 1
+            return line.encode()
+        return b""
+
+    async def wait(self):
+        return self.returncode
+
+
+def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_create(*a, **k):
+        return FakeDownloadProcess(["Fetching files...", "Done"], rc=0)
+
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    snapshot = tmp_path / "hf" / "models--org--model"
+    snapshot.mkdir(parents=True)
+
+    r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+    assert r.status_code == 200 and r.json()["ok"] is True
+
+    def row():
+        m = api_mod.db_mod.get_model(api_mod.state.conn, "org/model", "vllm")
+        return m and m["status"]
+
+    assert _poll(lambda: row() == "downloaded")
+    assert events[0]["type"] == "download_started"
+    assert "hf download org/model" in events[0]["command"]
+    assert any(e["type"] == "download_log" and e["line"] == "Fetching files..." for e in events)
+    done = next(e for e in events if e["type"] == "download_done")
+    assert done["local_path"] == str(snapshot)
+    assert api_mod.state._download_active is False
