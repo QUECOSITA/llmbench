@@ -1,1 +1,71 @@
-:root {}
+:root {
+  --steel: #16130f;
+  --panel: #1e1b17;
+  --rule: #3a342b;
+  --rule-bright: #4a443a;
+  --anode: #8a8478;
+  --tube: #d8d2c8;
+  --accent: #ff7a00;
+  --radius: 4px;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--steel);
+  color: var(--tube);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.instrument { max-width: 1080px; margin: 0 auto; padding: 24px; }
+
+.instrument-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+}
+.wordmark { letter-spacing: .18em; font-size: 15px; }
+.hardware-line { color: var(--anode); font-size: 11px; letter-spacing: .08em; }
+
+.panel {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.panel-cap {
+  display: block;
+  color: var(--anode);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+button {
+  background: var(--accent);
+  color: var(--steel);
+  border: none;
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+button:disabled { background: var(--rule); color: var(--anode); cursor: not-allowed; }
+
+input {
+  background: var(--panel);
+  color: var(--tube);
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  padding: 8px;
+  font-family: var(--font-mono);
+}
