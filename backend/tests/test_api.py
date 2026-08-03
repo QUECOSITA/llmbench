@@ -288,3 +288,38 @@ def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch)
     done = next(e for e in events if e["type"] == "download_done")
     assert done["local_path"] == str(snapshot)
     assert api_mod.state._download_active is False
+
+
+def test_download_llama_resolves_gguf_file(client, tmp_path, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_create(*a, **k):
+        return FakeDownloadProcess(["ok"], rc=0)
+
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
+    gguf.parent.mkdir(parents=True)
+    gguf.write_bytes(b"x" * 2048)
+
+    r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
+    assert r.status_code == 200
+
+    def row():
+        return api_mod.db_mod.get_model(api_mod.state.conn, "org/model", "llama.cpp")
+
+    assert _poll(lambda: (row() or {}).get("status") == "downloaded")
+    row = row()
+    assert row["local_path"] == str(gguf)
+    assert row["gguf_filename"] == "model.Q4_K_M.gguf"
+    assert row["size_bytes"] == 2048
+    assert "download_started" in [e["type"] for e in events]
+    start = next(e for e in events if e["type"] == "download_started")
+    assert "--include" in start["command"] and "*.gguf" in start["command"]
+
