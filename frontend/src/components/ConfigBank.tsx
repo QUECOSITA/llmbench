@@ -1,0 +1,43 @@
+export interface ConfigRow {
+  flags: Record<string, string>;
+  serving_command: string;
+}
+
+interface Props {
+  n: number;
+  onNChange: (n: number) => void;
+  onGenerate: (n: number) => void;
+  configs: ConfigRow[];
+  onEdit?: (index: number, command: string) => void;
+}
+
+export function ConfigBank({ n, onNChange, onGenerate, configs, onEdit }: Props) {
+  return (
+    <section className="panel">
+      <span className="panel-cap">02 · CONFIG BANK · N = {n}</span>
+      <div className="row">
+        <label style={{ color: "var(--anode)", fontSize: 12 }}>N</label>
+        <input
+          type="number"
+          min={1}
+          max={10}
+          value={n}
+          onChange={(e) => onNChange(Number(e.target.value))}
+          style={{ width: 80 }}
+        />
+        <button onClick={() => onGenerate(n)}>GENERATE</button>
+      </div>
+      {configs.map((cfg, i) => (
+        <div className="config-row" key={i}>
+          <span className="config-index">▸ {i + 1}</span>
+          <textarea
+            value={cfg.serving_command}
+            onChange={(e) => onEdit?.(i, e.target.value)}
+            rows={2}
+            style={{ flex: 1, fontFamily: "var(--font-mono)" }}
+          />
+        </div>
+      ))}
+    </section>
+  );
+}
