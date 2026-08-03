@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS results (
 def init_db(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
     conn.executescript(
         "INSERT OR IGNORE INTO servers(id, display_name) VALUES "
@@ -131,14 +132,20 @@ def save_result(conn, config_id, prompt_processing_tps, decode_tps, duration_s, 
 
 
 def get_results_for_run(conn, run_id):
-    return [dict(r) for r in conn.execute(
+    rows = conn.execute(
         """
         SELECT c.id AS config_id, c.server_id, c.flag_conf_json,
                c.serving_command, r.prompt_processing_tps, r.decode_tps,
                r.duration_s, r.status AS result_status
         FROM configs c LEFT JOIN results r ON r.config_id = c.id
         WHERE c.run_id=? ORDER BY r.decode_tps DESC, c.id
-        """, (run_id,)).fetchall()]
+        """, (run_id,)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["flag_conf"] = json.loads(d.pop("flag_conf_json"))
+        out.append(d)
+    return out
 
 
 def list_runs(conn):
