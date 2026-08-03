@@ -73,7 +73,25 @@ def test_generate_configs_endpoint(client):
         "readme_flags": {"--max-model-len": "8192"},
     })
     assert r.status_code == 200
-    assert len(r.json()["configs"]) == 3
+    configs = r.json()["configs"]
+    assert len(configs) == 3
+    for cfg in configs:
+        assert isinstance(cfg["bench_command"], list)
+        assert cfg["bench_command"][0] == "python"
+        assert any("benchmark_throughput" in tok for tok in cfg["bench_command"])
+
+
+def test_generate_configs_llama_uses_gguf_path(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
+        "gguf_path": "/tmp/models/model.Q4_K_M.gguf",
+        "readme_flags": {"-c": "4096"},
+    })
+    assert r.status_code == 200
+    for cfg in r.json()["configs"]:
+        cmd = cfg["bench_command"]
+        assert cmd[0] == "llama-bench"
+        assert cmd[cmd.index("-m") + 1] == "/tmp/models/model.Q4_K_M.gguf"
 
 
 def test_start_run_rejects_duplicate(client, monkeypatch):

@@ -10,7 +10,7 @@ from app.flags import build_serving_command, generate_configs
 from app.hardware import detect_hardware
 from app.hf import HfClient, InvalidModelInput, normalize_input
 from app.readme_parser import detect_serving_programs, extract_flags, top_serving_program
-from app.servers import detect_binaries
+from app.servers import build_bench_command, detect_binaries
 
 router = APIRouter(prefix="/api")
 
@@ -113,6 +113,7 @@ async def delete_model(server_id: str, model_ref: str):
 
 @router.post("/configs/generate")
 async def generate(payload: dict):
+    s = _require_state()
     server_id = payload.get("server_id")
     repo_id = payload.get("repo_id")
     n = payload.get("n")
@@ -139,6 +140,12 @@ async def generate(payload: dict):
         cfg["serving_command"] = build_serving_command(
             server_id, repo_id, cfg["flags"],
             gguf_path=payload.get("gguf_path"),
+        )
+        model_ref = payload.get("gguf_path") or repo_id
+        cfg["bench_command"] = build_bench_command(
+            server_id, model_ref, cfg["flags"],
+            workload=str(s.settings.workload_file),
+            timeout_s=s.settings.benchmark_timeout_s,
         )
     return {"configs": configs}
 
