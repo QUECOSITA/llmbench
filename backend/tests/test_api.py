@@ -67,6 +67,25 @@ def test_analyze_normalizes_and_reads_readme(client, httpx_mock):
     assert body["detected_server"] == "vllm"
 
 
+def test_analyze_includes_fit_verdict_and_hardware(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.safetensors", "type": "file", "size": 4000000000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n")
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    body = r.json()
+    fv = body["fit_verdict"]
+    assert isinstance(fv["warning"], bool)
+    assert isinstance(fv["needed_gb"], float)
+    assert fv["stage"] in ("gpu", "ram_offload", "ram", "no_fit")
+    hw = body["hardware"]
+    assert "gpu_vram_gb" in hw and "ram_total_gb" in hw and "gpu_name" in hw
+
+
 def test_generate_configs_endpoint(client):
     r = client.post("/api/configs/generate", json={
         "repo_id": "org/model", "server_id": "vllm", "n": 3, "vram_gb": 24.0,

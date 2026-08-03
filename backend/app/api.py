@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from app import benchmark as benchmark_mod
 from app import db as db_mod
 from app.config import Settings
+from app.fit import fit_verdict
 from app.flags import build_serving_command, generate_configs
 from app.hardware import detect_hardware
 from app.hf import HfClient, InvalidModelInput, normalize_input
@@ -78,6 +79,8 @@ async def analyze(payload: dict):
     detected = top_serving_program(scores)
     flags = extract_flags(readme, [detected or "vllm"])
     weights = _hf.weights_size_bytes(files)
+    hw = detect_hardware()
+    verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"])
     return {
         "repo_id": repo_id,
         "detected_server": detected,
@@ -86,6 +89,12 @@ async def analyze(payload: dict):
         "gguf_files": gguf,
         "weights_bytes": weights,
         "downloaded": _model_status(s, repo_id),
+        "fit_verdict": verdict,
+        "hardware": {
+            "gpu_vram_gb": hw["gpu_vram_gb"],
+            "ram_total_gb": hw["ram_total_gb"],
+            "gpu_name": hw["gpu_name"],
+        },
     }
 
 
