@@ -4,6 +4,12 @@ export function normalizeInput(raw: string): string {
   return raw.trim();
 }
 
+export interface FitVerdict {
+  stage: string;
+  warning: boolean;
+  needed_gb: number;
+}
+
 export interface Analysis {
   repo_id?: string;
   detected_server?: string | null;
@@ -11,6 +17,8 @@ export interface Analysis {
   gguf_files?: Array<{ path: string; size: number }>;
   weights_bytes?: number;
   downloaded?: Record<string, boolean>;
+  fit_verdict?: FitVerdict;
+  hardware?: { gpu_vram_gb?: number; ram_total_gb?: number; gpu_name?: string };
 }
 
 export interface DownloadedModel {
@@ -64,6 +72,11 @@ export const api = {
     body: JSON.stringify(body),
   }),
   listModels: () => request<{ models: DownloadedModel[] }>("/models"),
+  downloadModel: (body: { repo_id: string; server_id: string; gguf_filename?: string }) =>
+    request<{ ok: boolean }>("/models/download", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   listRuns: () => request<{ runs: RunSummary[] }>("/benchmarks"),
   getRun: (runId: number) => request<{ results: RunResult[] }>(`/benchmarks/${runId}`),
   removeModel: (serverId: string, repoId: string) =>
