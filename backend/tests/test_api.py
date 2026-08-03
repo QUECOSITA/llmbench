@@ -1,9 +1,41 @@
 import asyncio
+import time
 
 import pytest
 from fastapi.testclient import TestClient
 from app.main import create_app
 from app.config import Settings
+
+FAKE_BENCH = """\
+model,size,params,backend,test,t,n_threads,batch,ngl,ms,t/s
+x,Q4,7B,CUDA,pp,0,8,512,999,40,1000.0
+x,Q4,7B,CUDA,tg,0,8,512,999,900,80.0
+"""
+
+
+class FakeProcess:
+    def __init__(self, out, rc=0):
+        self._out = out
+        self.returncode = rc
+        self.killed = False
+
+    async def communicate(self):
+        return self._out, b""
+
+    def kill(self):
+        self.killed = True
+
+    async def wait(self):
+        return self.returncode
+
+
+def _poll(predicate, timeout=3.0, interval=0.05):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return predicate()
 
 
 @pytest.fixture
@@ -78,3 +110,69 @@ def test_start_run_rejects_duplicate(client, monkeypatch):
     r2 = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
     assert r2.status_code == 409
     release.set()
+
+
+def test_analyze_missing_input_422(client):
+    r = client.post("/api/models/analyze", json={})
+    assert r.status_code == 422
+
+
+def test_generate_missing_server_422(client):
+    r = client.post("/api/configs/generate", json={})
+    assert r.status_code == 422
+
+
+def test_run_failure_marks_run_failed(client, monkeypatch):
+    async def fake_create(*a, **k):
+        raise FileNotFoundError("no bench binary")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    cfg = {
+        "server_id": "llama.cpp",
+        "flags": {"-c": "4096"},
+        "model_id": None,
+        "serving_command": "llama-server -m x",
+        "bench_command": ["llama-bench", "-m", "x"],
+    }
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    def status():
+        runs = {x["id"]: x for x in client.get("/api/benchmarks").json()["runs"]}
+        return runs[run_id]["status"]
+
+    _poll(lambda: status() != "running")
+    assert status() == "failed"
+
+    r2 = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    assert r2.status_code == 200
+
+
+def test_full_run_completes_and_persists(client, monkeypatch):
+    async def fake_create(*a, **k):
+        return FakeProcess(FAKE_BENCH.encode())
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    cfg = {
+        "server_id": "llama.cpp",
+        "flags": {"-c": "4096"},
+        "model_id": "org/model",
+        "serving_command": "llama-server -m x",
+        "bench_command": ["llama-bench", "-m", "x"],
+    }
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    def results():
+        return client.get(f"/api/benchmarks/{run_id}").json()["results"]
+
+    assert _poll(lambda: bool(results()))
+    rows = results()
+    assert len(rows) == 1
+    assert rows[0]["result_status"] == "ok"
+    assert rows[0]["prompt_processing_tps"] == 1000.0
+    assert rows[0]["decode_tps"] == 80.0
