@@ -1,5 +1,7 @@
 # LLM Bench
 
+[![CI](https://github.com/QUECOSITA/llmbench/actions/workflows/ci.yml/badge.svg)](https://github.com/QUECOSITA/llmbench/actions/workflows/ci.yml)
+
 Benchmark Hugging Face coding LLMs across llama.cpp, vLLM, and sglang to find the best serving config by DECODE STAGE tokens/sec.
 
 The tool reads the model's README to detect the intended serving program and proposed flags, generates N editable config commands, and benchmarks them serially with each server's native bench tool.
