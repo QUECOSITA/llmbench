@@ -1,4 +1,8 @@
 #!/bin/bash
+# Point llama-bench discovery at a local llama.cpp build if present.
+if [ -z "${LLMBENCH_LLAMA_CPP_BIN_DIR:-}" ] && [ -d "$HOME/llama.cpp/build/bin" ]; then
+    export LLMBENCH_LLAMA_CPP_BIN_DIR="$HOME/llama.cpp/build/bin"
+fi
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
