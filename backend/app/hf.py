@@ -4,6 +4,7 @@ class InvalidModelInput(ValueError):
     pass
 
 _REPO_RE = re.compile(r"^[\w.\-]+/[\w.\-]+$")
+_REPO_FILE_RE = re.compile(r"^[\w.\-]+/[\w.\-]+/[\w.+\-]+$")
 _HF_LINK_RE = re.compile(r"^https?://(?:www\.)?huggingface\.co/([^/?#]+/[^/?#]+)")
 _HF_FILE_RE = re.compile(
     r"^https?://(?:www\.)?huggingface\.co/[^/?#]+/[^/?#]+/(?:resolve|blob|raw)/[^/?#]+/([^?#]+)"
@@ -11,10 +12,11 @@ _HF_FILE_RE = re.compile(
 
 
 def parse_input(raw: str) -> tuple[str, str | None]:
-    """Accept 'user/model' or an https huggingface.co link.
+    """Accept 'user/model', 'user/model/file', or an https huggingface.co link.
 
-    Returns (repo_id, file_path). file_path is set when the link points at a
-    specific file (e.g. .../resolve/main/model.gguf), otherwise None.
+    Returns (repo_id, file_path). file_path is set when the input points at a
+    specific file (e.g. 'user/model/x.gguf' or .../resolve/main/model.gguf),
+    otherwise None.
     """
     s = raw.strip().strip("/")
     if not s:
@@ -26,6 +28,10 @@ def parse_input(raw: str) -> tuple[str, str | None]:
         return repo, fm.group(1) if fm else None
     if _REPO_RE.match(s):
         return s, None
+    mf = _REPO_FILE_RE.match(s)
+    if mf:
+        repo, file_path = s.rsplit("/", 1)
+        return repo, file_path
     raise InvalidModelInput(f"'{raw}' is not a huggingface.co link or 'user/model'.")
 
 
@@ -67,6 +73,14 @@ class HfClient:
                  or f["path"].endswith(".gguf")
                  or (f["path"].endswith(".bin") and not f["path"].endswith(".json")))
         )
+
+    def fetch_config(self, repo_id: str) -> dict | None:
+        url = f"{self.base_url}/{repo_id}/raw/main/config.json"
+        with httpx.Client(timeout=self.timeout, follow_redirects=True) as client:
+            r = client.get(url)
+            if r.status_code != 200:
+                return None
+            return r.json()
 
     def gguf_files(self, files: list[dict]) -> list[dict]:
         return [f for f in files if f.get("type") == "file" and f["path"].endswith(".gguf")]

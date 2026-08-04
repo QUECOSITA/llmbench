@@ -534,7 +534,27 @@ def test_models_endpoint_reconciles_hf_cache(client, tmp_path):
         assert models[sid]["status"] == "downloaded"
 
 
-def test_delete_model_removes_row_and_files(client, tmp_path):
+def test_delete_model_removes_row_and_files(client, tmp_path, monkeypatch):
+    from app.config import Settings
+    from app.sync import snapshot_dir_for
+    settings = Settings(data_dir=tmp_path, gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
+    snap = snapshot_dir_for(settings, "org/model")
+    (snap / "snapshots" / "main").mkdir(parents=True)
+    (snap / "snapshots" / "main" / "model.safetensors").write_bytes(b"x")
+    monkeypatch.setattr("shutil.which", lambda *a, **k: None)
+
+    assert client.get("/api/models").status_code == 200
+    assert snap.exists()
+
+    r = client.delete("/api/models/org%2Fmodel")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert client.get("/api/models").json()["models"] == []
+    assert not snap.exists()
+
+
+def test_delete_model_invokes_hf_cache_rm(client, tmp_path, monkeypatch):
     from app.config import Settings
     from app.sync import snapshot_dir_for
     settings = Settings(data_dir=tmp_path, gguf_dir=tmp_path / "gguf",
@@ -543,14 +563,60 @@ def test_delete_model_removes_row_and_files(client, tmp_path):
     (snap / "snapshots" / "main").mkdir(parents=True)
     (snap / "snapshots" / "main" / "model.safetensors").write_bytes(b"x")
 
-    assert client.get("/api/models").status_code == 200
-    assert snap.exists()
+    captured: dict = {}
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
 
-    r = client.delete("/api/models/vllm/org%2Fmodel")
+    class FakeProc:
+        returncode = None
+
+        async def communicate(self):
+            self.returncode = 0
+            return b"", None
+
+    async def fake_create(*cmd, **kw):
+        captured["cmd"] = list(cmd)
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    assert client.get("/api/models").status_code == 200
+
+    r = client.delete("/api/models/org%2Fmodel")
     assert r.status_code == 200
-    assert r.json()["ok"] is True
-    assert client.get("/api/models").json()["models"] == []
-    assert not snap.exists()
+    assert captured["cmd"] == [
+        "hf", "cache", "rm", "hf://models/org/model", "-y",
+        "--cache-dir", str(settings.hf_cache_dir),
+    ]
+
+
+def test_delete_model_hf_cache_rm_failure_returns_500(client, tmp_path, monkeypatch):
+    from app.config import Settings
+    from app.sync import snapshot_dir_for
+    settings = Settings(data_dir=tmp_path, gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
+    snap = snapshot_dir_for(settings, "org/model")
+    (snap / "snapshots" / "main").mkdir(parents=True)
+    (snap / "snapshots" / "main" / "model.safetensors").write_bytes(b"x")
+
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+
+    class FakeProc:
+        returncode = None
+
+        async def communicate(self):
+            self.returncode = 1
+            return b"repo not found", None
+
+    async def fake_create(*cmd, **kw):
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    assert client.get("/api/models").status_code == 200
+
+    r = client.delete("/api/models/org%2Fmodel")
+    assert r.status_code == 500
+    assert "repo not found" in r.json()["detail"]
 
 
 def test_generate_configs_includes_per_config_fit(client):

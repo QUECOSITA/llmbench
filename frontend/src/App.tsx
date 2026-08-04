@@ -74,7 +74,10 @@ export function App() {
   const [configs, setConfigs] = useState<ConfigRow[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [downloaded, setDownloaded] = useState<Array<{ server_id: string; repo_id: string; status: string }>>([]);
+  const [modelInput, setModelInput] = useState("");
+  const [downloaded, setDownloaded] = useState<
+    Array<{ server_id: string; repo_id: string; status: string; gguf_filename?: string | null }>
+  >([]);
 
   const [downloads, setDownloads] = useState<DownloadState>({});
   const [downloadKey, setDownloadKey] = useState<string | null>(null);
@@ -160,6 +163,14 @@ export function App() {
     setDownloadKey(null);
   }, []);
 
+  const onLoad = useCallback(
+    (repoId: string) => {
+      setModelInput(repoId);
+      void onAnalyze(repoId);
+    },
+    [onAnalyze],
+  );
+
   const onGenerate = useCallback(async (count: number) => {
     if (!analysis?.repo_id || !analysis.detected_server) return;
     const data = await api.generateConfigs({
@@ -224,7 +235,7 @@ export function App() {
             <main>
               <section className="panel">
                 <span className="panel-cap">01 · MODEL INPUT</span>
-                <ModelInput onAnalyze={onAnalyze} />
+                <ModelInput value={modelInput} onChange={setModelInput} onAnalyze={onAnalyze} />
                 {analysis?.repo_id && (
                   <p style={{ color: "var(--anode)", fontSize: 12, marginBottom: 4 }}>
                     → {analysis.repo_id} · server {analysis.detected_server ?? "manual"} ·{" "}
@@ -305,10 +316,14 @@ export function App() {
                 </Link>
               </section>
 
-              <DownloadedSection models={downloaded} onRemove={async (s, r) => {
-                await api.removeModel(s, r);
-                setDownloaded((await api.listModels()).models);
-              }} />
+              <DownloadedSection
+                models={downloaded}
+                onLoad={onLoad}
+                onRemove={async (r) => {
+                  await api.removeModel(r);
+                  setDownloaded((await api.listModels()).models);
+                }}
+              />
             </main>
           }
         />

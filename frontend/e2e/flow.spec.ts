@@ -24,3 +24,21 @@ test("download console renders with a CANCEL action", async ({ page }) => {
   await page.getByRole("button", { name: /cancel/i }).click();
   await expect(page.getByRole("button", { name: /cancel/i })).toBeVisible();
 });
+
+test("LOAD fills the model input with the file-qualified ref and analyzes a downloaded model", async ({ page }) => {
+  await page.goto("http://localhost:5173");
+  await expect(page.getByText("llama.cpp, vLLM, sglang")).toBeVisible();
+  await expect(page.getByText("org/model/model.gguf")).toBeVisible();
+  await page.getByRole("button", { name: "LOAD" }).click();
+  await expect(page.getByText(/server vLLM/i)).toBeVisible();
+  await expect(page.getByPlaceholder(/huggingface/i)).toHaveValue("org/model/model.gguf");
+});
+
+test("REMOVE confirms and removes the downloaded row", async ({ page }) => {
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto("http://localhost:5173");
+  await expect(page.getByText("llama.cpp, vLLM, sglang")).toBeVisible();
+  await expect(page.getByText("org/model/model.gguf")).toHaveCount(1);
+  await page.getByRole("button", { name: "REMOVE" }).click();
+  await expect(page.getByText("org/model/model.gguf")).toHaveCount(0);
+});

@@ -6,6 +6,8 @@
   --anode: #8a8478;
   --tube: #d8d2c8;
   --accent: #ff7a00;
+  --ok: #9bbf8f;
+  --warn: #d9a04b;
   --radius: 4px;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", monospace;
 }

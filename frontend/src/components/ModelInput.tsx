@@ -1,13 +1,16 @@
-import { useState } from "react";
+interface Props {
+  value: string;
+  onChange: (value: string) => void;
+  onAnalyze: (value: string) => void;
+}
 
-export function ModelInput({ onAnalyze }: { onAnalyze: (value: string) => void }) {
-  const [value, setValue] = useState("");
+export function ModelInput({ value, onChange, onAnalyze }: Props) {
   return (
     <div className="row">
       <input
         placeholder="huggingface.co/Org/model"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         style={{ flex: 1 }}
       />
       <button onClick={() => onAnalyze(value.trim())}>ANALYZE</button>

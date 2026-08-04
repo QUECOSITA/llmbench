@@ -28,6 +28,72 @@ vi.mock("./ws/useDownloadProgress", () => ({
   useDownloadProgress: vi.fn().mockReturnValue([]),
 }));
 
+test("LOAD on a downloaded row fills MODEL INPUT and analyzes", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.listModels).mockResolvedValue({
+    models: [{ server_id: "vllm", repo_id: "org/model", status: "downloaded" }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValue({ repo_id: "org/model", detected_server: "vllm", readme_flags: {} });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  await screen.findByText("vLLM");
+  fireEvent.click(screen.getByRole("button", { name: "LOAD" }));
+
+  await waitFor(() => expect(analyzeSpy).toHaveBeenCalledWith("org/model"));
+  const input = screen.getByPlaceholderText(/model/i) as HTMLInputElement;
+  expect(input.value).toBe("org/model");
+});
+
+test("LOAD on a downloaded gguf row fills MODEL INPUT and analyzes the file-qualified ref", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.listModels).mockResolvedValue({
+    models: [{ server_id: "llama.cpp", repo_id: "org/model", status: "downloaded", gguf_filename: "model.gguf" }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {} });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  await screen.findByText("org/model/model.gguf");
+  fireEvent.click(screen.getByRole("button", { name: "LOAD" }));
+
+  await waitFor(() => expect(analyzeSpy).toHaveBeenCalledWith("org/model/model.gguf"));
+  const input = screen.getByPlaceholderText(/model/i) as HTMLInputElement;
+  expect(input.value).toBe("org/model/model.gguf");
+});
+
+test("REMOVE deletes the whole repo and refreshes the list", async () => {
+  const { api } = await import("./api/client");
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  vi.mocked(api.listModels)
+    .mockResolvedValueOnce({
+      models: [{ server_id: "vllm", repo_id: "org/model", status: "downloaded" }],
+    })
+    .mockResolvedValueOnce({ models: [] });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  await screen.findByText("org/model");
+  fireEvent.click(screen.getByRole("button", { name: "REMOVE" }));
+
+  await waitFor(() => expect(api.removeModel).toHaveBeenCalledWith("org/model"));
+  expect(await screen.findByText("no models downloaded")).toBeInTheDocument();
+});
+
 test("renders the instrument header with panel structure", async () => {
   render(
     <MemoryRouter>

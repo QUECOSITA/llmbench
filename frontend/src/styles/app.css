@@ -69,3 +69,29 @@
   border: 1px solid var(--rule-bright);
   font-weight: 400;
 }
+.downloaded-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 12px;
+}
+.downloaded-row:last-child { border-bottom: none; }
+.downloaded-server {
+  color: var(--anode);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-size: 11px;
+  min-width: 88px;
+}
+.downloaded-model {
+  color: var(--tube);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.downloaded-actions { display: flex; gap: 8px; }
+.downloaded-actions .btn-neutral { padding: 4px 10px; font-size: 11px; }
+.downloaded-empty { color: var(--anode); font-size: 12px; margin: 0; }

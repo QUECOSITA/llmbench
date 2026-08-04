@@ -43,6 +43,7 @@ export interface DownloadedModel {
   server_id: string;
   repo_id: string;
   status: string;
+  gguf_filename?: string | null;
 }
 
 export interface RunSummary {
@@ -119,6 +120,6 @@ export const api = {
     }),
   listRuns: () => request<{ runs: RunSummary[] }>("/benchmarks"),
   getRun: (runId: number) => request<{ results: RunResult[] }>(`/benchmarks/${runId}`),
-  removeModel: (serverId: string, repoId: string) =>
-    request<{ ok: boolean }>(`/models/${serverId}/${encodeURIComponent(repoId)}`, { method: "DELETE" }),
+  removeModel: (repoId: string) =>
+    request<{ ok: boolean }>(`/models/${encodeURIComponent(repoId)}`, { method: "DELETE" }),
 };

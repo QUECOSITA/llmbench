@@ -1,7 +1,10 @@
+import type { ConfigFit } from "../api/client";
+
 export interface ConfigRow {
   flags: Record<string, string>;
   serving_command: string;
   bench_command?: string[];
+  fit?: ConfigFit | null;
 }
 
 interface Props {
@@ -37,8 +40,25 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, onEdit }: Props)
             rows={2}
             style={{ flex: 1, fontFamily: "var(--font-mono)" }}
           />
+          {cfg.fit && <FitBadge fit={cfg.fit} />}
         </div>
       ))}
     </section>
+  );
+}
+
+export function FitBadge({ fit }: { fit: ConfigFit }) {
+  const cls =
+    fit.stage === "gpu"
+      ? "fit-ok"
+      : fit.stage === "offload"
+        ? "fit-warn"
+        : fit.stage === "cpu"
+          ? "fit-cpu"
+          : "fit-no";
+  return (
+    <span className={`fit-badge ${cls}`}>
+      {fit.label} · {fit.needed_gb} GB
+    </span>
   );
 }

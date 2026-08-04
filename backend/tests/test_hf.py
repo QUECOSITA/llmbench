@@ -23,6 +23,16 @@ def test_parse_input_repo_only():
     assert parse_input("https://huggingface.co/org/model") == ("org/model", None)
 
 
+def test_parse_input_repo_and_file():
+    assert parse_input("org/model/file.gguf") == ("org/model", "file.gguf")
+    assert parse_input("unsloth/gemma-4-E4B-it-GGUF/gemma-4-E4B-it-IQ4_XS.gguf") == (
+        "unsloth/gemma-4-E4B-it-GGUF", "gemma-4-E4B-it-IQ4_XS.gguf")
+
+
+def test_normalize_repo_and_file():
+    assert normalize_input("org/model/file.gguf") == "org/model"
+
+
 def test_parse_input_direct_file_link():
     repo, path = parse_input(
         "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf"
@@ -106,3 +116,19 @@ def test_repo_not_found(hf_client, httpx_mock):
                             status_code=404, json={"error": "Not found"})
     with pytest.raises(httpx.HTTPStatusError):
         hf_client.fetch_repo("nope/x")
+
+
+def test_fetch_config_returns_json(hf_client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/org/model/raw/main/config.json",
+        json={"num_hidden_layers": 40, "num_attention_heads": 64,
+              "hidden_size": 8192, "max_position_embeddings": 32768},
+    )
+    cfg = hf_client.fetch_config("org/model")
+    assert cfg["num_hidden_layers"] == 40
+
+
+def test_fetch_config_missing_returns_none(hf_client, httpx_mock):
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/config.json",
+                            status_code=404, json={"error": "Not found"})
+    assert hf_client.fetch_config("org/model") is None

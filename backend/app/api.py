@@ -302,10 +302,13 @@ async def models():
     return {"models": db_mod.list_models(s.conn, status="downloaded")}
 
 
-@router.delete("/models/{server_id}/{model_ref:path}")
-async def delete_model(server_id: str, model_ref: str):
+@router.delete("/models/{model_ref:path}")
+async def delete_model(model_ref: str):
     s = _require_state()
-    sync_mod.remove_model(s.conn, s.settings, model_ref, server_id)
+    try:
+        await sync_mod.remove_model(s.conn, s.settings, model_ref)
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
     return {"ok": True}
 
 

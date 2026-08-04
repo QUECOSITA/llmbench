@@ -86,8 +86,16 @@ def get_model(conn, repo_id, server_id):
     return _row(conn, "SELECT * FROM models WHERE repo_id=? AND server_id=?", (repo_id, server_id))
 
 
-def list_models(conn):
-    return [dict(r) for r in conn.execute("SELECT * FROM models ORDER BY server_id, repo_id")]
+def list_models(conn, status=None):
+    if status is None:
+        return [dict(r) for r in conn.execute("SELECT * FROM models ORDER BY server_id, repo_id")]
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM models WHERE status=? ORDER BY server_id, repo_id", (status,))]
+
+
+def delete_model(conn, repo_id, server_id):
+    conn.execute("DELETE FROM models WHERE repo_id=? AND server_id=?", (repo_id, server_id))
+    conn.commit()
 
 
 def create_run(conn, repo_id, requested_n):
