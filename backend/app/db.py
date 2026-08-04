@@ -157,5 +157,15 @@ def get_results_for_run(conn, run_id):
     return out
 
 
+def get_run_status(conn, run_id):
+    row = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
+    return row["status"] if row else None
+
+
+def get_run(conn, run_id):
+    row = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
+    return dict(row) if row else None
+
+
 def list_runs(conn):
     return [dict(r) for r in conn.execute("SELECT * FROM runs ORDER BY id DESC")]

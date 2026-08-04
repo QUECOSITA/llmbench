@@ -11,6 +11,8 @@ test("full flow: analyze, generate, run, see ranked results", async ({ page }) =
   await expect(page.getByText(/FITS VRAM · 3.8 GB/i)).toBeVisible();
   await page.getByRole("button", { name: /run benchmark/i }).click();
   await expect(page.getByText(/config 0\/1/i).or(page.getByText(/config 1\/1/i))).toBeVisible();
+  await expect(page.getByRole("cell", { name: "42.0" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /run benchmark/i })).toBeEnabled();
 });
 
 test("download console renders with a CANCEL action", async ({ page }) => {

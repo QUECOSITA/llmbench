@@ -39,6 +39,36 @@ test("run_done for matching run_id stops running", () => {
   expect(next.running).toBe(false);
 });
 
+test("run_sync replaces results and stops running", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 2 }));
+  const next = progressReducer(state, {
+    type: "run_sync",
+    run_id: 1,
+    status: "completed",
+    total: 2,
+    results: [
+      { server_id: "vllm", flag_conf: { "--max-model-len": "8192" }, prompt_processing_tps: 100.0, decode_tps: 42.0 },
+    ],
+  });
+  expect(next.running).toBe(false);
+  expect(next.results).toHaveLength(1);
+  expect(next.results[0].decode_tps).toBe(42.0);
+  expect(next.index).toBe(1);
+  expect(next.total).toBe(2);
+});
+
+test("run_sync for a different run_id is ignored", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1));
+  const next = progressReducer(state, {
+    type: "run_sync",
+    run_id: 99,
+    status: "failed",
+    results: [],
+  });
+  expect(next.running).toBe(true);
+  expect(next.results).toEqual([]);
+});
+
 test("events for different run_id are ignored (stale replay protection)", () => {
   // Run 1 starts
   const state1 = progressReducer(INITIAL_STATE, ev("run_started", 1));

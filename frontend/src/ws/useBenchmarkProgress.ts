@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface ProgressEvent {
-  type: "run_started" | "config_start" | "config_done" | "run_done";
+  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync";
   run_id: number;
   index?: number;
   total?: number;
   config?: unknown;
   result?: { status: string; decode_tps: number | null; prompt_processing_tps: number | null };
   status?: string;
+  results?: ResultRow[];
 }
 
 export interface ResultRow {
@@ -80,22 +81,33 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
     return { ...state, running: false };
   }
 
+  if (event.type === "run_sync" && event.run_id === state.runId) {
+    const results = event.results ?? [];
+    const last = results[results.length - 1];
+    return {
+      running: false,
+      runId: event.run_id,
+      index: results.length,
+      total: event.total ?? state.total,
+      promptTps: last?.prompt_processing_tps ?? null,
+      decodeTps: last?.decode_tps ?? null,
+      results,
+    };
+  }
+
   return state;
 }
 
-export function useBenchmarkProgress(active: boolean) {
+export function useBenchmarkProgress() {
   const [events, setEvents] = useState<ProgressEvent[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!active) return;
     const ws = new WebSocket("ws://localhost:8000/api/ws");
-    wsRef.current = ws;
     ws.onmessage = (msg) => {
       setEvents((prev) => [...prev, JSON.parse(msg.data) as ProgressEvent]);
     };
     return () => ws.close();
-  }, [active]);
+  }, []);
 
   return events;
 }
