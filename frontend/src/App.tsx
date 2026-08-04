@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useReducer, useState } from "react";
 import { Link, Route, Routes } from "react-router-dom";
-import { api } from "./api/client";
+import { api, FitVerdict } from "./api/client";
 import { INITIAL_STATE, progressReducer, useBenchmarkProgress } from "./ws/useBenchmarkProgress";
 import { useDownloadProgress } from "./ws/useDownloadProgress";
 import { ConfigBank, ConfigRow } from "./components/ConfigBank";
+import { DownloadConsole } from "./components/DownloadConsole";
 import { DownloadedSection } from "./components/DownloadedSection";
 import { HardwareBar } from "./components/HardwareBar";
 import { ModelInput } from "./components/ModelInput";
 import { ResultsTable } from "./components/ResultsTable";
 import { RunPanel } from "./components/RunPanel";
 import { Results } from "./pages/Results";
+import {
+  downloadActive,
+  downloadReducer,
+  DownloadState,
+} from "./ws/downloadReducer";
 import "./styles/app.css";
 
 const KNOWN_SERVERS = ["llama.cpp", "vllm", "sglang"] as const;
@@ -22,7 +28,43 @@ interface Analysis {
   weights_bytes?: number;
   downloaded?: Record<string, boolean>;
   fit_verdict?: { stage: string; warning: boolean; needed_gb: number };
+  model_arch?: { layers: number; heads: number; hidden: number; max_ctx: number };
   hardware?: { gpu_vram_gb?: number; ram_total_gb?: number; gpu_name?: string };
+}
+
+function FitStatusLine({
+  verdict,
+  hardware,
+}: {
+  verdict: FitVerdict;
+  hardware?: Analysis["hardware"];
+}) {
+  const vram = hardware?.gpu_vram_gb ?? 0;
+  const ram = hardware?.ram_total_gb ?? 0;
+  const map: Record<string, { text: string; color: string }> = {
+    gpu: {
+      text: `FITS VRAM — needs ~${verdict.needed_gb} GB (weights + KV) of ${vram} GB VRAM`,
+      color: "var(--ok)",
+    },
+    ram_offload: {
+      text: `OFFLOADS TO RAM — needs ~${verdict.needed_gb} GB, spills past ${vram} GB VRAM into ${ram} GB RAM`,
+      color: "var(--warn)",
+    },
+    ram: {
+      text: `CPU ONLY — no GPU VRAM, needs ~${verdict.needed_gb} GB of ${ram} GB RAM`,
+      color: "var(--anode)",
+    },
+    no_fit: {
+      text: `NO FIT — needs ~${verdict.needed_gb} GB vs ${vram} GB VRAM + ${ram} GB RAM`,
+      color: "var(--accent)",
+    },
+  };
+  const entry = map[verdict.stage] ?? map.no_fit;
+  return (
+    <p style={{ color: entry.color, fontSize: 12, margin: "4px 0 0" }}>
+      {entry.text}
+    </p>
+  );
 }
 
 export function App() {
@@ -34,35 +76,16 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState<Array<{ server_id: string; repo_id: string; status: string }>>([]);
 
-  interface DownloadStatus {
-    status: "downloading" | "downloaded" | "error";
-    line?: string;
-    message?: string;
-    local_path?: string;
-  }
-  const [downloads, setDownloads] = useState<Record<string, DownloadStatus>>({});
-  const downloadActive = Object.values(downloads).some((d) => d.status === "downloading");
-  const downloadEvents = useDownloadProgress(downloadActive);
+  const [downloads, setDownloads] = useState<DownloadState>({});
+  const [downloadKey, setDownloadKey] = useState<string | null>(null);
+  const downloadActiveNow = downloadActive(downloads);
+  const downloadEvents = useDownloadProgress(downloadActiveNow);
 
   useEffect(() => {
     for (const ev of downloadEvents) {
-      if (!ev.server_id || !ev.repo_id) continue;
-      const key = `${ev.server_id}::${ev.repo_id}`;
-      if (ev.type === "download_log") {
-        setDownloads((prev) =>
-          prev[key] ? { ...prev, [key]: { ...prev[key], line: ev.line } } : prev,
-        );
-      } else if (ev.type === "download_done") {
-        setDownloads((prev) => ({
-          ...prev,
-          [key]: { status: "downloaded", local_path: ev.local_path },
-        }));
+      setDownloads((prev) => downloadReducer(prev, ev));
+      if (ev.type === "download_done") {
         api.listModels().then((d) => setDownloaded(d.models));
-      } else if (ev.type === "download_error") {
-        setDownloads((prev) => ({
-          ...prev,
-          [key]: { status: "error", message: ev.message },
-        }));
       }
     }
   }, [downloadEvents]);
@@ -70,19 +93,58 @@ export function App() {
   const onDownload = useCallback(
     async (serverId: string) => {
       if (!analysis?.repo_id) return;
-      const key = `${serverId}::${analysis.repo_id}`;
-      setDownloads((prev) => ({ ...prev, [key]: { status: "downloading" } }));
+      const k = `${serverId}::${analysis.repo_id}`;
+      setDownloadKey(k);
+      setDownloads((prev) => ({
+        ...prev,
+        [k]: { status: "downloading", command: "", lines: [], waitingInput: false, pruneAccepted: null, progress: false },
+      }));
       try {
         const gguf = analysis.gguf_files?.length === 1 ? analysis.gguf_files[0].path : undefined;
         await api.downloadModel({ repo_id: analysis.repo_id, server_id: serverId, gguf_filename: gguf });
       } catch (err) {
         setDownloads((prev) => ({
           ...prev,
-          [key]: { status: "error", message: err instanceof Error ? err.message : String(err) },
+          [k]: { ...prev[k], status: "error", message: err instanceof Error ? err.message : String(err) },
         }));
       }
     },
     [analysis],
+  );
+
+  const onCancel = useCallback(async () => {
+    try {
+      await api.cancelDownload();
+    } catch (err) {
+      if (!downloadKey) return;
+      setDownloads((prev) => ({
+        ...prev,
+        [downloadKey]: {
+          ...prev[downloadKey],
+          status: "error",
+          message: err instanceof Error ? err.message : String(err),
+        },
+      }));
+    }
+  }, [downloadKey]);
+
+  const onPruneAnswer = useCallback(
+    async (answer: "y" | "n") => {
+      try {
+        await api.answerPrune(answer);
+      } catch (err) {
+        if (!downloadKey) return;
+        setDownloads((prev) => ({
+          ...prev,
+          [downloadKey]: {
+            ...prev[downloadKey],
+            status: "error",
+            message: err instanceof Error ? err.message : String(err),
+          },
+        }));
+      }
+    },
+    [downloadKey],
   );
 
   useEffect(() => {
@@ -95,6 +157,7 @@ export function App() {
     setAnalysis(data);
     setConfigs([]);
     setDownloads({});
+    setDownloadKey(null);
   }, []);
 
   const onGenerate = useCallback(async (count: number) => {
@@ -104,7 +167,10 @@ export function App() {
       server_id: analysis.detected_server,
       n: count,
       vram_gb: (hardware.gpu_vram_gb as number) ?? 0,
-      readme_flags: analysis.readme_flags,
+      readme_flags: analysis.readme_flags ?? {},
+      weights_bytes: analysis.weights_bytes,
+      ram_gb: (hardware.ram_total_gb as number) ?? 0,
+      model_arch: analysis.model_arch,
     });
     setConfigs(data.configs);
   }, [analysis, hardware]);
@@ -160,35 +226,33 @@ export function App() {
                 <span className="panel-cap">01 · MODEL INPUT</span>
                 <ModelInput onAnalyze={onAnalyze} />
                 {analysis?.repo_id && (
-                  <p style={{ color: "var(--anode)", fontSize: 12 }}>
+                  <p style={{ color: "var(--anode)", fontSize: 12, marginBottom: 4 }}>
                     → {analysis.repo_id} · server {analysis.detected_server ?? "manual"} ·{" "}
                     {Object.keys(analysis.readme_flags ?? {}).length} flags
                   </p>
                 )}
-                {analysis?.fit_verdict?.warning && (
-                  <p style={{ color: "var(--accent)", fontSize: 12, margin: 0 }}>
-                    headroom tight — model needs ~{analysis.fit_verdict.needed_gb} GB (weights + KV cache),
-                    available {analysis.hardware?.gpu_vram_gb ?? 0} GB VRAM +{" "}
-                    {analysis.hardware?.ram_total_gb ?? 0} GB RAM
-                  </p>
+                {analysis?.fit_verdict && (
+                  <FitStatusLine verdict={analysis.fit_verdict} hardware={analysis.hardware} />
                 )}
                 {analysis?.repo_id && (
                   <div className="row" style={{ gap: 12, marginTop: 8, flexWrap: "wrap" }}>
                     {KNOWN_SERVERS.map((sid) => {
-                      const key = `${sid}::${analysis.repo_id}`;
-                      const dl = downloads[key];
+                      const k = `${sid}::${analysis.repo_id}`;
+                      const dl = downloads[k];
                       const already = analysis.downloaded?.[sid];
+                      const busy = dl && (dl.status === "downloading" || dl.status === "cancelled" || dl.status === "pruning");
+                      const done = dl?.status === "downloaded" || already;
                       return (
                         <span key={sid} style={{ fontSize: 12 }}>
                           <b>{sid}:</b>{" "}
-                          {dl?.status === "downloading" ? (
+                          {busy ? (
                             <span style={{ color: "var(--anode)" }}>
-                              downloading{dl.line ? ` — ${dl.line}` : "…"}
+                              {dl.status === "downloading" ? "downloading" : "cancelled"}
                             </span>
-                          ) : dl?.status === "downloaded" || already ? (
-                            <span style={{ color: "var(--anode)" }}>downloaded</span>
                           ) : dl?.status === "error" ? (
                             <span style={{ color: "var(--accent)" }}>error: {dl.message}</span>
+                          ) : done ? (
+                            <span style={{ color: "var(--anode)" }}>downloaded</span>
                           ) : (
                             <button onClick={() => onDownload(sid)}>Download</button>
                           )}
@@ -196,6 +260,13 @@ export function App() {
                       );
                     })}
                   </div>
+                )}
+                {downloadKey && downloads[downloadKey] && (
+                  <DownloadConsole
+                    status={downloads[downloadKey]}
+                    onCancel={onCancel}
+                    onPruneAnswer={onPruneAnswer}
+                  />
                 )}
               </section>
 

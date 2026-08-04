@@ -10,6 +10,23 @@ export interface FitVerdict {
   needed_gb: number;
 }
 
+export interface ModelArch {
+  layers: number;
+  heads: number;
+  hidden: number;
+  max_ctx: number;
+}
+
+export interface ConfigFit {
+  stage: "gpu" | "offload" | "cpu" | "no_fit";
+  label: string;
+  fits_vram: boolean;
+  offloaded: boolean;
+  needed_gb: number;
+  kv_gb: number;
+  weights_gb: number;
+}
+
 export interface Analysis {
   repo_id?: string;
   detected_server?: string | null;
@@ -18,6 +35,7 @@ export interface Analysis {
   weights_bytes?: number;
   downloaded?: Record<string, boolean>;
   fit_verdict?: FitVerdict;
+  model_arch?: ModelArch;
   hardware?: { gpu_vram_gb?: number; ram_total_gb?: number; gpu_name?: string };
 }
 
@@ -62,8 +80,24 @@ export const api = {
   getServers: () => request<{ readiness: Record<string, boolean>; hardware: Record<string, unknown> }>("/servers"),
   analyze: (input: string) =>
     request<Analysis>("/models/analyze", { method: "POST", body: JSON.stringify({ input }) }),
-  generateConfigs: (body: unknown) =>
-    request<{ configs: Array<{ flags: Record<string, string>; serving_command: string; bench_command: string[] }> }>("/configs/generate", {
+  generateConfigs: (body: {
+    repo_id: string;
+    server_id: string;
+    n: number;
+    vram_gb: number;
+    readme_flags: Record<string, string>;
+    weights_bytes?: number;
+    ram_gb?: number;
+    model_arch?: ModelArch;
+  }) =>
+    request<{
+      configs: Array<{
+        flags: Record<string, string>;
+        serving_command: string;
+        bench_command: string[];
+        fit: ConfigFit | null;
+      }>;
+    }>("/configs/generate", {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -76,6 +110,12 @@ export const api = {
     request<{ ok: boolean }>("/models/download", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  cancelDownload: () => request<{ ok: boolean }>("/models/download/cancel", { method: "POST" }),
+  answerPrune: (answer: "y" | "n") =>
+    request<{ ok: boolean }>("/models/download/prune-answer", {
+      method: "POST",
+      body: JSON.stringify({ answer }),
     }),
   listRuns: () => request<{ runs: RunSummary[] }>("/benchmarks"),
   getRun: (runId: number) => request<{ results: RunResult[] }>(`/benchmarks/${runId}`),

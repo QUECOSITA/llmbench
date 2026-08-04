@@ -13,6 +13,8 @@ vi.mock("./api/client", () => ({
     }),
     startBenchmark: vi.fn().mockResolvedValue({ run_id: 1 }),
     downloadModel: vi.fn().mockResolvedValue({ ok: true }),
+    cancelDownload: vi.fn().mockResolvedValue({ ok: true }),
+    answerPrune: vi.fn().mockResolvedValue({ ok: true }),
     removeModel: vi.fn(),
   },
 }));
@@ -90,7 +92,7 @@ test("successful run shows initial progress label", async () => {
   await screen.findByText(/config 1\/1/i);
 });
 
-test("fit warning banner renders when fit_verdict.warning is true", async () => {
+test("fit line renders NO FIT when verdict is no_fit", async () => {
   const { api } = await import("./api/client");
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValueOnce({
@@ -111,11 +113,11 @@ test("fit warning banner renders when fit_verdict.warning is true", async () => 
   fireEvent.change(input, { target: { value: "org/model" } });
   fireEvent.click(screen.getByText(/analyze/i));
 
-  expect(await screen.findByText(/headroom tight/i)).toBeInTheDocument();
+  expect(await screen.findByText(/NO FIT/i)).toBeInTheDocument();
   expect(screen.getByText(/40\.5 GB/)).toBeInTheDocument();
 });
 
-test("fit warning banner absent when fit_verdict.warning is false", async () => {
+test("fit line renders FITS VRAM when verdict is gpu", async () => {
   const { api } = await import("./api/client");
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValueOnce({
@@ -135,9 +137,38 @@ test("fit warning banner absent when fit_verdict.warning is false", async () => 
   const input = await screen.findByPlaceholderText(/model/i);
   fireEvent.change(input, { target: { value: "org/model" } });
   fireEvent.click(screen.getByText(/analyze/i));
-  await screen.findByText(/org\/model/i);
+  await screen.findByText(/FITS VRAM/i);
 
+  expect(screen.getByText(/FITS VRAM/i)).toBeInTheDocument();
+  expect(screen.getByText(/3\.8 GB/)).toBeInTheDocument();
+  expect(screen.queryByText(/NO FIT/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/OFFLOADS TO RAM/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/headroom tight/i)).not.toBeInTheDocument();
+});
+
+test("fit line renders OFFLOADS TO RAM when verdict is ram_offload", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "vllm",
+    readme_flags: {},
+    fit_verdict: { stage: "ram_offload", warning: false, needed_gb: 14.2 },
+    hardware: { gpu_vram_gb: 8, ram_total_gb: 64, gpu_name: "RTX 4090" },
+    downloaded: { "llama.cpp": false, vllm: false, sglang: false },
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+
+  expect(await screen.findByText(/OFFLOADS TO RAM/i)).toBeInTheDocument();
+  expect(screen.getByText(/14\.2 GB/)).toBeInTheDocument();
 });
 
 test("download flow: click Download, shows downloading then downloaded and refreshes list", async () => {
@@ -212,4 +243,56 @@ test("download for direct file link passes the single gguf filename", async () =
     server_id: "llama.cpp",
     gguf_filename: "model.Q4_K_M.gguf",
   });
+});
+
+test("cancel flow: CANCEL shows prune prompt, answering y completes", async () => {
+  const { api } = await import("./api/client");
+  const { useDownloadProgress } = await import("./ws/useDownloadProgress");
+  const cancelSpy = vi.spyOn(api, "cancelDownload").mockResolvedValue({ ok: true });
+  const pruneSpy = vi.spyOn(api, "answerPrune").mockResolvedValue({ ok: true });
+  vi.mocked(useDownloadProgress).mockReturnValue([]);
+
+  const view = render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  fireEvent.click(within(screen.getByText("vllm:").closest("span")!).getByText("Download"));
+  expect(await screen.findByRole("button", { name: /cancel/i })).toBeInTheDocument();
+
+  vi.mocked(useDownloadProgress).mockReturnValue([
+    { type: "download_started", server_id: "vllm", repo_id: "org/model", command: "hf download org/model" },
+    { type: "download_log", server_id: "vllm", repo_id: "org/model", line: "Fetching..." },
+  ]);
+  view.rerender(<MemoryRouter><App /></MemoryRouter>);
+
+  fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+  expect(cancelSpy).toHaveBeenCalled();
+
+  vi.mocked(useDownloadProgress).mockReturnValue([
+    { type: "download_cancelled", server_id: "vllm", repo_id: "org/model" },
+    { type: "prune_started", server_id: "vllm", repo_id: "org/model", command: "hf cache prune --format human" },
+    { type: "prune_log", server_id: "vllm", repo_id: "org/model", line: "About to delete 1 incomplete download(s)." },
+    { type: "prune_prompt", server_id: "vllm", repo_id: "org/model" },
+  ]);
+  view.rerender(<MemoryRouter><App /></MemoryRouter>);
+
+  const yBtn = screen.getByRole("button", { name: "y" });
+  fireEvent.click(yBtn);
+  expect(pruneSpy).toHaveBeenCalledWith("y");
+
+  vi.mocked(useDownloadProgress).mockReturnValue([
+    { type: "prune_done", server_id: "vllm", repo_id: "org/model", accepted: true },
+  ]);
+  view.rerender(<MemoryRouter><App /></MemoryRouter>);
+
+  expect(await screen.findByText(/cache pruned/i)).toBeInTheDocument();
+  const span = within(screen.getByText("vllm:").closest("span")!);
+  expect(span.getByRole("button", { name: /^download$/i })).toBeInTheDocument();
 });
