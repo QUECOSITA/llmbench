@@ -7,6 +7,28 @@ import re
 def parse_llama_bench_csv(text: str) -> dict:
     rows = list(csv.DictReader(io.StringIO(text)))
 
+    if rows and "avg_ts" in rows[0]:
+        pp = None
+        tg = None
+        for r in rows:
+            try:
+                n_prompt = int(r.get("n_prompt") or 0)
+            except (TypeError, ValueError):
+                n_prompt = 0
+            try:
+                n_gen = int(r.get("n_gen") or 0)
+            except (TypeError, ValueError):
+                n_gen = 0
+            try:
+                ts = float(r["avg_ts"])
+            except (TypeError, ValueError):
+                ts = None
+            if n_prompt > 0 and n_gen == 0:
+                pp = ts
+            elif n_gen > 0:
+                tg = ts
+        return {"prompt_processing_tps": pp, "decode_tps": tg}
+
     def tps(row):
         try:
             return float(row.get("t/s"))

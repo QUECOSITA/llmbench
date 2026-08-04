@@ -20,6 +20,19 @@ def test_parse_llama_bench_csv_schema_drift():
     assert r["decode_tps"] is None
 
 
+LLAMA_CSV_V9992 = """\
+build_commit,build_number,cpu_info,gpu_info,backends,model_filename,model_type,model_size,model_n_params,n_batch,n_ubatch,n_threads,cpu_mask,cpu_strict,poll,type_k,type_v,n_gpu_layers,n_cpu_moe,split_mode,main_gpu,no_kv_offload,flash_attn,devices,tensor_split,tensor_buft_overrides,use_mmap,use_direct_io,embeddings,no_op_offload,no_host,fit_target,fit_min_ctx,n_prompt,n_gen,n_depth,test_time,avg_ns,stddev_ns,avg_ts,stddev_ts
+"6eddde06a","9992","cpu","gpu","CUDA","x.gguf","q4","216","354","512","512","16","0x0","0","50","f16","f16","999","0","layer","0","0","-1","auto","0","none","1","0","0","0","0","0","0","64","0","0","2026-08-04T00:00:00Z","7374707","0","8678.31","0"
+"6eddde06a","9992","cpu","gpu","CUDA","x.gguf","q4","216","354","512","512","16","0x0","0","50","f16","f16","999","0","layer","0","0","-1","auto","0","none","1","0","0","0","0","0","0","0","32","0","2026-08-04T00:00:00Z","33876041","0","944.62","0"
+"""
+
+
+def test_parse_llama_bench_csv_v9992():
+    r = parse_llama_bench_csv(LLAMA_CSV_V9992)
+    assert r["prompt_processing_tps"] == 8678.31
+    assert r["decode_tps"] == 944.62
+
+
 VLLM_OUT = """\
 {
   "elapsed_time": 30.0,
