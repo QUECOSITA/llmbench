@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 
 export interface DownloadEvent {
-  type: "download_started" | "download_log" | "download_done" | "download_error";
+  type:
+    | "download_started"
+    | "download_log"
+    | "download_progress"
+    | "download_done"
+    | "download_error"
+    | "download_cancelled"
+    | "prune_started"
+    | "prune_log"
+    | "prune_prompt"
+    | "prune_done";
   server_id?: string;
   repo_id?: string;
   command?: string;
@@ -9,6 +19,7 @@ export interface DownloadEvent {
   status?: string;
   local_path?: string;
   message?: string;
+  accepted?: boolean;
 }
 
 export function useDownloadProgress(active: boolean) {
