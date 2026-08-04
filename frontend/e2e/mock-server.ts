@@ -17,14 +17,23 @@ const server = createServer((req, res) => {
       repo_id: "org/model", detected_server: "vllm",
       readme_flags: { "--max-model-len": "8192" }, weights_bytes: 4e9,
       fit_verdict: { stage: "gpu", warning: false, needed_gb: 3.8 },
+      model_arch: { layers: 32, heads: 32, hidden: 4096, max_ctx: 8192 },
       hardware: { gpu_vram_gb: 24, ram_total_gb: 64, gpu_name: "RTX 4090" },
       downloaded: { "llama.cpp": false, vllm: false, sglang: false },
     });
+  } else if (req.url?.startsWith("/api/models/download/cancel")) {
+    Object.assign(body, { ok: true });
+  } else if (req.url?.startsWith("/api/models/download/prune-answer")) {
+    Object.assign(body, { ok: true });
   } else if (req.url?.startsWith("/api/models/download")) {
     Object.assign(body, { ok: true });
   } else if (req.url?.startsWith("/api/configs/generate")) {
     Object.assign(body, {
-      configs: [{ flags: { "--max-model-len": "8192" }, serving_command: "vllm serve org/model --max-model-len 8192" }],
+      configs: [{
+        flags: { "--max-model-len": "8192" },
+        serving_command: "vllm serve org/model --max-model-len 8192",
+        fit: { stage: "gpu", label: "FITS VRAM", fits_vram: true, offloaded: false, needed_gb: 3.8, kv_gb: 4.3, weights_gb: 4 },
+      }],
     });
   } else if (req.url?.startsWith("/api/benchmarks")) {
     Object.assign(body, { run_id: 1 });
