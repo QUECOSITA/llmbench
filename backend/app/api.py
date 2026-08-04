@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import shutil
 import signal
@@ -21,6 +22,8 @@ from app.servers import build_bench_command, detect_binaries
 from app.tty_stream import TtyStream
 
 router = APIRouter(prefix="/api")
+
+logger = logging.getLogger(__name__)
 
 
 KNOWN_SERVERS = ("llama.cpp", "vllm", "sglang")
@@ -144,7 +147,8 @@ def _require_state() -> AppState:
 @router.get("/servers")
 async def servers():
     s = _require_state()
-    return {"readiness": detect_binaries(), "hardware": detect_hardware()}
+    bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
+    return {"readiness": detect_binaries(bin_dir), "hardware": detect_hardware()}
 
 
 @router.post("/models/analyze")
@@ -450,16 +454,22 @@ async def generate(payload: dict):
     except ValueError as e:
         raise HTTPException(422, str(e))
     weights = payload.get("weights_bytes")
+    resolved_gguf = payload.get("gguf_path")
+    if resolved_gguf is None and server_id == "llama.cpp":
+        local_path, _name, _size = _resolve_download_path(s, repo_id, "llama.cpp", None)
+        resolved_gguf = local_path
+    bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
     for cfg in configs:
         cfg["serving_command"] = build_serving_command(
             server_id, repo_id, cfg["flags"],
-            gguf_path=payload.get("gguf_path"),
+            gguf_path=resolved_gguf,
         )
-        model_ref = payload.get("gguf_path") or repo_id
+        model_ref = resolved_gguf or repo_id
         cfg["bench_command"] = build_bench_command(
             server_id, model_ref, cfg["flags"],
             workload=str(s.settings.workload_file),
             timeout_s=s.settings.benchmark_timeout_s,
+            bin_dir=bin_dir,
         )
         if weights is None:
             cfg["fit"] = None
@@ -519,6 +529,7 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                 db_mod.set_run_status(s.conn, run_id, status)
                 await broadcast(s, {"type": "run_done", "run_id": run_id, "status": status})
             except Exception:
+                logger.exception("run %s failed", run_id)
                 db_mod.set_run_status(s.conn, run_id, "failed")
                 await broadcast(s, {"type": "run_done", "run_id": run_id, "status": "failed"})
     finally:
@@ -545,7 +556,12 @@ async def runs():
 @router.get("/benchmarks/{run_id}")
 async def run_detail(run_id: int):
     s = _require_state()
-    return {"results": db_mod.get_results_for_run(s.conn, run_id)}
+    run = db_mod.get_run(s.conn, run_id)
+    return {
+        "status": run["status"] if run else None,
+        "total": run["requested_n"] if run else 0,
+        "results": db_mod.get_results_for_run(s.conn, run_id),
+    }
 
 
 @router.websocket("/ws")

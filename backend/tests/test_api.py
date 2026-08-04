@@ -134,6 +134,39 @@ def test_generate_configs_llama_uses_gguf_path(client):
         assert cmd[cmd.index("-m") + 1] == "/tmp/models/model.Q4_K_M.gguf"
 
 
+def _make_snapshot_gguf(settings, repo_id: str) -> str:
+    root = settings.hf_cache_dir
+    snap = root / f"models--{repo_id.replace('/', '--')}" / "snapshots" / "ref1"
+    snap.mkdir(parents=True)
+    gguf = snap / "model.Q4_K_M.gguf"
+    gguf.write_bytes(b"dummy-gguf")
+    return str(gguf)
+
+
+def test_generate_configs_llama_resolves_local_gguf(client):
+    from app.api import state
+    gguf_path = _make_snapshot_gguf(state.settings, "org/model")
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
+        "readme_flags": {"--ctx-size": "4096"},
+    })
+    assert r.status_code == 200
+    for cfg in r.json()["configs"]:
+        assert cfg["bench_command"][cfg["bench_command"].index("-m") + 1] == gguf_path
+        assert gguf_path in cfg["serving_command"]
+
+
+def test_generate_configs_llama_falls_back_to_repo_id_when_no_gguf(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1,
+        "readme_flags": {"--ctx-size": "4096"},
+    })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["bench_command"][cfg["bench_command"].index("-m") + 1] == "org/model"
+    assert "--fit-ctx" in cfg["bench_command"]
+
+
 def test_start_run_rejects_duplicate(client, monkeypatch):
     release = asyncio.Event()
 
@@ -213,6 +246,10 @@ def test_run_failure_marks_run_failed(client, monkeypatch):
     _poll(lambda: status() != "running")
     assert status() == "failed"
 
+    detail = client.get(f"/api/benchmarks/{run_id}").json()
+    assert detail["status"] == "failed"
+    assert detail["total"] == 1
+
     r2 = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
     assert r2.status_code == 200
 
@@ -243,6 +280,10 @@ def test_full_run_completes_and_persists(client, monkeypatch):
     assert rows[0]["result_status"] == "ok"
     assert rows[0]["prompt_processing_tps"] == 1000.0
     assert rows[0]["decode_tps"] == 80.0
+
+    detail = client.get(f"/api/benchmarks/{run_id}").json()
+    assert detail["status"] == "completed"
+    assert detail["total"] == 1
 
 
 def test_download_missing_fields_422(client):
