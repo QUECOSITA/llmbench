@@ -8,8 +8,9 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from app import benchmark as benchmark_mod
 from app import db as db_mod
+from app import sync as sync_mod
 from app.config import Settings
-from app.fit import fit_verdict
+from app.fit import arch_from_config, config_fit, fit_verdict
 from app.flags import build_serving_command, generate_configs
 from app.hardware import detect_hardware
 from app.hf import HfClient, InvalidModelInput, normalize_input, parse_input
@@ -22,11 +23,21 @@ router = APIRouter(prefix="/api")
 KNOWN_SERVERS = ("llama.cpp", "vllm", "sglang")
 
 
-def _download_command(repo_id: str, server_id: str, gguf_filename: str | None = None) -> list[str]:
+def _download_command(repo_id: str, server_id: str, gguf_filename: str | None = None,
+                      cache_dir: str | None = None) -> list[str]:
+    cmd = ["hf", "download", "--format", "human", repo_id]
     if server_id == "llama.cpp":
-        include = gguf_filename or "*.gguf"
-        return ["hf", "download", repo_id, "--include", include]
-    return ["hf", "download", repo_id]
+        cmd += ["--include", gguf_filename or "*.gguf"]
+    if cache_dir:
+        cmd += ["--cache-dir", cache_dir]
+    return cmd
+
+
+def _prune_command(cache_dir: str | None = None) -> list[str]:
+    cmd = ["hf", "cache", "prune", "--format", "human"]
+    if cache_dir:
+        cmd += ["--cache-dir", cache_dir]
+    return cmd
 
 
 class AppState:
@@ -84,6 +95,7 @@ async def analyze(payload: dict):
         repo_id, file_path = parse_input(raw)
     except InvalidModelInput as e:
         raise HTTPException(422, str(e))
+    sync_mod.reconcile_models(s.conn, s.settings)
     try:
         readme, files = _hf.fetch_repo(repo_id, file_path=file_path)
         if file_path:
@@ -96,7 +108,15 @@ async def analyze(payload: dict):
     flags = extract_flags(readme, [detected or "vllm"])
     weights = _hf.weights_size_bytes(files)
     hw = detect_hardware()
-    verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"])
+    arch = None
+    if any(f.get("path", "").lower() == "config.json" for f in files):
+        try:
+            arch = arch_from_config(_hf.fetch_config(repo_id))
+        except Exception:
+            arch = None
+    verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"],
+                          **({"ctx": arch["max_ctx"], "layers": arch["layers"],
+                              "heads": arch["heads"], "hidden": arch["hidden"]} if arch else {}))
     return {
         "repo_id": repo_id,
         "detected_server": detected,
@@ -106,6 +126,7 @@ async def analyze(payload: dict):
         "weights_bytes": weights,
         "downloaded": _model_status(s, repo_id),
         "fit_verdict": verdict,
+        "model_arch": arch,
         "hardware": {
             "gpu_vram_gb": hw["gpu_vram_gb"],
             "ram_total_gb": hw["ram_total_gb"],
@@ -123,9 +144,7 @@ def _model_status(s: AppState, repo_id: str) -> dict[str, bool]:
 
 
 def _hf_snapshot_dir(settings: Settings, repo_id: str) -> Path:
-    org, name = repo_id.split("/", 1)
-    base = settings.hf_cache_dir or (Path.home() / ".cache" / "huggingface" / "hub")
-    return base / f"models--{org}--{name}"
+    return sync_mod.snapshot_dir_for(settings, repo_id)
 
 
 def _resolve_download_path(s: AppState, repo_id: str, server_id: str,
@@ -137,6 +156,11 @@ def _resolve_download_path(s: AppState, repo_id: str, server_id: str,
             return str(p), gguf_filename, p.stat().st_size
         for p in sorted(gguf_dir.glob("*.gguf")):
             return str(p), p.name, p.stat().st_size
+        snapshot = _hf_snapshot_dir(s.settings, repo_id)
+        ggufs = sync_mod._ggufs_in_snapshot(snapshot)
+        if ggufs:
+            g = max(ggufs, key=lambda p: p.stat().st_size)
+            return str(g), g.name, g.stat().st_size
         return None, None, None
     snapshot = _hf_snapshot_dir(s.settings, repo_id)
     if snapshot.exists():
@@ -193,14 +217,14 @@ async def _download_job(s: AppState, repo_id: str, server_id: str,
 @router.get("/models")
 async def models():
     s = _require_state()
-    return {"models": db_mod.list_models(s.conn)}
+    sync_mod.reconcile_models(s.conn, s.settings)
+    return {"models": db_mod.list_models(s.conn, status="downloaded")}
 
 
-@router.delete("/models/{server_id}/{model_ref}")
+@router.delete("/models/{server_id}/{model_ref:path}")
 async def delete_model(server_id: str, model_ref: str):
     s = _require_state()
-    db_mod.upsert_model(s.conn, repo_id=model_ref, server_id=server_id, format="hf",
-                        local_path="", status="missing")
+    sync_mod.remove_model(s.conn, s.settings, model_ref, server_id)
     return {"ok": True}
 
 
@@ -247,15 +271,17 @@ async def generate(payload: dict):
         raise HTTPException(422, "'n' must be an integer.")
     if n < 1:
         raise HTTPException(422, "'n' must be at least 1.")
+    vram_gb = float(payload.get("vram_gb", 24.0))
     try:
         configs = generate_configs(
             server_id=server_id,
             readme_flags=payload.get("readme_flags", {}),
             n=n,
-            vram_gb=float(payload.get("vram_gb", 24.0)),
+            vram_gb=vram_gb,
         )
     except ValueError as e:
         raise HTTPException(422, str(e))
+    weights = payload.get("weights_bytes")
     for cfg in configs:
         cfg["serving_command"] = build_serving_command(
             server_id, repo_id, cfg["flags"],
@@ -267,6 +293,13 @@ async def generate(payload: dict):
             workload=str(s.settings.workload_file),
             timeout_s=s.settings.benchmark_timeout_s,
         )
+        if weights is None:
+            cfg["fit"] = None
+        else:
+            cfg["fit"] = config_fit(
+                server_id, cfg["flags"], float(weights), vram_gb,
+                float(payload.get("ram_gb", 0.0)), payload.get("model_arch"),
+            )
     return {"configs": configs}
 
 

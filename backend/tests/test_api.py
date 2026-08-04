@@ -255,7 +255,10 @@ def test_download_cli_missing_400_with_manual_command(client, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda *a, **k: None)
     r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
     assert r.status_code == 400
-    assert "hf download org/model" in r.json()["detail"]
+    detail = r.json()["detail"]
+    assert "HF CLI not found." in detail
+    assert "hf download" in detail and "org/model" in detail
+    assert "--format" in detail and "human" in detail
 
 
 class FakeDownloadProcess:
@@ -356,12 +359,22 @@ def test_download_rejects_duplicate(client, monkeypatch):
 
 
 def test_download_command_llama_uses_specific_gguf_when_given():
-    from app.api import _download_command
+    from app.api import _download_command, _prune_command
     assert _download_command("org/model", "llama.cpp", gguf_filename="model.Q4_K_M.gguf") == [
-        "hf", "download", "org/model", "--include", "model.Q4_K_M.gguf",
+        "hf", "download", "--format", "human", "org/model", "--include", "model.Q4_K_M.gguf",
     ]
     assert _download_command("org/model", "llama.cpp") == [
-        "hf", "download", "org/model", "--include", "*.gguf",
+        "hf", "download", "--format", "human", "org/model", "--include", "*.gguf",
+    ]
+    assert _download_command("org/model", "vllm") == [
+        "hf", "download", "--format", "human", "org/model",
+    ]
+    assert _download_command("org/model", "vllm", cache_dir="/tmp/hf") == [
+        "hf", "download", "--format", "human", "org/model", "--cache-dir", "/tmp/hf",
+    ]
+    assert _prune_command() == ["hf", "cache", "prune", "--format", "human"]
+    assert _prune_command(cache_dir="/tmp/hf") == [
+        "hf", "cache", "prune", "--format", "human", "--cache-dir", "/tmp/hf",
     ]
 
 
@@ -398,3 +411,83 @@ def test_download_llama_with_gguf_filename_uses_exact_file(client, tmp_path, mon
     start = next(e for e in events if e["type"] == "download_started")
     assert "model.Q4_K_M.gguf" in start["command"]
     assert "*.gguf" not in start["command"]
+
+
+def test_analyze_fetches_model_arch(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "config.json", "type": "file", "size": 50},
+              {"path": "model.safetensors", "type": "file", "size": 4000000000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n")
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/config.json",
+                            json={"num_hidden_layers": 40, "num_attention_heads": 64,
+                                  "hidden_size": 8192, "max_position_embeddings": 32768})
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    assert r.json()["model_arch"] == {
+        "layers": 40, "heads": 64, "hidden": 8192, "max_ctx": 32768}
+
+
+def test_models_endpoint_reconciles_hf_cache(client, tmp_path):
+    from app.config import Settings
+    from app.sync import snapshot_dir_for
+    settings = Settings(data_dir=tmp_path, gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
+    snap = snapshot_dir_for(settings, "org/model") / "snapshots" / "main"
+    snap.mkdir(parents=True)
+    (snap / "model.safetensors").write_bytes(b"x")
+
+    r = client.get("/api/models")
+    assert r.status_code == 200
+    models = {m["server_id"]: m for m in r.json()["models"]}
+    for sid in ("vllm", "sglang"):
+        assert models[sid]["repo_id"] == "org/model"
+        assert models[sid]["status"] == "downloaded"
+
+
+def test_delete_model_removes_row_and_files(client, tmp_path):
+    from app.config import Settings
+    from app.sync import snapshot_dir_for
+    settings = Settings(data_dir=tmp_path, gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
+    snap = snapshot_dir_for(settings, "org/model")
+    (snap / "snapshots" / "main").mkdir(parents=True)
+    (snap / "snapshots" / "main" / "model.safetensors").write_bytes(b"x")
+
+    assert client.get("/api/models").status_code == 200
+    assert snap.exists()
+
+    r = client.delete("/api/models/vllm/org%2Fmodel")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert client.get("/api/models").json()["models"] == []
+    assert not snap.exists()
+
+
+def test_generate_configs_includes_per_config_fit(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "vllm", "n": 2, "vram_gb": 24.0,
+        "weights_bytes": 10_000_000_000, "ram_gb": 64.0,
+        "model_arch": {"layers": 32, "heads": 32, "hidden": 4096, "max_ctx": 8192},
+        "readme_flags": {},
+    })
+    assert r.status_code == 200
+    for cfg in r.json()["configs"]:
+        fit = cfg["fit"]
+        assert fit["stage"] in ("gpu", "no_fit")
+        assert fit["fits_vram"] in (True, False)
+        assert fit["label"] in ("FITS VRAM", "NO FIT")
+        assert "needed_gb" in fit and "kv_gb" in fit
+
+
+def test_generate_configs_fit_is_none_without_weights(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "vllm", "n": 2, "vram_gb": 24.0,
+        "readme_flags": {},
+    })
+    assert r.status_code == 200
+    for cfg in r.json()["configs"]:
+        assert cfg["fit"] is None
