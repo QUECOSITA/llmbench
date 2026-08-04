@@ -78,10 +78,13 @@ WS events (extend `DownloadEvent`):
 - `download_done {server_id, repo_id, status, local_path}` — unchanged.
 - `download_error {server_id, repo_id, message}` — unchanged.
 - `download_cancelled {server_id, repo_id}`
-- `prune_started {repo_id, command}`
-- `prune_log {repo_id, line}`
-- `prune_prompt {repo_id}` — prune is waiting for `y`/`n`.
-- `prune_done {repo_id, accepted, message}` — flow finished.
+- `prune_started {server_id, repo_id, command}`
+- `prune_log {server_id, repo_id, line}`
+- `prune_prompt {server_id, repo_id}` — prune is waiting for `y`/`n`.
+- `prune_done {server_id, repo_id, accepted, message}` — flow finished.
+
+All prune events carry `server_id`/`repo_id` so the frontend reducer can key
+them to the same console entry as the cancelled download.
 
 REST:
 - `POST /api/models/download/cancel` → `{ok:true}`; 409 when no download is
