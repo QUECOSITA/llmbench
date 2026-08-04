@@ -1,5 +1,7 @@
 import asyncio
+import os
 import shutil
+import signal
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +18,7 @@ from app.hardware import detect_hardware
 from app.hf import HfClient, InvalidModelInput, normalize_input, parse_input
 from app.readme_parser import detect_serving_programs, extract_flags, top_serving_program
 from app.servers import build_bench_command, detect_binaries
+from app.tty_stream import TtyStream
 
 router = APIRouter(prefix="/api")
 
@@ -40,6 +43,61 @@ def _prune_command(cache_dir: str | None = None) -> list[str]:
     return cmd
 
 
+def _open_pty() -> tuple[int, int]:
+    return os.openpty()
+
+
+async def _spawn_pty(cmd: list[str], stdin_fd: int, stdout_fd: int, stderr_fd: int):
+    return await asyncio.create_subprocess_exec(
+        *cmd, stdin=stdin_fd, stdout=stdout_fd, stderr=stderr_fd, start_new_session=True,
+    )
+
+
+async def _read_master(master_fd: int) -> asyncio.Queue[bytes | None]:
+    """Read a pty master fd on a background thread into an asyncio queue."""
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+
+    def _read() -> None:
+        try:
+            while True:
+                try:
+                    data = os.read(master_fd, 4096)
+                except OSError:
+                    break
+                if not data:
+                    break
+                loop.call_soon_threadsafe(queue.put_nowait, data)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+    threading.Thread(target=_read, daemon=True).start()
+    return queue
+
+
+async def _stream_download_output(master_fd: int):
+    """Yield (kind, text) events parsed from a pty master fd."""
+    queue = await _read_master(master_fd)
+    tty = TtyStream()
+    while True:
+        chunk = await queue.get()
+        if chunk is None:
+            break
+        for event in tty.feed(chunk):
+            yield event
+    for event in tty.flush():
+        yield event
+
+
+async def _force_kill_after(proc, delay: float) -> None:
+    await asyncio.sleep(delay)
+    if proc.returncode is None:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+
+
 class AppState:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -50,6 +108,10 @@ class AppState:
         self._state_lock = threading.Lock()
         self._job_active = False
         self._download_active = False
+        self._download_proc: asyncio.subprocess.Process | None = None
+        self._download_cancelled = False
+        self._prune_proc: asyncio.subprocess.Process | None = None
+        self._prune_answer: asyncio.Queue[str] | None = None
 
 
 state: AppState | None = None
@@ -170,23 +232,34 @@ def _resolve_download_path(s: AppState, repo_id: str, server_id: str,
 
 async def _download_job(s: AppState, repo_id: str, server_id: str,
                         cmd: list[str], gguf_filename: str | None):
+    proc = None
+    master_fd = None
+    slave_fd = None
     try:
         await broadcast(s, {"type": "download_started", "server_id": server_id,
                             "repo_id": repo_id, "command": " ".join(cmd)})
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-        assert proc.stdout is not None
-        while True:
-            raw = await proc.stdout.readline()
-            if not raw:
-                break
-            line = raw.decode(errors="replace").rstrip("\n")
-            await broadcast(s, {"type": "download_log", "server_id": server_id,
-                                "repo_id": repo_id, "line": line})
+        master_fd, slave_fd = _open_pty()
+        proc = await _spawn_pty(cmd, slave_fd, slave_fd, slave_fd)
+        try:
+            os.close(slave_fd)
+            slave_fd = None
+        except OSError:
+            slave_fd = None
+        s._download_proc = proc
+        async for kind, text in _stream_download_output(master_fd):
+            if kind == "line":
+                await broadcast(s, {"type": "download_log", "server_id": server_id,
+                                    "repo_id": repo_id, "line": text})
+            else:
+                await broadcast(s, {"type": "download_progress", "server_id": server_id,
+                                    "repo_id": repo_id, "line": text})
         rc = await proc.wait()
+        s._download_proc = None
+        if s._download_cancelled:
+            await broadcast(s, {"type": "download_cancelled", "server_id": server_id,
+                                "repo_id": repo_id})
+            await _prune_job(s, repo_id, server_id)
+            return
         if rc != 0:
             db_mod.upsert_model(s.conn, repo_id=repo_id, server_id=server_id,
                                 format="hf", local_path="", status="missing")
@@ -210,6 +283,14 @@ async def _download_job(s: AppState, repo_id: str, server_id: str,
         await broadcast(s, {"type": "download_error", "server_id": server_id,
                             "repo_id": repo_id, "message": str(e)})
     finally:
+        for fd in (slave_fd, master_fd):
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+        s._download_proc = None
+        s._download_cancelled = False
         with s._state_lock:
             s._download_active = False
 
@@ -237,7 +318,8 @@ async def start_download(payload: dict):
         raise HTTPException(422, "Missing required field 'repo_id'.")
     if server_id not in KNOWN_SERVERS:
         raise HTTPException(422, f"'server_id' must be one of {list(KNOWN_SERVERS)}.")
-    cmd = _download_command(repo_id, server_id, payload.get("gguf_filename"))
+    cache_dir = str(s.settings.hf_cache_dir) if s.settings.hf_cache_dir else None
+    cmd = _download_command(repo_id, server_id, payload.get("gguf_filename"), cache_dir=cache_dir)
     if shutil.which("hf") is None:
         raise HTTPException(400, f"HF CLI not found. Run: {' '.join(cmd)}")
     with s._state_lock:
@@ -250,6 +332,23 @@ async def start_download(payload: dict):
         with s._state_lock:
             s._download_active = False
         raise
+    return {"ok": True}
+
+
+@router.post("/models/download/cancel")
+async def cancel_download():
+    s = _require_state()
+    with s._state_lock:
+        if not s._download_active:
+            raise HTTPException(409, "No download is running")
+        s._download_cancelled = True
+    proc = s._download_proc
+    if proc is not None:
+        try:
+            proc.send_signal(signal.SIGINT)
+        except (ProcessLookupError, OSError):
+            pass
+        asyncio.create_task(_force_kill_after(proc, 5.0))
     return {"ok": True}
 
 

@@ -1,4 +1,5 @@
 import asyncio
+import signal
 import time
 
 import pytest
@@ -261,22 +262,25 @@ def test_download_cli_missing_400_with_manual_command(client, monkeypatch):
     assert "--format" in detail and "human" in detail
 
 
-class FakeDownloadProcess:
-    def __init__(self, lines, rc=0):
-        self._lines = list(lines)
-        self._i = 0
-        self.returncode = rc
-        self.stdout = self
+class FakeDownloadProc:
+    """Stands in for an asyncio subprocess attached to a pty."""
 
-    async def readline(self):
-        if self._i < len(self._lines):
-            line = self._lines[self._i]
-            self._i += 1
-            return line.encode()
-        return b""
+    def __init__(self, rc=0):
+        self._rc = rc
+        self.returncode = None
+        self.signals = []
+        self.killed = False
 
     async def wait(self):
-        return self.returncode
+        self.returncode = self._rc
+        return self._rc
+
+    def send_signal(self, sig):
+        self.signals.append(sig)
+
+    def kill(self):
+        self.killed = True
+        self.returncode = -9
 
 
 def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch):
@@ -286,12 +290,17 @@ def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch)
     async def fake_broadcast(s, event):
         events.append(event)
 
-    async def fake_create(*a, **k):
-        return FakeDownloadProcess(["Fetching files...", "Done"], rc=0)
+    async def fake_stream(master_fd):
+        yield ("line", "Fetching files...")
+        yield ("line", "Done")
 
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
     monkeypatch.setattr("app.api.broadcast", fake_broadcast)
-    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
+    async def fake_spawn(*a, **k):
+        return FakeDownloadProc()
+    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
+    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
 
     snapshot = tmp_path / "hf" / "models--org--model"
     snapshot.mkdir(parents=True)
@@ -305,7 +314,8 @@ def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch)
 
     assert _poll(lambda: row() == "downloaded")
     assert events[0]["type"] == "download_started"
-    assert "hf download org/model" in events[0]["command"]
+    assert "hf download" in events[0]["command"]
+    assert "--format" in events[0]["command"] and "human" in events[0]["command"]
     assert any(e["type"] == "download_log" and e["line"] == "Fetching files..." for e in events)
     done = next(e for e in events if e["type"] == "download_done")
     assert done["local_path"] == str(snapshot)
@@ -319,12 +329,16 @@ def test_download_llama_resolves_gguf_file(client, tmp_path, monkeypatch):
     async def fake_broadcast(s, event):
         events.append(event)
 
-    async def fake_create(*a, **k):
-        return FakeDownloadProcess(["ok"], rc=0)
+    async def fake_stream(master_fd):
+        yield ("line", "ok")
 
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
     monkeypatch.setattr("app.api.broadcast", fake_broadcast)
-    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
+    async def fake_spawn(*a, **k):
+        return FakeDownloadProc()
+    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
+    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
 
     gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
     gguf.parent.mkdir(parents=True)
@@ -341,7 +355,6 @@ def test_download_llama_resolves_gguf_file(client, tmp_path, monkeypatch):
     assert row["local_path"] == str(gguf)
     assert row["gguf_filename"] == "model.Q4_K_M.gguf"
     assert row["size_bytes"] == 2048
-    assert "download_started" in [e["type"] for e in events]
     start = next(e for e in events if e["type"] == "download_started")
     assert "--include" in start["command"] and "*.gguf" in start["command"]
 
@@ -385,12 +398,16 @@ def test_download_llama_with_gguf_filename_uses_exact_file(client, tmp_path, mon
     async def fake_broadcast(s, event):
         events.append(event)
 
-    async def fake_create(*a, **k):
-        return FakeDownloadProcess(["ok"], rc=0)
+    async def fake_stream(master_fd):
+        yield ("line", "ok")
 
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
     monkeypatch.setattr("app.api.broadcast", fake_broadcast)
-    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
+    async def fake_spawn(*a, **k):
+        return FakeDownloadProc()
+    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
+    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
 
     gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
     gguf.parent.mkdir(parents=True)
@@ -411,6 +428,27 @@ def test_download_llama_with_gguf_filename_uses_exact_file(client, tmp_path, mon
     start = next(e for e in events if e["type"] == "download_started")
     assert "model.Q4_K_M.gguf" in start["command"]
     assert "*.gguf" not in start["command"]
+
+
+def test_cancel_409_when_no_download(client):
+    r = client.post("/api/models/download/cancel")
+    assert r.status_code == 409
+
+
+def test_cancel_sends_sigint_to_active_proc(client, monkeypatch):
+    import app.api as api_mod
+    proc = FakeDownloadProc()
+    api_mod.state._download_proc = proc
+    api_mod.state._download_active = True
+    try:
+        r = client.post("/api/models/download/cancel")
+        assert r.status_code == 200 and r.json()["ok"] is True
+        assert api_mod.state._download_cancelled is True
+        assert proc.signals == [signal.SIGINT]
+    finally:
+        api_mod.state._download_active = False
+        api_mod.state._download_cancelled = False
+        api_mod.state._download_proc = None
 
 
 def test_analyze_fetches_model_arch(client, httpx_mock):
