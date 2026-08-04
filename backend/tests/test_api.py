@@ -406,6 +406,7 @@ def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch)
     assert "hf download" in events[0]["command"]
     assert "--format" in events[0]["command"] and "human" in events[0]["command"]
     assert any(e["type"] == "download_log" and e["line"] == "Fetching files..." for e in events)
+    assert _poll(lambda: any(e["type"] == "download_done" for e in events))
     done = next(e for e in events if e["type"] == "download_done")
     assert done["local_path"] == str(snapshot)
     assert api_mod.state._download_active is False
