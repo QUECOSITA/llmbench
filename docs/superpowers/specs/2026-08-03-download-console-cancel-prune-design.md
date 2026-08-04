@@ -215,7 +215,10 @@ reserved for the one lit figure per the design system).
 ### App wiring
 
 - Replace `downloads` state with `downloadReducer`.
-- `downloadActive` = any status in `{"downloading", "pruning"}`.
+- `downloadActive` = any status in `{"downloading", "cancelled", "pruning"}` —
+  the transient `cancelled` state between `download_cancelled` and
+  `prune_started` must keep the WebSocket open, otherwise the prune events
+  would be missed.
 - Add `cancelDownload` and `answerPrune` to `frontend/src/api/client.ts`.
 - Section 01: keep the per-server button row; render the shared
   `DownloadConsole` beneath it when a flow is active/finished for the analyzed
