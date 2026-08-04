@@ -1,4 +1,4 @@
-from app.hf import normalize_input, InvalidModelInput
+from app.hf import normalize_input, InvalidModelInput, parse_input
 
 
 def test_normalize_repo_id():
@@ -16,6 +16,33 @@ def test_normalize_link_with_suffix():
 
 def test_normalize_trailing_slash():
     assert normalize_input("  org/model/  ") == "org/model"
+
+
+def test_parse_input_repo_only():
+    assert parse_input("org/model") == ("org/model", None)
+    assert parse_input("https://huggingface.co/org/model") == ("org/model", None)
+
+
+def test_parse_input_direct_file_link():
+    repo, path = parse_input(
+        "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf"
+    )
+    assert repo == "Qwen/Qwen2.5-7B-Instruct-GGUF"
+    assert path == "qwen2.5-7b-instruct-q4_k_m.gguf"
+
+
+def test_parse_input_blob_and_raw_links():
+    assert parse_input("https://huggingface.co/org/model/blob/main/x.gguf") == ("org/model", "x.gguf")
+    assert parse_input("https://huggingface.co/org/model/raw/main/y.bin") == ("org/model", "y.bin")
+
+
+def test_parse_input_invalid():
+    for bad in ["", "org", "org/model/extra/deep"]:
+        try:
+            parse_input(bad)
+            raise AssertionError(f"expected InvalidModelInput for {bad!r}")
+        except InvalidModelInput:
+            pass
 
 
 def test_invalid_input():

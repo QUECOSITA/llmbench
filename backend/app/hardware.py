@@ -4,6 +4,7 @@ import re
 import subprocess
 
 _GPU_RE = re.compile(r"GPU\s+\d+:\s+([^(\n]+)")
+_PRODUCT_RE = re.compile(r"Product Name\s*:\s*([^\n]+)")
 
 
 def _run_nvidia_smi() -> str | None:
@@ -20,7 +21,11 @@ def parse_nvidia_smi(smi_output: str) -> tuple[str | None, float]:
     m = _GPU_RE.search(smi_output)
     if m:
         name = m.group(1).strip()
-    m = re.search(r"Total\s+:\s+(\d+)MiB", smi_output)
+    if name is None:
+        m = _PRODUCT_RE.search(smi_output)
+        if m:
+            name = m.group(1).strip()
+    m = re.search(r"Total\s+:\s+(\d+)\s*MiB", smi_output)
     if m:
         vram = int(m.group(1)) / 1024.0
     return name, vram

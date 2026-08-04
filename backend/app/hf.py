@@ -5,19 +5,34 @@ class InvalidModelInput(ValueError):
 
 _REPO_RE = re.compile(r"^[\w.\-]+/[\w.\-]+$")
 _HF_LINK_RE = re.compile(r"^https?://(?:www\.)?huggingface\.co/([^/?#]+/[^/?#]+)")
+_HF_FILE_RE = re.compile(
+    r"^https?://(?:www\.)?huggingface\.co/[^/?#]+/[^/?#]+/(?:resolve|blob|raw)/[^/?#]+/([^?#]+)"
+)
 
 
-def normalize_input(raw: str) -> str:
-    """Accept 'user/model' or an https huggingface.co link; return 'user/model'."""
+def parse_input(raw: str) -> tuple[str, str | None]:
+    """Accept 'user/model' or an https huggingface.co link.
+
+    Returns (repo_id, file_path). file_path is set when the link points at a
+    specific file (e.g. .../resolve/main/model.gguf), otherwise None.
+    """
     s = raw.strip().strip("/")
     if not s:
         raise InvalidModelInput("Model input is empty.")
     m = _HF_LINK_RE.match(s)
     if m:
-        return m.group(1)
+        repo = m.group(1)
+        fm = _HF_FILE_RE.match(s)
+        return repo, fm.group(1) if fm else None
     if _REPO_RE.match(s):
-        return s
+        return s, None
     raise InvalidModelInput(f"'{raw}' is not a huggingface.co link or 'user/model'.")
+
+
+def normalize_input(raw: str) -> str:
+    """Accept 'user/model' or an https huggingface.co link; return 'user/model'."""
+    repo, _ = parse_input(raw)
+    return repo
 
 
 import httpx
@@ -27,8 +42,9 @@ class HfClient:
         self.base_url = base_url
         self.timeout = timeout
 
-    def fetch_repo(self, repo_id: str) -> tuple[str, list[dict]]:
-        tree_url = f"{self.base_url}/api/models/{repo_id}/tree/main"
+    def fetch_repo(self, repo_id: str, file_path: str | None = None) -> tuple[str, list[dict]]:
+        query = "?recursive=true" if file_path else ""
+        tree_url = f"{self.base_url}/api/models/{repo_id}/tree/main{query}"
         with httpx.Client(timeout=self.timeout, follow_redirects=True) as client:
             r = client.get(tree_url)
             r.raise_for_status()

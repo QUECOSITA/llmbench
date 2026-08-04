@@ -177,3 +177,39 @@ test("download flow: click Download, shows downloading then downloaded and refre
   expect(await screen.findByText("downloaded")).toBeInTheDocument();
   await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(2));
 });
+
+test("download for direct file link passes the single gguf filename", async () => {
+  const { api } = await import("./api/client");
+  const downloadModelSpy = vi.spyOn(api, "downloadModel");
+  downloadModelSpy.mockResolvedValueOnce({ ok: true });
+
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_flags: {},
+    gguf_files: [{ path: "model.Q4_K_M.gguf", size: 4_000_000_000 }],
+    downloaded: { "llama.cpp": false, vllm: false, sglang: false },
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "https://huggingface.co/org/model/resolve/main/model.Q4_K_M.gguf" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  const downloadBtn = within(screen.getByText("llama.cpp:").closest("span")!).getByText("Download");
+  fireEvent.click(downloadBtn);
+
+  expect(await screen.findByText(/downloading/i)).toBeInTheDocument();
+  expect(downloadModelSpy).toHaveBeenCalledWith({
+    repo_id: "org/model",
+    server_id: "llama.cpp",
+    gguf_filename: "model.Q4_K_M.gguf",
+  });
+});

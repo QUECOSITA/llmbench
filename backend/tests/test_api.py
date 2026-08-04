@@ -68,6 +68,25 @@ def test_analyze_normalizes_and_reads_readme(client, httpx_mock):
     assert body["detected_server"] == "vllm"
 
 
+def test_analyze_direct_file_link_uses_single_file_size(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main?recursive=true",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.Q2_K.gguf", "type": "file", "size": 2_000_000_000},
+              {"path": "model.Q4_K_M.gguf", "type": "file", "size": 4_000_000_000},
+              {"path": "model.Q8_0.gguf", "type": "file", "size": 8_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n")
+    r = client.post("/api/models/analyze",
+                    json={"input": "https://huggingface.co/org/model/resolve/main/model.Q4_K_M.gguf"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["weights_bytes"] == 4_000_000_000
+    assert [g["path"] for g in body["gguf_files"]] == ["model.Q4_K_M.gguf"]
+    assert body["fit_verdict"]["needed_gb"] < 8.0
+
+
 def test_analyze_includes_fit_verdict_and_hardware(client, httpx_mock):
     httpx_mock.add_response(
         url="https://huggingface.co/api/models/org/model/tree/main",
@@ -334,3 +353,48 @@ def test_download_rejects_duplicate(client, monkeypatch):
         assert r.status_code == 409
     finally:
         api_mod.state._download_active = False
+
+
+def test_download_command_llama_uses_specific_gguf_when_given():
+    from app.api import _download_command
+    assert _download_command("org/model", "llama.cpp", gguf_filename="model.Q4_K_M.gguf") == [
+        "hf", "download", "org/model", "--include", "model.Q4_K_M.gguf",
+    ]
+    assert _download_command("org/model", "llama.cpp") == [
+        "hf", "download", "org/model", "--include", "*.gguf",
+    ]
+
+
+def test_download_llama_with_gguf_filename_uses_exact_file(client, tmp_path, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_create(*a, **k):
+        return FakeDownloadProcess(["ok"], rc=0)
+
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
+    gguf.parent.mkdir(parents=True)
+    gguf.write_bytes(b"x" * 2048)
+
+    r = client.post("/api/models/download", json={
+        "repo_id": "org/model", "server_id": "llama.cpp",
+        "gguf_filename": "model.Q4_K_M.gguf",
+    })
+    assert r.status_code == 200
+
+    def row():
+        return api_mod.db_mod.get_model(api_mod.state.conn, "org/model", "llama.cpp")
+
+    assert _poll(lambda: (row() or {}).get("status") == "downloaded")
+    row = row()
+    assert row["local_path"] == str(gguf)
+    start = next(e for e in events if e["type"] == "download_started")
+    assert "model.Q4_K_M.gguf" in start["command"]
+    assert "*.gguf" not in start["command"]

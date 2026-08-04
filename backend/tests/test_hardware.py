@@ -1,4 +1,7 @@
 import platform
+
+import pytest
+
 from app.hardware import detect_hardware, parse_nvidia_smi
 
 
@@ -18,6 +21,19 @@ def test_parse_nvidia_smi_vram():
     name, vram = parse_nvidia_smi(sample)
     assert name == "NVIDIA GeForce RTX 4090"
     assert vram == 24.0
+
+
+def test_parse_nvidia_smi_blackwell_driver_format():
+    sample = (
+        "GPU 00000000:01:00.0\n"
+        "    Product Name                                       : NVIDIA GeForce RTX 5080\n"
+        "    FB Memory Usage\n"
+        "        Total                                          : 16303 MiB\n"
+        "        Used                                           : 860 MiB\n"
+    )
+    name, vram = parse_nvidia_smi(sample)
+    assert name == "NVIDIA GeForce RTX 5080"
+    assert vram == pytest.approx(15.9, abs=0.1)
 
 
 def test_detect_hardware_shape():

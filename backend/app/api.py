@@ -12,7 +12,7 @@ from app.config import Settings
 from app.fit import fit_verdict
 from app.flags import build_serving_command, generate_configs
 from app.hardware import detect_hardware
-from app.hf import HfClient, InvalidModelInput, normalize_input
+from app.hf import HfClient, InvalidModelInput, normalize_input, parse_input
 from app.readme_parser import detect_serving_programs, extract_flags, top_serving_program
 from app.servers import build_bench_command, detect_binaries
 
@@ -22,9 +22,10 @@ router = APIRouter(prefix="/api")
 KNOWN_SERVERS = ("llama.cpp", "vllm", "sglang")
 
 
-def _download_command(repo_id: str, server_id: str) -> list[str]:
+def _download_command(repo_id: str, server_id: str, gguf_filename: str | None = None) -> list[str]:
     if server_id == "llama.cpp":
-        return ["hf", "download", repo_id, "--include", "*.gguf"]
+        include = gguf_filename or "*.gguf"
+        return ["hf", "download", repo_id, "--include", include]
     return ["hf", "download", repo_id]
 
 
@@ -80,11 +81,13 @@ async def analyze(payload: dict):
     if raw is None:
         raise HTTPException(422, "Missing required field 'input'.")
     try:
-        repo_id = normalize_input(raw)
+        repo_id, file_path = parse_input(raw)
     except InvalidModelInput as e:
         raise HTTPException(422, str(e))
     try:
-        readme, files = _hf.fetch_repo(repo_id)
+        readme, files = _hf.fetch_repo(repo_id, file_path=file_path)
+        if file_path:
+            files = [f for f in files if f.get("path") == file_path]
     except Exception as e:
         raise HTTPException(404, f"Could not fetch repo {repo_id}: {e}")
     gguf = _hf.gguf_files(files)
@@ -210,7 +213,7 @@ async def start_download(payload: dict):
         raise HTTPException(422, "Missing required field 'repo_id'.")
     if server_id not in KNOWN_SERVERS:
         raise HTTPException(422, f"'server_id' must be one of {list(KNOWN_SERVERS)}.")
-    cmd = _download_command(repo_id, server_id)
+    cmd = _download_command(repo_id, server_id, payload.get("gguf_filename"))
     if shutil.which("hf") is None:
         raise HTTPException(400, f"HF CLI not found. Run: {' '.join(cmd)}")
     with s._state_lock:

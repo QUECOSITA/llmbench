@@ -73,7 +73,8 @@ export function App() {
       const key = `${serverId}::${analysis.repo_id}`;
       setDownloads((prev) => ({ ...prev, [key]: { status: "downloading" } }));
       try {
-        await api.downloadModel({ repo_id: analysis.repo_id, server_id: serverId });
+        const gguf = analysis.gguf_files?.length === 1 ? analysis.gguf_files[0].path : undefined;
+        await api.downloadModel({ repo_id: analysis.repo_id, server_id: serverId, gguf_filename: gguf });
       } catch (err) {
         setDownloads((prev) => ({
           ...prev,

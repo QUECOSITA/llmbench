@@ -17,6 +17,9 @@ dev = [
     "pytest-httpx>=0.30",
 ]
 
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
