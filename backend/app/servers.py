@@ -1,4 +1,5 @@
 import shutil
+from pathlib import Path
 
 SERVERS = {
     "llama.cpp": {
@@ -32,11 +33,39 @@ README_FLAG_MAP = {
 }
 
 
-def detect_binaries() -> dict[str, bool]:
+def resolve_bench_binary(server_id: str, bin_dir: str | None = None) -> str | None:
+    meta = SERVERS[server_id]
+    if server_id == "llama.cpp" and bin_dir:
+        candidate = Path(bin_dir) / "llama-bench"
+        if candidate.is_file():
+            return str(candidate)
+    for b in meta["bench_binaries"]:
+        found = shutil.which(b)
+        if found:
+            return found
+    return None
+
+
+def detect_binaries(bin_dir: str | None = None) -> dict[str, bool]:
     out: dict[str, bool] = {}
-    for server_id, meta in SERVERS.items():
-        out[server_id] = any(shutil.which(b) for b in meta["bench_binaries"])
+    for server_id in SERVERS:
+        out[server_id] = resolve_bench_binary(server_id, bin_dir) is not None
     return out
+
+
+_LLAMA_HF_FLAGS = {"-hf", "-hfr", "--hf-repo", "-hff", "--hf-file", "-hft", "--hf-token"}
+
+
+def _llama_token_counts(workload: str) -> tuple[int, int]:
+    prompt = 512
+    try:
+        with open(workload, "r", encoding="utf-8") as fh:
+            lines = [ln.rstrip("\n") for ln in fh if ln.strip()]
+    except OSError:
+        lines = []
+    if lines:
+        prompt = max(1, sum(len(ln) for ln in lines) // 4)
+    return prompt, 128
 
 
 def _canonical_flags(server_id: str, flags: dict[str, str]) -> dict[str, str]:
@@ -60,18 +89,21 @@ def _flag_tokens(flags: dict[str, str]) -> list[str]:
 
 
 def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
-                        workload: str, timeout_s: int) -> list[str]:
+                        workload: str, timeout_s: int, bin_dir: str | None = None) -> list[str]:
     flags = _canonical_flags(server_id, flags)
     if server_id == "llama.cpp":
-        cmd = ["llama-bench", "-m", model_ref]
-        mapped = {"--ctx-size": "-c", "--n-gpu-layers": "-ngl", "--batch-size": "-b", "--threads": "-t"}
+        cmd = [resolve_bench_binary("llama.cpp", bin_dir) or "llama-bench", "-m", model_ref]
+        mapped = {"--ctx-size": "--fit-ctx", "--n-gpu-layers": "-ngl", "--batch-size": "-b", "--threads": "-t"}
         for flag, value in flags.items():
+            if flag in _LLAMA_HF_FLAGS:
+                continue
             bench_flag = mapped.get(flag, flag)
             if value:
                 cmd += [bench_flag, value]
             elif flag.startswith("--"):
                 cmd += [bench_flag]
-        cmd += ["-p", workload, "-o", "csv", "-r", "2"]
+        prompt, gen = _llama_token_counts(workload)
+        cmd += ["-p", str(prompt), "-n", str(gen), "-r", "2", "-o", "csv"]
         return cmd
     if server_id == "vllm":
         cmd = ["python", "-m", "vllm.benchmarks.benchmark_throughput",
