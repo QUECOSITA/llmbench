@@ -8,6 +8,15 @@
 .digit-best { color: var(--accent); }
 .config-row { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; }
 .config-index { color: var(--anode); font-size: 12px; padding-top: 6px; }
+.fit-badge {
+  font-size: 11px; letter-spacing: .04em; white-space: nowrap;
+  border: 1px solid var(--rule-bright); border-radius: var(--radius);
+  padding: 4px 8px; margin-top: 6px;
+}
+.fit-ok { color: var(--ok); }
+.fit-warn { color: var(--warn); }
+.fit-cpu { color: var(--anode); }
+.fit-no { color: var(--accent); }
 .config-row textarea {
   background: var(--panel); color: var(--tube);
   border: 1px solid var(--rule-bright); border-radius: var(--radius); padding: 6px;
@@ -20,3 +29,43 @@
 .row-best td { color: var(--accent); }
 .nav-link { color: var(--anode); text-decoration: none; font-size: 11px; letter-spacing: .08em; }
 .results-link { color: var(--accent); text-decoration: none; }
+.dl-console {
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  background: var(--panel);
+  margin-top: 10px;
+  padding: 8px;
+  font-size: 12px;
+}
+.dl-console-head {
+  color: var(--anode);
+  letter-spacing: .04em;
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.dl-console-body {
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  background: var(--steel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--tube);
+}
+.dl-console-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.btn-neutral {
+  background: transparent;
+  color: var(--tube);
+  border: 1px solid var(--rule-bright);
+  font-weight: 400;
+}
