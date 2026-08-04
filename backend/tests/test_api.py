@@ -283,6 +283,54 @@ class FakeDownloadProc:
         self.returncode = -9
 
 
+class FakeStdin:
+    def __init__(self, answered):
+        self.written = []
+        self._answered = answered
+
+    def write(self, data):
+        self.written.append(data)
+        self._answered.set()
+        return len(data)
+
+    async def drain(self):
+        pass
+
+
+class FakePruneProcess:
+    """Simulates `hf cache prune --format human` writing the summary, then
+    blocking on stdin at `Proceed? [y/N]: ` until an answer is written."""
+
+    def __init__(self, first="About to delete 1 incomplete download(s) (8.0 total).\nProceed? [y/N]: ",
+                 after="\n✓ Deleted 1 incomplete download(s); freed 8.0.\n", rc=0):
+        self._first = first
+        self._after = after
+        self._rc = rc
+        self.returncode = None
+        self.answered = asyncio.Event()
+        self.stdin = FakeStdin(self.answered)
+        self._phase = 0
+
+    @property
+    def stdout(self):
+        return self
+
+    async def read(self, n=1024):
+        if self._phase == 0:
+            self._phase = 1
+            return self._first.encode()
+        if self._phase == 1:
+            if "Proceed?" in self._first:
+                await self.answered.wait()
+            self._phase = 2
+            return self._after.encode()
+        return b""
+
+    async def wait(self):
+        self.returncode = self._rc
+        return self._rc
+
+
 def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch):
     import app.api as api_mod
     events = []
@@ -529,3 +577,141 @@ def test_generate_configs_fit_is_none_without_weights(client):
     assert r.status_code == 200
     for cfg in r.json()["configs"]:
         assert cfg["fit"] is None
+
+
+def test_cancel_then_prune_prompt_y(client, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_stream(master_fd):
+        yield ("line", "Fetching files...")
+        while not api_mod.state._download_cancelled:
+            await asyncio.sleep(0.01)
+        yield ("line", "Done")
+
+    async def fake_spawn(*a, **k):
+        return FakeDownloadProc()
+
+    async def fake_create(*a, **k):
+        return FakePruneProcess()
+
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
+    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
+    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+    assert r.status_code == 200
+    assert _poll(lambda: any(e["type"] == "download_started" for e in events))
+    assert _poll(lambda: api_mod.state._download_proc is not None)
+
+    r = client.post("/api/models/download/cancel")
+    assert r.status_code == 200 and r.json()["ok"] is True
+    assert api_mod.state._download_cancelled is True
+
+    assert _poll(lambda: any(e["type"] == "prune_started" for e in events))
+    assert _poll(lambda: any(e["type"] == "prune_prompt" for e in events))
+
+    r = client.post("/api/models/download/prune-answer", json={"answer": "y"})
+    assert r.status_code == 200 and r.json()["ok"] is True
+
+    assert _poll(lambda: any(e["type"] == "prune_done" for e in events))
+    done = next(e for e in events if e["type"] == "prune_done")
+    assert done["accepted"] is True
+    assert any(e["type"] == "prune_log" and "About to delete" in e["line"] for e in events)
+    assert api_mod.state._download_active is False
+
+
+def test_cancel_then_prune_prompt_n(client, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_stream(master_fd):
+        yield ("line", "Fetching files...")
+        while not api_mod.state._download_cancelled:
+            await asyncio.sleep(0.01)
+        yield ("line", "Done")
+
+    async def fake_spawn(*a, **k):
+        return FakeDownloadProc()
+
+    async def fake_create(*a, **k):
+        return FakePruneProcess(after="\nAborted!\n", rc=1)
+
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
+    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
+    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+    assert _poll(lambda: any(e["type"] == "download_started" for e in events))
+    client.post("/api/models/download/cancel")
+
+    assert _poll(lambda: any(e["type"] == "prune_prompt" for e in events))
+    client.post("/api/models/download/prune-answer", json={"answer": "n"})
+    assert _poll(lambda: any(e["type"] == "prune_done" for e in events))
+    done = next(e for e in events if e["type"] == "prune_done")
+    assert done["accepted"] is False
+
+
+def test_cancel_then_prune_nothing_to_prune(client, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_stream(master_fd):
+        yield ("line", "Fetching files...")
+        while not api_mod.state._download_cancelled:
+            await asyncio.sleep(0.01)
+        yield ("line", "Done")
+
+    async def fake_spawn(*a, **k):
+        return FakeDownloadProc()
+
+    async def fake_create(*a, **k):
+        return FakePruneProcess(
+            first="No unreferenced revisions or incomplete downloads found. Nothing to prune.\n",
+            after="", rc=0,
+        )
+
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
+    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
+    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+    assert _poll(lambda: any(e["type"] == "download_started" for e in events))
+    client.post("/api/models/download/cancel")
+
+    assert _poll(lambda: any(e["type"] == "prune_done" for e in events))
+    assert not any(e["type"] == "prune_prompt" for e in events)
+    done = next(e for e in events if e["type"] == "prune_done")
+    assert done["accepted"] is True
+
+
+def test_prune_answer_validation(client):
+    import app.api as api_mod
+    api_mod.state._download_active = True
+    try:
+        r = client.post("/api/models/download/prune-answer", json={"answer": "maybe"})
+        assert r.status_code == 422
+        r = client.post("/api/models/download/prune-answer", json={})
+        assert r.status_code == 422
+        r = client.post("/api/models/download/prune-answer", json={"answer": "y"})
+        assert r.status_code == 409
+    finally:
+        api_mod.state._download_active = False

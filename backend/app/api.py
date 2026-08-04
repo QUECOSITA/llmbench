@@ -335,6 +335,60 @@ async def start_download(payload: dict):
     return {"ok": True}
 
 
+async def _prune_job(s: AppState, repo_id: str, server_id: str):
+    cache_dir = str(s.settings.hf_cache_dir) if s.settings.hf_cache_dir else None
+    cmd = _prune_command(cache_dir=cache_dir)
+    proc = None
+    last_line = ""
+    prompt_sent = False
+    try:
+        await broadcast(s, {"type": "prune_started", "server_id": server_id,
+                            "repo_id": repo_id, "command": " ".join(cmd)})
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        )
+        s._prune_proc = proc
+        buf = ""
+        while True:
+            chunk = await proc.stdout.read(1024)
+            if not chunk:
+                break
+            buf += chunk.decode(errors="replace")
+            while "\n" in buf:
+                line, buf = buf.split("\n", 1)
+                line = line.rstrip("\r")
+                if line:
+                    last_line = line
+                    await broadcast(s, {"type": "prune_log", "server_id": server_id,
+                                        "repo_id": repo_id, "line": line})
+            if not prompt_sent and "Proceed?" in buf:
+                prompt_sent = True
+                q: asyncio.Queue[str] = asyncio.Queue()
+                s._prune_answer = q
+                await broadcast(s, {"type": "prune_prompt", "server_id": server_id,
+                                    "repo_id": repo_id})
+                answer = await q.get()
+                assert proc.stdin is not None
+                proc.stdin.write((answer + "\n").encode())
+                await proc.stdin.drain()
+                buf = ""
+        rc = await proc.wait()
+        await broadcast(s, {"type": "prune_done", "server_id": server_id,
+                            "repo_id": repo_id, "accepted": rc == 0, "message": last_line})
+    except Exception as e:
+        await broadcast(s, {"type": "prune_done", "server_id": server_id,
+                            "repo_id": repo_id, "accepted": False, "message": str(e)})
+    finally:
+        if proc is not None and proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+        s._prune_proc = None
+        s._prune_answer = None
+
+
 @router.post("/models/download/cancel")
 async def cancel_download():
     s = _require_state()
@@ -349,6 +403,18 @@ async def cancel_download():
         except (ProcessLookupError, OSError):
             pass
         asyncio.create_task(_force_kill_after(proc, 5.0))
+    return {"ok": True}
+
+
+@router.post("/models/download/prune-answer")
+async def prune_answer(payload: dict):
+    s = _require_state()
+    answer = payload.get("answer")
+    if answer not in ("y", "n"):
+        raise HTTPException(422, "'answer' must be 'y' or 'n'.")
+    if s._prune_answer is None:
+        raise HTTPException(409, "No prune is waiting for input")
+    await s._prune_answer.put(answer)
     return {"ok": True}
 
 
