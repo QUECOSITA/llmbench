@@ -92,10 +92,14 @@ def _flag_tokens(flags: dict[str, str]) -> list[str]:
     return tokens
 
 
-def build_serving_command(server_id: str, repo_id: str, flags: dict[str, str], gguf_path: str | None = None) -> str:
+def build_serving_command(server_id: str, repo_id: str, flags: dict[str, str],
+                          gguf_filename: str | None = None,
+                          gguf_path: str | None = None) -> str:
     if server_id == "llama.cpp":
         cmd = ["llama-server"]
-        if gguf_path:
+        if gguf_filename:
+            cmd += ["--hf-repo", repo_id, "--hf-file", gguf_filename]
+        elif gguf_path:
             cmd += ["-m", gguf_path]
         cmd += _flag_tokens(flags)
         return " ".join(cmd)

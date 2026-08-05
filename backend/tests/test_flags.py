@@ -28,8 +28,26 @@ def test_build_serving_command_vllm():
 
 def test_gguf_llama_command():
     cmd = build_serving_command("llama.cpp", "org/model", {"-c": "4096", "-ngl": "999"},
+                                gguf_filename="x.gguf")
+    assert "--hf-repo org/model" in cmd
+    assert "--hf-file x.gguf" in cmd
+    assert "-m" not in cmd
+
+
+def test_gguf_llama_command_falls_back_to_path():
+    cmd = build_serving_command("llama.cpp", "org/model", {"-c": "4096"},
                                 gguf_path="/models/x.gguf")
     assert "-m /models/x.gguf" in cmd
+
+
+def test_llama_serving_command_includes_spec_flags():
+    cmd = build_serving_command("llama.cpp", "org/model",
+                                {"--spec-type": "draft-mtp", "--spec-draft-n-max": "2"},
+                                gguf_filename="x.gguf")
+    assert "--hf-repo org/model" in cmd
+    assert "--hf-file x.gguf" in cmd
+    assert "--spec-type draft-mtp" in cmd
+    assert "--spec-draft-n-max 2" in cmd
 
 
 def test_deterministic():
