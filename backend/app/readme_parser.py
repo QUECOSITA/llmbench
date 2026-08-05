@@ -21,7 +21,7 @@ _FLAG_RE = re.compile(
     re.IGNORECASE,
 )
 
-_VALUE_TERMINATORS = {"--", "-m", "-c", "-t", "-b", "-ngl", "&&", "|", ";"}
+_VALUE_TERMINATORS = {"--", "-m", "-c", "-t", "-b", "-ngl", "&&", "|", ";", "\\"}
 
 
 def detect_serving_programs(readme: str, has_gguf: bool) -> dict[str, int]:

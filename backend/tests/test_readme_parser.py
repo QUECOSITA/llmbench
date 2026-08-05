@@ -40,6 +40,14 @@ def test_extract_flags_adjacent_bool_flags():
     assert flags["--trust-remote-code"] == ""
 
 
+def test_extract_flags_backslash_line_continuation_is_bare_flag():
+    text = "Run:\n```\nllama-server -m model.gguf --no-mmap \\\n--jinja \\\n--fit on\n```"
+    flags = extract_flags(text, ["llama.cpp"])
+    assert flags["--no-mmap"] == ""
+    assert flags["--jinja"] == ""
+    assert flags["--fit"] == "on"
+
+
 def test_extract_flags_negative_number_value():
     text = "sglang.launch_server --mem-fraction-static -0.5"
     flags = extract_flags(text, ["sglang"])

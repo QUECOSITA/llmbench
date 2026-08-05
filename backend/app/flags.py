@@ -1,5 +1,5 @@
 KEY_FLAGS = {
-    "llama.cpp": ["--ctx-size", "--n-gpu-layers", "--batch-size"],
+    "llama.cpp": ["--ctx-size", "--n-gpu-layers", "--batch-size", "--spec-type", "--spec-draft-n-max"],
     "vllm": ["--max-model-len", "--max-num-seqs", "--gpu-memory-utilization", "--enforce-eager"],
     "sglang": ["--context-length", "--max-running-requests", "--mem-fraction-static", "--tp-size"],
 }
@@ -9,6 +9,8 @@ VALUE_POOLS = {
         "--ctx-size": [2048, 4096, 8192, 16384],
         "--n-gpu-layers": [999, 40, 0],
         "--batch-size": [512, 2048],
+        "--spec-type": ["draft-mtp", "none"],
+        "--spec-draft-n-max": [2, 3],
     },
     "vllm": {
         "--max-model-len": [4096, 8192, 16384],
@@ -25,7 +27,8 @@ VALUE_POOLS = {
 }
 
 DEFAULTS = {
-    "llama.cpp": {"--ctx-size": 4096, "--n-gpu-layers": 999, "--batch-size": 512},
+    "llama.cpp": {"--ctx-size": 4096, "--n-gpu-layers": 999, "--batch-size": 512,
+                  "--spec-type": "draft-mtp", "--spec-draft-n-max": 2},
     "vllm": {"--max-model-len": 8192, "--max-num-seqs": 32, "--gpu-memory-utilization": 0.9, "--enforce-eager": ""},
     "sglang": {"--context-length": 8192, "--max-running-requests": 32, "--mem-fraction-static": 0.9, "--tp-size": 1},
 }
@@ -39,6 +42,11 @@ def _gpu_util_for_vram(server_id: str, vram_gb: float) -> str:
     return ""
 
 
+_SPEC_TYPE_ALIASES = {"mtp": "draft-mtp", "draft-mtp": "draft-mtp"}
+
+_LLAMA_MODEL_FLAGS = {"-m", "-hf", "-hfr", "--hf-repo", "-hff", "--hf-file", "-hft", "--hf-token"}
+
+
 def _baseline(server_id: str, readme_flags: dict[str, str], vram_gb: float) -> dict[str, str]:
     flags: dict[str, str] = {}
     for key, default in DEFAULTS[server_id].items():
@@ -48,6 +56,8 @@ def _baseline(server_id: str, readme_flags: dict[str, str], vram_gb: float) -> d
     if server_id == "sglang":
         flags["--mem-fraction-static"] = _gpu_util_for_vram("sglang", vram_gb)
     for flag, value in readme_flags.items():
+        if flag == "--spec-type":
+            value = _SPEC_TYPE_ALIASES.get(value, value)
         if flag in KEY_FLAGS[server_id] or flag not in DEFAULTS[server_id]:
             flags[flag] = value
     return flags
@@ -84,11 +94,17 @@ def _flag_tokens(flags: dict[str, str]) -> list[str]:
     return tokens
 
 
-def build_serving_command(server_id: str, repo_id: str, flags: dict[str, str], gguf_path: str | None = None) -> str:
+def build_serving_command(server_id: str, repo_id: str, flags: dict[str, str],
+                          gguf_filename: str | None = None,
+                          gguf_path: str | None = None) -> str:
     if server_id == "llama.cpp":
         cmd = ["llama-server"]
-        if gguf_path:
+        if gguf_filename:
+            cmd += ["--hf-repo", repo_id, "--hf-file", gguf_filename]
+        elif gguf_path:
             cmd += ["-m", gguf_path]
+        if gguf_filename or gguf_path:
+            flags = {k: v for k, v in flags.items() if k not in _LLAMA_MODEL_FLAGS}
         cmd += _flag_tokens(flags)
         return " ".join(cmd)
     if server_id == "vllm":

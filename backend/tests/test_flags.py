@@ -28,8 +28,26 @@ def test_build_serving_command_vllm():
 
 def test_gguf_llama_command():
     cmd = build_serving_command("llama.cpp", "org/model", {"-c": "4096", "-ngl": "999"},
+                                gguf_filename="x.gguf")
+    assert "--hf-repo org/model" in cmd
+    assert "--hf-file x.gguf" in cmd
+    assert "-m" not in cmd
+
+
+def test_gguf_llama_command_falls_back_to_path():
+    cmd = build_serving_command("llama.cpp", "org/model", {"-c": "4096"},
                                 gguf_path="/models/x.gguf")
     assert "-m /models/x.gguf" in cmd
+
+
+def test_llama_serving_command_includes_spec_flags():
+    cmd = build_serving_command("llama.cpp", "org/model",
+                                {"--spec-type": "draft-mtp", "--spec-draft-n-max": "2"},
+                                gguf_filename="x.gguf")
+    assert "--hf-repo org/model" in cmd
+    assert "--hf-file x.gguf" in cmd
+    assert "--spec-type draft-mtp" in cmd
+    assert "--spec-draft-n-max 2" in cmd
 
 
 def test_deterministic():
@@ -63,3 +81,35 @@ def test_generate_configs_unknown_server_valueerror():
         assert "unknown server" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_llama_spec_flags_in_baseline():
+    cfg = generate_configs("llama.cpp", {}, 1, 24)[0]["flags"]
+    assert cfg["--spec-type"] == "draft-mtp"
+    assert cfg["--spec-draft-n-max"] == "2"
+
+
+def test_llama_spec_type_readme_mtp_normalizes_to_draft_mtp():
+    cfg = generate_configs("llama.cpp", {"--spec-type": "mtp"}, 1, 24)[0]["flags"]
+    assert cfg["--spec-type"] == "draft-mtp"
+
+
+def test_llama_spec_type_sweeps_variants():
+    configs = generate_configs("llama.cpp", {}, 12, 24)
+    spec_types = {c["flags"]["--spec-type"] for c in configs}
+    n_max = {c["flags"]["--spec-draft-n-max"] for c in configs}
+    assert spec_types == {"draft-mtp", "none"}
+    assert n_max == {"2", "3"}
+
+
+def test_llama_serving_command_strips_readme_m_when_hf_file_given():
+    cmd = build_serving_command(
+        "llama.cpp", "org/model",
+        {"-m": "Qwen.gguf", "--hf-repo": "org/model", "--hf-file": "Qwen.gguf",
+         "--spec-type": "draft-mtp", "-c": "4096"},
+        gguf_filename="Qwen.gguf")
+    assert "--hf-repo org/model" in cmd
+    assert "--hf-file Qwen.gguf" in cmd
+    assert "-m" not in cmd.split()
+    assert "--spec-type draft-mtp" in cmd
+    assert "-c 4096" in cmd

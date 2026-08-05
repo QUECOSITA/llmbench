@@ -12,6 +12,8 @@ vi.mock("./api/client", () => ({
       configs: [{ flags: { "--n-gpu": "1" }, serving_command: "python serve.py", bench_command: [] }],
     }),
     startBenchmark: vi.fn().mockResolvedValue({ run_id: 1 }),
+    continueRun: vi.fn().mockResolvedValue({ ok: true }),
+    getRun: vi.fn().mockResolvedValue({ status: "running", total: 1, results: [] }),
     downloadModel: vi.fn().mockResolvedValue({ ok: true }),
     cancelDownload: vi.fn().mockResolvedValue({ ok: true }),
     answerPrune: vi.fn().mockResolvedValue({ ok: true }),
@@ -156,6 +158,71 @@ test("successful run shows initial progress label", async () => {
   await screen.findByText(/python serve/i);
   fireEvent.click(screen.getByText(/run benchmark/i));
   await screen.findByText(/config 1\/1/i);
+});
+
+test("run that fails on the backend re-enables RUN and shows the failure", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.getRun).mockResolvedValue({ status: "failed", total: 1, results: [] });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+  fireEvent.click(screen.getByText(/generate/i));
+  await screen.findByText(/python serve/i);
+  fireEvent.click(screen.getByText(/run benchmark/i));
+
+  await waitFor(() => {
+    expect(screen.getByText(/run benchmark/i)).not.toBeDisabled();
+  }, { timeout: 3000 });
+  expect(await screen.findByText(/run failed/i)).toBeInTheDocument();
+});
+
+test("completed run populates ranked results and re-enables RUN", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.getRun).mockResolvedValue({
+    status: "completed",
+    total: 1,
+    results: [
+      {
+        config_id: 1,
+        server_id: "vllm",
+        flag_conf: { "--max-model-len": "8192" },
+        serving_command: "vllm serve org/model",
+        prompt_processing_tps: 100.0,
+        decode_tps: 42.0,
+      },
+    ],
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+  fireEvent.click(screen.getByText(/generate/i));
+  await screen.findByText(/python serve/i);
+  fireEvent.click(screen.getByText(/run benchmark/i));
+
+  await waitFor(() => {
+    const table = document.querySelector(".results-table") as HTMLElement | null;
+    expect(table).not.toBeNull();
+    expect(within(table!).getByText("42.0")).toBeInTheDocument();
+  }, { timeout: 3000 });
+  await waitFor(() => {
+    expect(screen.getByText(/run benchmark/i)).not.toBeDisabled();
+  }, { timeout: 3000 });
 });
 
 test("fit line renders NO FIT when verdict is no_fit", async () => {
@@ -361,4 +428,41 @@ test("cancel flow: CANCEL shows prune prompt, answering y completes", async () =
   expect(await screen.findByText(/cache pruned/i)).toBeInTheDocument();
   const span = within(screen.getByText("vllm:").closest("span")!);
   expect(span.getByRole("button", { name: /^download$/i })).toBeInTheDocument();
+});
+
+test("enter-to-continue: waiting prompt continues the run", async () => {
+  const { api } = await import("./api/client");
+  const { useBenchmarkProgress } = await import("./ws/useBenchmarkProgress");
+  const continueSpy = vi.mocked(api.continueRun).mockResolvedValue({ ok: true });
+
+  const view = render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+  fireEvent.click(screen.getByText(/generate/i));
+  await screen.findByText(/python serve/i);
+  fireEvent.click(screen.getByText(/run benchmark/i));
+  await screen.findByText(/config 1\/1/i);
+
+  vi.mocked(useBenchmarkProgress).mockReturnValue([
+    { type: "config_start", run_id: 1, index: 0, total: 1, config: { bench_command: ["python", "-m", "bench"] } },
+    { type: "bench_log", run_id: 1, index: 0, kind: "line", text: "loading..." },
+    { type: "config_done", run_id: 1, index: 0, result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0 } },
+    { type: "config_wait", run_id: 1, index: 0 },
+  ]);
+  view.rerender(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText(/press enter to continue/i)).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "Enter" });
+  await waitFor(() => expect(continueSpy).toHaveBeenCalledWith(1));
 });

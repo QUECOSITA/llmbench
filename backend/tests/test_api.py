@@ -14,20 +14,26 @@ x,Q4,7B,CUDA,tg,0,8,512,999,900,80.0
 """
 
 
+def _reader(data: bytes) -> asyncio.StreamReader:
+    r = asyncio.StreamReader()
+    if data:
+        r.feed_data(data)
+    r.feed_eof()
+    return r
+
+
 class FakeProcess:
-    def __init__(self, out, rc=0):
-        self._out = out
+    def __init__(self, out, err=b"", rc=0):
+        self.stdout = _reader(out)
+        self.stderr = _reader(err)
         self.returncode = rc
         self.killed = False
 
-    async def communicate(self):
-        return self._out, b""
+    async def wait(self):
+        return self.returncode
 
     def kill(self):
         self.killed = True
-
-    async def wait(self):
-        return self.returncode
 
 
 def _poll(predicate, timeout=3.0, interval=0.05):
@@ -131,19 +137,65 @@ def test_generate_configs_llama_uses_gguf_path(client):
     for cfg in r.json()["configs"]:
         cmd = cfg["bench_command"]
         assert cmd[0] == "llama-bench"
-        assert cmd[cmd.index("-m") + 1] == "/tmp/models/model.Q4_K_M.gguf"
+        assert cmd[cmd.index("-hfr") + 1] == "org/model"
+        assert cmd[cmd.index("-hff") + 1] == "model.Q4_K_M.gguf"
+        assert "--hf-repo org/model" in cfg["serving_command"]
+        assert "--hf-file model.Q4_K_M.gguf" in cfg["serving_command"]
+        assert "/tmp/models/model.Q4_K_M.gguf" not in cfg["serving_command"]
+
+
+def _make_snapshot_gguf(settings, repo_id: str) -> str:
+    root = settings.hf_cache_dir
+    snap = root / f"models--{repo_id.replace('/', '--')}" / "snapshots" / "ref1"
+    snap.mkdir(parents=True)
+    gguf = snap / "model.Q4_K_M.gguf"
+    gguf.write_bytes(b"dummy-gguf")
+    return str(gguf)
+
+
+def test_generate_configs_llama_resolves_local_gguf(client):
+    from app.api import state
+    gguf_path = _make_snapshot_gguf(state.settings, "org/model")
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
+        "readme_flags": {"--ctx-size": "4096"},
+    })
+    assert r.status_code == 200
+    for cfg in r.json()["configs"]:
+        assert cfg["bench_command"][cfg["bench_command"].index("-hfr") + 1] == "org/model"
+        assert cfg["bench_command"][cfg["bench_command"].index("-hff") + 1] == "model.Q4_K_M.gguf"
+        assert "--hf-repo org/model" in cfg["serving_command"]
+        assert "--hf-file model.Q4_K_M.gguf" in cfg["serving_command"]
+        assert gguf_path not in cfg["serving_command"]
+
+
+def test_generate_configs_llama_falls_back_to_repo_id_when_no_gguf(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1,
+        "readme_flags": {"--ctx-size": "4096"},
+    })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["bench_command"][cfg["bench_command"].index("-m") + 1] == "org/model"
+    assert "--fit-ctx" in cfg["bench_command"]
+    assert "--hf-file" not in cfg["serving_command"]
 
 
 def test_start_run_rejects_duplicate(client, monkeypatch):
     release = asyncio.Event()
 
+    class HangReader(asyncio.StreamReader):
+        async def read(self, n=-1):
+            await release.wait()
+            return b""
+
     class HangProcess:
         returncode = 0
         killed = False
 
-        async def communicate(self):
-            await release.wait()
-            return b"", ""
+        def __init__(self):
+            self.stdout = HangReader()
+            self.stderr = _reader(b"")
 
         async def wait(self):
             pass
@@ -213,6 +265,10 @@ def test_run_failure_marks_run_failed(client, monkeypatch):
     _poll(lambda: status() != "running")
     assert status() == "failed"
 
+    detail = client.get(f"/api/benchmarks/{run_id}").json()
+    assert detail["status"] == "failed"
+    assert detail["total"] == 1
+
     r2 = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
     assert r2.status_code == 200
 
@@ -230,7 +286,7 @@ def test_full_run_completes_and_persists(client, monkeypatch):
         "serving_command": "llama-server -m x",
         "bench_command": ["llama-bench", "-m", "x"],
     }
-    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg], "pause": False})
     assert r.status_code == 200
     run_id = r.json()["run_id"]
 
@@ -243,6 +299,10 @@ def test_full_run_completes_and_persists(client, monkeypatch):
     assert rows[0]["result_status"] == "ok"
     assert rows[0]["prompt_processing_tps"] == 1000.0
     assert rows[0]["decode_tps"] == 80.0
+
+    detail = client.get(f"/api/benchmarks/{run_id}").json()
+    assert detail["status"] == "completed"
+    assert detail["total"] == 1
 
 
 def test_download_missing_fields_422(client):
@@ -365,6 +425,7 @@ def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch)
     assert "hf download" in events[0]["command"]
     assert "--format" in events[0]["command"] and "human" in events[0]["command"]
     assert any(e["type"] == "download_log" and e["line"] == "Fetching files..." for e in events)
+    assert _poll(lambda: any(e["type"] == "download_done" for e in events))
     done = next(e for e in events if e["type"] == "download_done")
     assert done["local_path"] == str(snapshot)
     assert api_mod.state._download_active is False
@@ -781,3 +842,155 @@ def test_prune_answer_validation(client):
         assert r.status_code == 409
     finally:
         api_mod.state._download_active = False
+
+
+def test_pause_run_streams_and_waits_for_continue(client, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_create(*a, **k):
+        return FakeProcess(FAKE_BENCH.encode(), err=b"progress noise\n")
+
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    class FakeWs:
+        pass
+
+    ws = FakeWs()
+    api_mod.state._ws_clients.add(ws)
+    try:
+        cfg = {
+            "server_id": "llama.cpp",
+            "flags": {"-c": "4096"},
+            "model_id": "org/model",
+            "serving_command": "llama-server -m x",
+            "bench_command": ["llama-bench", "-m", "x"],
+        }
+        r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg], "pause": True})
+        assert r.status_code == 200
+        run_id = r.json()["run_id"]
+
+        assert _poll(lambda: any(e["type"] == "config_wait" for e in events))
+        assert any(e["type"] == "bench_log" and e["kind"] == "line" for e in events)
+        assert api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "running"
+
+        r2 = client.post("/api/benchmarks/continue", json={"run_id": run_id})
+        assert r2.status_code == 200
+
+        assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
+        assert any(e["type"] == "config_wait" for e in events)
+        assert api_mod.state._continue_queue is None
+    finally:
+        api_mod.state._ws_clients.discard(ws)
+
+
+def test_pause_false_runs_straight_through(client, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_create(*a, **k):
+        return FakeProcess(FAKE_BENCH.encode())
+
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    cfg = {
+        "server_id": "llama.cpp",
+        "flags": {"-c": "4096"},
+        "model_id": "org/model",
+        "serving_command": "llama-server -m x",
+        "bench_command": ["llama-bench", "-m", "x"],
+    }
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg], "pause": False})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
+    assert not any(e["type"] == "config_wait" for e in events)
+    assert any(e["type"] == "bench_log" for e in events)
+
+
+def test_pause_run_auto_advances_when_no_clients(client, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_create(*a, **k):
+        return FakeProcess(FAKE_BENCH.encode())
+
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr("app.api.AUTO_ADVANCE_GRACE_S", 0.1)
+
+    cfg = {
+        "server_id": "llama.cpp",
+        "flags": {"-c": "4096"},
+        "model_id": "org/model",
+        "serving_command": "llama-server -m x",
+        "bench_command": ["llama-bench", "-m", "x"],
+    }
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg], "pause": True})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
+    assert any(e["type"] == "config_wait" for e in events)
+
+
+def test_continue_with_no_pending_run_409(client):
+    r = client.post("/api/benchmarks/continue", json={"run_id": 1})
+    assert r.status_code == 409
+
+
+def test_double_continue_does_not_skip_next_wait(client, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_create(*a, **k):
+        return FakeProcess(FAKE_BENCH.encode())
+
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    class FakeWs:
+        pass
+
+    ws = FakeWs()
+    api_mod.state._ws_clients.add(ws)
+    try:
+        cfg = {
+            "server_id": "llama.cpp",
+            "flags": {"-c": "4096"},
+            "model_id": "org/model",
+            "serving_command": "llama-server -m x",
+            "bench_command": ["llama-bench", "-m", "x"],
+        }
+        r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg, cfg], "pause": True})
+        assert r.status_code == 200
+        run_id = r.json()["run_id"]
+
+        assert _poll(lambda: any(e["type"] == "config_wait" for e in events))
+        client.post("/api/benchmarks/continue", json={"run_id": run_id})
+        client.post("/api/benchmarks/continue", json={"run_id": run_id})
+
+        assert _poll(lambda: len([e for e in events if e["type"] == "config_wait"]) >= 2)
+        time.sleep(0.5)
+        assert api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "running"
+
+        r2 = client.post("/api/benchmarks/continue", json={"run_id": run_id})
+        assert r2.status_code == 200
+        assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
+    finally:
+        api_mod.state._ws_clients.discard(ws)

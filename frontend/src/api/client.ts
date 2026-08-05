@@ -65,6 +65,21 @@ export interface RunResult {
   duration_s: number;
 }
 
+export interface RunDetail {
+  status?: string;
+  total?: number;
+  results: Array<{
+    config_id: number;
+    server_id: string;
+    flag_conf: Record<string, string>;
+    serving_command?: string;
+    prompt_processing_tps: number | null;
+    decode_tps: number | null;
+    duration_s?: number | null;
+    result_status?: string;
+  }>;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -106,6 +121,10 @@ export const api = {
     method: "POST",
     body: JSON.stringify(body),
   }),
+  continueRun: (runId: number) => request<{ ok: boolean }>("/benchmarks/continue", {
+    method: "POST",
+    body: JSON.stringify({ run_id: runId }),
+  }),
   listModels: () => request<{ models: DownloadedModel[] }>("/models"),
   downloadModel: (body: { repo_id: string; server_id: string; gguf_filename?: string }) =>
     request<{ ok: boolean }>("/models/download", {
@@ -119,7 +138,7 @@ export const api = {
       body: JSON.stringify({ answer }),
     }),
   listRuns: () => request<{ runs: RunSummary[] }>("/benchmarks"),
-  getRun: (runId: number) => request<{ results: RunResult[] }>(`/benchmarks/${runId}`),
+  getRun: (runId: number) => request<RunDetail>(`/benchmarks/${runId}`),
   removeModel: (repoId: string) =>
     request<{ ok: boolean }>(`/models/${encodeURIComponent(repoId)}`, { method: "DELETE" }),
 };

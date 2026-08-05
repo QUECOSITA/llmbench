@@ -49,8 +49,21 @@ const server = createServer((req, res) => {
         fit: { stage: "gpu", label: "FITS VRAM", fits_vram: true, offloaded: false, needed_gb: 3.8, kv_gb: 4.3, weights_gb: 4 },
       }],
     });
-  } else if (req.url?.startsWith("/api/benchmarks")) {
+  } else if (req.method === "POST" && req.url?.startsWith("/api/benchmarks")) {
     Object.assign(body, { run_id: 1 });
+  } else if (req.url?.startsWith("/api/benchmarks/")) {
+    Object.assign(body, {
+      status: "completed",
+      total: 1,
+      results: [{
+        config_id: 1,
+        server_id: "vllm",
+        flag_conf: { "--max-model-len": "8192" },
+        serving_command: "vllm serve org/model --max-model-len 8192",
+        prompt_processing_tps: 100.0,
+        decode_tps: 42.0,
+      }],
+    });
   } else if (req.url?.startsWith("/api/models")) {
     Object.assign(body, { models: [...models.values()] });
   }

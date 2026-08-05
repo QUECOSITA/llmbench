@@ -13,3 +13,15 @@ test("ranks rows by decode t/s descending", () => {
   const second = cells.find((c) => c.textContent === "68.9");
   expect(first!.compareDocumentPosition(second!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
+
+test("shows result status when metrics are null", () => {
+  render(
+    <ResultsTable
+      rows={[
+        { server_id: "llama.cpp", flag_conf: {}, prompt_processing_tps: null, decode_tps: null, result_status: "failed" },
+        { server_id: "vllm", flag_conf: {}, prompt_processing_tps: 100.0, decode_tps: 42.0, result_status: "ok" },
+      ]}
+    />
+  );
+  expect(screen.getByText("failed")).toBeTruthy();
+});

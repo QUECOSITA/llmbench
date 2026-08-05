@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Link, Route, Routes } from "react-router-dom";
-import { api, FitVerdict } from "./api/client";
-import { INITIAL_STATE, progressReducer, useBenchmarkProgress } from "./ws/useBenchmarkProgress";
+import { api, FitVerdict, RunDetail } from "./api/client";
+import { INITIAL_STATE, progressReducer, ResultRow, useBenchmarkProgress } from "./ws/useBenchmarkProgress";
 import { useDownloadProgress } from "./ws/useDownloadProgress";
 import { ConfigBank, ConfigRow } from "./components/ConfigBank";
 import { DownloadConsole } from "./components/DownloadConsole";
@@ -67,6 +67,16 @@ function FitStatusLine({
   );
 }
 
+function toResultRow(r: RunDetail["results"][number]): ResultRow {
+  return {
+    server_id: r.server_id ?? "",
+    flag_conf: r.flag_conf ?? {},
+    prompt_processing_tps: r.prompt_processing_tps ?? null,
+    decode_tps: r.decode_tps ?? null,
+    result_status: r.result_status ?? null,
+  };
+}
+
 export function App() {
   const [hardware, setHardware] = useState<Record<string, unknown>>({});
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
@@ -75,6 +85,7 @@ export function App() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelInput, setModelInput] = useState("");
+  const [pause, setPause] = useState(true);
   const [downloaded, setDownloaded] = useState<
     Array<{ server_id: string; repo_id: string; status: string; gguf_filename?: string | null }>
   >([]);
@@ -186,6 +197,44 @@ export function App() {
     setConfigs(data.configs);
   }, [analysis, hardware]);
 
+  const [progressState, dispatch] = useReducer(progressReducer, INITIAL_STATE);
+
+  const pollTimerRef = useRef<number | null>(null);
+  const pollRun = useCallback((runId: number) => {
+    let stopped = false;
+    const tick = async () => {
+      if (stopped) return;
+      try {
+        const detail = await api.getRun(runId);
+        if (stopped) return;
+        const status = detail.status;
+        const active = status === "running" || status === "queued";
+        if (active) {
+          pollTimerRef.current = window.setTimeout(tick, 1000);
+          return;
+        }
+        dispatch({
+          type: "run_sync",
+          run_id: runId,
+          status,
+          total: detail.total,
+          results: (detail.results ?? []).map(toResultRow),
+        });
+        setRunning(false);
+        if (status && status !== "completed") {
+          setError(`run ${status}`);
+        }
+      } catch {
+        pollTimerRef.current = window.setTimeout(tick, 1000);
+      }
+    };
+    pollTimerRef.current = window.setTimeout(tick, 1000);
+  }, []);
+
+  useEffect(() => () => {
+    if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
+  }, []);
+
   const onRun = useCallback(async () => {
     if (!analysis?.repo_id || configs.length === 0) return;
     setError(null);
@@ -193,6 +242,7 @@ export function App() {
     try {
       const { run_id } = await api.startBenchmark({
         repo_id: analysis.repo_id,
+        pause,
         configs: configs.map((c) => ({
           server_id: analysis.detected_server,
           flags: c.flags,
@@ -201,21 +251,35 @@ export function App() {
         })),
       });
       dispatch({ type: "run_started", run_id, total: configs.length });
+      if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
+      pollRun(run_id);
     } catch (err) {
       setRunning(false);
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [analysis, configs]);
+  }, [analysis, configs, pause, pollRun]);
 
-  const events = useBenchmarkProgress(running);
+  const onContinue = useCallback(async () => {
+    if (progressState.runId === null) return;
+    try {
+      await api.continueRun(progressState.runId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith("409")) return;
+      setError(message);
+    }
+  }, [progressState.runId]);
 
-  const [progressState, dispatch] = useReducer(progressReducer, INITIAL_STATE);
+  const events = useBenchmarkProgress();
 
+  const processedEventsRef = useRef(0);
   useEffect(() => {
-    for (const ev of events) {
+    for (let i = processedEventsRef.current; i < events.length; i++) {
+      const ev = events[i];
       dispatch(ev);
       if (ev.type === "run_done") setRunning(false);
     }
+    processedEventsRef.current = events.length;
   }, [events]);
 
   return (
@@ -305,6 +369,12 @@ export function App() {
                       }
                     : null
                 }
+                lines={progressState.lines}
+                currentCommand={progressState.currentCommand}
+                waiting={progressState.waiting}
+                pause={pause}
+                onPauseChange={setPause}
+                onContinue={onContinue}
               />
               {error && <p style={{ color: "var(--accent)", fontSize: 12 }}>Error: {error}</p>}
 
