@@ -33,6 +33,16 @@ test("config_done for matching run_id updates progress and results", () => {
   expect(next.results[0].decode_tps).toBe(42.0);
 });
 
+test("config_done keeps result_status on the row", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const next = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    result: { status: "failed", decode_tps: null, prompt_processing_tps: null },
+  }));
+  expect(next.results[0].result_status).toBe("failed");
+  expect(next.decodeTps).toBeNull();
+});
+
 test("run_done for matching run_id stops running", () => {
   const state = progressReducer(INITIAL_STATE, ev("run_started", 1));
   const next = progressReducer(state, ev("run_done", 1));

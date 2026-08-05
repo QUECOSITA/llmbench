@@ -16,6 +16,7 @@ export interface ResultRow {
   flag_conf: Record<string, string>;
   prompt_processing_tps: number | null;
   decode_tps: number | null;
+  result_status?: string | null;
 }
 
 export interface ProgressState {
@@ -64,6 +65,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       flag_conf: {},
       prompt_processing_tps: promptTps,
       decode_tps: decodeTps,
+      result_status: event.result?.status ?? null,
     };
     const results = [...state.results];
     results[idx] = newResult;

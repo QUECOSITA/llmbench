@@ -73,6 +73,7 @@ function toResultRow(r: RunDetail["results"][number]): ResultRow {
     flag_conf: r.flag_conf ?? {},
     prompt_processing_tps: r.prompt_processing_tps ?? null,
     decode_tps: r.decode_tps ?? null,
+    result_status: r.result_status ?? null,
   };
 }
 

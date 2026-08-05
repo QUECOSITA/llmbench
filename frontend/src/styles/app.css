@@ -27,6 +27,7 @@
 }
 .results-table th { color: var(--anode); font-weight: 400; letter-spacing: .06em; }
 .row-best td { color: var(--accent); }
+.status-failed { color: var(--accent); }
 .nav-link { color: var(--anode); text-decoration: none; font-size: 11px; letter-spacing: .08em; }
 .results-link { color: var(--accent); text-decoration: none; }
 .dl-console {

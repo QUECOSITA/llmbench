@@ -49,12 +49,52 @@ def test_build_bench_command_llama_resolved_binary(tmp_path):
     assert cmd[cmd.index("-p") + 1] == "512"
 
 
+def test_build_bench_command_llama_filters_server_only_flags(tmp_path):
+    workload = tmp_path / "p.jsonl"
+    workload.write_text('{"prompt": "hello world"}\n')
+    flags = {
+        "--ctx-size": "4096",
+        "--n-gpu-layers": "999",
+        "--fit": "on",
+        "--spec-type": "mtp",
+        "--no-mmap": "\\",
+        "--jinja": "\\",
+        "-m": "Qwen3.6-27B-MTP-UD-IQ3_XXS.gguf",
+    }
+    cmd = build_bench_command("llama.cpp", "/models/x.gguf", flags,
+                              workload=str(workload), timeout_s=60)
+    assert cmd.count("-m") == 1
+    assert cmd[cmd.index("-m") + 1] == "/models/x.gguf"
+    for bad in ("--fit", "--spec-type", "--no-mmap", "--jinja", "Qwen3.6-27B-MTP-UD-IQ3_XXS.gguf"):
+        assert bad not in cmd
+
+
+def test_build_bench_command_llama_keeps_bench_relevant_flags(tmp_path):
+    workload = tmp_path / "p.jsonl"
+    workload.write_text('{"prompt": "hello world"}\n')
+    cmd = build_bench_command("llama.cpp", "/models/x.gguf",
+                              {"--ctx-size": "4096", "-fa": "on", "-ctk": "q4_0", "-ctv": "q4_0", "-t": "20"},
+                              workload=str(workload), timeout_s=60)
+    assert cmd[cmd.index("-fa") + 1] == "on"
+    assert cmd[cmd.index("-ctk") + 1] == "q4_0"
+    assert cmd[cmd.index("-ctv") + 1] == "q4_0"
+    assert cmd[cmd.index("-t") + 1] == "20"
+
+
+def test_build_bench_command_llama_generated_ctx_wins_over_readme_alias(tmp_path):
+    workload = tmp_path / "p.jsonl"
+    workload.write_text('{"prompt": "hello world"}\n')
+    cmd = build_bench_command("llama.cpp", "/models/x.gguf",
+                              {"--ctx-size": "4096", "-c": "57344"},
+                              workload=str(workload), timeout_s=60)
+    assert cmd[cmd.index("--fit-ctx") + 1] == "4096"
+    assert "-c" not in cmd
+
+
 def test_build_bench_command_llama_bare_bool_flag(tmp_path):
     cmd = build_bench_command("llama.cpp", "/models/x.gguf", {"--enforce-eager": ""},
                               workload="/nonexistent/prompts.jsonl", timeout_s=60)
-    idx = cmd.index("--enforce-eager")
-    assert idx != -1
-    assert idx == len(cmd) - 1 or cmd[idx + 1] != "--enforce-eager"
+    assert "--enforce-eager" not in cmd
     assert cmd[cmd.index("-p") + 1] == "512"
     assert cmd[-4:] == ["-r", "2", "-o", "csv"]
 

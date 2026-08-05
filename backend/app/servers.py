@@ -55,6 +55,15 @@ def detect_binaries(bin_dir: str | None = None) -> dict[str, bool]:
 
 _LLAMA_HF_FLAGS = {"-hf", "-hfr", "--hf-repo", "-hff", "--hf-file", "-hft", "--hf-token"}
 
+# llama-bench accepts a small subset of llama-server flags; anything else
+# extracted from a model card (e.g. --fit, --spec-type, --jinja, --no-mmap)
+# is server-only and must not leak into the bench invocation.
+_LLAMA_BENCH_FLAGS = {
+    "--ctx-size", "--n-gpu-layers", "--batch-size", "--threads",
+    "-fa", "--flash-attn", "-ctk", "--cache-type-k", "-ctv", "--cache-type-v",
+    "-ub", "--ubatch-size", "-d", "--n-depth",
+}
+
 
 def _llama_token_counts(workload: str) -> tuple[int, int]:
     prompt = 512
@@ -73,7 +82,10 @@ def _canonical_flags(server_id: str, flags: dict[str, str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for flag, value in flags.items():
         canon = mapping.get(flag, flag)
-        out[canon] = value
+        # Generated knobs (ctx/batch/gpu-layers) are inserted before readme
+        # aliases, so first-wins keeps them from being clobbered by e.g. -c.
+        if canon not in out:
+            out[canon] = value
     return out
 
 
@@ -95,7 +107,9 @@ def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
         cmd = [resolve_bench_binary("llama.cpp", bin_dir) or "llama-bench", "-m", model_ref]
         mapped = {"--ctx-size": "--fit-ctx", "--n-gpu-layers": "-ngl", "--batch-size": "-b", "--threads": "-t"}
         for flag, value in flags.items():
-            if flag in _LLAMA_HF_FLAGS:
+            if flag in _LLAMA_HF_FLAGS or flag == "-m":
+                continue
+            if flag not in _LLAMA_BENCH_FLAGS:
                 continue
             bench_flag = mapped.get(flag, flag)
             if value:
