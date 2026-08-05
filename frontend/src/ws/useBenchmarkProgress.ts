@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 
 export interface ProgressEvent {
-  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync";
+  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "bench_log" | "config_wait";
   run_id: number;
   index?: number;
   total?: number;
   config?: unknown;
+  kind?: "line" | "progress";
+  text?: string;
   result?: { status: string; decode_tps: number | null; prompt_processing_tps: number | null };
   status?: string;
   results?: ResultRow[];
@@ -27,6 +29,9 @@ export interface ProgressState {
   promptTps: number | null;
   decodeTps: number | null;
   results: ResultRow[];
+  lines: string[];
+  currentCommand: string;
+  waiting: boolean;
 }
 
 export const INITIAL_STATE: ProgressState = {
@@ -37,6 +42,9 @@ export const INITIAL_STATE: ProgressState = {
   promptTps: null,
   decodeTps: null,
   results: [],
+  lines: [],
+  currentCommand: "",
+  waiting: false,
 };
 
 export function progressReducer(state: ProgressState, event: ProgressEvent): ProgressState {
@@ -49,11 +57,36 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       promptTps: null,
       decodeTps: null,
       results: [],
+      lines: [],
+      currentCommand: "",
+      waiting: false,
     };
   }
 
   if (event.type === "config_start" && event.run_id === state.runId) {
-    return { ...state, index: event.index ?? state.index };
+    const cfg = event.config as { bench_command?: string[] } | undefined;
+    const command = cfg?.bench_command?.join(" ") ?? "";
+    const header = `▸ config ${(event.index ?? state.index) + 1}/${event.total ?? state.total} — $ ${command}`;
+    return {
+      ...state,
+      index: event.index ?? state.index,
+      total: event.total ?? state.total,
+      currentCommand: command,
+      lines: [...state.lines, header],
+    };
+  }
+
+  if (event.type === "bench_log" && event.run_id === state.runId) {
+    const text = event.text ?? "";
+    const lines =
+      event.kind === "progress" && state.lines.length > 0
+        ? [...state.lines.slice(0, -1), text]
+        : [...state.lines, text];
+    return { ...state, lines };
+  }
+
+  if (event.type === "config_wait" && event.run_id === state.runId) {
+    return { ...state, waiting: true };
   }
 
   if (event.type === "config_done" && event.run_id === state.runId) {
@@ -69,18 +102,21 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
     };
     const results = [...state.results];
     results[idx] = newResult;
+    const fmt = (v: number | null) => (v == null ? "—" : v.toFixed(1));
+    const resultLine = `PROMPT ${fmt(promptTps)} · DECODE ${fmt(decodeTps)} · ${event.result?.status ?? ""}`;
     return {
       ...state,
       index: idx,
       total: event.total ?? state.total,
-      promptTps: promptTps,
-      decodeTps: decodeTps,
+      promptTps,
+      decodeTps,
       results,
+      lines: [...state.lines, resultLine],
     };
   }
 
   if (event.type === "run_done" && event.run_id === state.runId) {
-    return { ...state, running: false };
+    return { ...state, running: false, waiting: false };
   }
 
   if (event.type === "run_sync" && event.run_id === state.runId) {
@@ -94,6 +130,9 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       promptTps: last?.prompt_processing_tps ?? null,
       decodeTps: last?.decode_tps ?? null,
       results,
+      lines: state.lines,
+      currentCommand: state.currentCommand,
+      waiting: false,
     };
   }
 

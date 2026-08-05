@@ -118,3 +118,74 @@ test("run_started followed by late config_done (missed run_started) still works"
   expect(state3.decodeTps).toBe(20.0);
   expect(state3.results.length).toBe(1);
 });
+
+test("run_started clears lines and waiting", () => {
+  const prev = {
+    ...INITIAL_STATE,
+    lines: ["old line"],
+    waiting: true,
+    currentCommand: "old cmd",
+  };
+  const next = progressReducer(prev, ev("run_started", 1, { total: 2 }));
+  expect(next.lines).toEqual([]);
+  expect(next.waiting).toBe(false);
+  expect(next.currentCommand).toBe("");
+});
+
+test("config_start appends a command header line", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 2 }));
+  const next = progressReducer(state, {
+    type: "config_start",
+    run_id: 1,
+    index: 0,
+    total: 2,
+    config: { bench_command: ["llama-bench", "-m", "x", "-o", "csv"] },
+  });
+  expect(next.lines).toEqual(["▸ config 1/2 — $ llama-bench -m x -o csv"]);
+  expect(next.currentCommand).toBe("llama-bench -m x -o csv");
+});
+
+test("bench_log line appends and progress replaces the last line", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const withStart = progressReducer(state, {
+    type: "config_start",
+    run_id: 1,
+    index: 0,
+    total: 1,
+    config: { bench_command: ["bench"] },
+  });
+  const withLine = progressReducer(withStart, {
+    type: "bench_log", run_id: 1, index: 0, kind: "line", text: "loading...",
+  });
+  expect(withLine.lines[withLine.lines.length - 1]).toBe("loading...");
+  const withProgress = progressReducer(withLine, {
+    type: "bench_log", run_id: 1, index: 0, kind: "progress", text: "Loading: 50%",
+  });
+  expect(withProgress.lines).toEqual(["▸ config 1/1 — $ bench", "Loading: 50%"]);
+});
+
+test("config_done appends a result line", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const next = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0 },
+  }));
+  expect(next.lines[next.lines.length - 1]).toContain("42.0");
+  expect(next.lines[next.lines.length - 1]).toContain("100.0");
+});
+
+test("config_wait sets waiting and run_done clears it", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const waiting = progressReducer(state, { type: "config_wait", run_id: 1, index: 0 });
+  expect(waiting.waiting).toBe(true);
+  const done = progressReducer(waiting, ev("run_done", 1));
+  expect(done.waiting).toBe(false);
+});
+
+test("bench_log for a different run_id is ignored", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const next = progressReducer(state, {
+    type: "bench_log", run_id: 99, index: 0, kind: "line", text: "stray",
+  });
+  expect(next.lines).toEqual([]);
+});
