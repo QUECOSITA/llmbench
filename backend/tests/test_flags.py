@@ -63,3 +63,22 @@ def test_generate_configs_unknown_server_valueerror():
         assert "unknown server" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_llama_spec_flags_in_baseline():
+    cfg = generate_configs("llama.cpp", {}, 1, 24)[0]["flags"]
+    assert cfg["--spec-type"] == "draft-mtp"
+    assert cfg["--spec-draft-n-max"] == "2"
+
+
+def test_llama_spec_type_readme_mtp_normalizes_to_draft_mtp():
+    cfg = generate_configs("llama.cpp", {"--spec-type": "mtp"}, 1, 24)[0]["flags"]
+    assert cfg["--spec-type"] == "draft-mtp"
+
+
+def test_llama_spec_type_sweeps_variants():
+    configs = generate_configs("llama.cpp", {}, 12, 24)
+    spec_types = {c["flags"]["--spec-type"] for c in configs}
+    n_max = {c["flags"]["--spec-draft-n-max"] for c in configs}
+    assert spec_types == {"draft-mtp", "none"}
+    assert n_max == {"2", "3"}
