@@ -517,8 +517,7 @@ async def continue_run(payload: dict):
 
 
 async def _run_job(s: AppState, run_id: int, configs: list[dict], pause: bool = True):
-    queue: asyncio.Queue | None = asyncio.Queue() if pause else None
-    s._continue_queue = queue
+    s._continue_queue = None
     s._active_run_id = run_id
     try:
         async with s.lock:
@@ -555,8 +554,11 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict], pause: bool = 
                         status = "aborted"
                         break
                     if pause:
+                        wait_queue: asyncio.Queue = asyncio.Queue()
+                        s._continue_queue = wait_queue
                         await broadcast(s, {"type": "config_wait", "run_id": run_id, "index": i})
-                        await _await_continue(s, queue)
+                        await _await_continue(s, wait_queue)
+                        s._continue_queue = None
                 db_mod.set_run_status(s.conn, run_id, status)
                 await broadcast(s, {"type": "run_done", "run_id": run_id, "status": status})
             except Exception:

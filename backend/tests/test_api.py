@@ -860,7 +860,8 @@ def test_pause_run_streams_and_waits_for_continue(client, monkeypatch):
     class FakeWs:
         pass
 
-    api_mod.state._ws_clients.add(FakeWs())
+    ws = FakeWs()
+    api_mod.state._ws_clients.add(ws)
     try:
         cfg = {
             "server_id": "llama.cpp",
@@ -884,7 +885,7 @@ def test_pause_run_streams_and_waits_for_continue(client, monkeypatch):
         assert any(e["type"] == "config_wait" for e in events)
         assert api_mod.state._continue_queue is None
     finally:
-        api_mod.state._ws_clients.discard(FakeWs())
+        api_mod.state._ws_clients.discard(ws)
 
 
 def test_pause_false_runs_straight_through(client, monkeypatch):
@@ -948,3 +949,48 @@ def test_pause_run_auto_advances_when_no_clients(client, monkeypatch):
 def test_continue_with_no_pending_run_409(client):
     r = client.post("/api/benchmarks/continue", json={"run_id": 1})
     assert r.status_code == 409
+
+
+def test_double_continue_does_not_skip_next_wait(client, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_create(*a, **k):
+        return FakeProcess(FAKE_BENCH.encode())
+
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    class FakeWs:
+        pass
+
+    ws = FakeWs()
+    api_mod.state._ws_clients.add(ws)
+    try:
+        cfg = {
+            "server_id": "llama.cpp",
+            "flags": {"-c": "4096"},
+            "model_id": "org/model",
+            "serving_command": "llama-server -m x",
+            "bench_command": ["llama-bench", "-m", "x"],
+        }
+        r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg, cfg], "pause": True})
+        assert r.status_code == 200
+        run_id = r.json()["run_id"]
+
+        assert _poll(lambda: any(e["type"] == "config_wait" for e in events))
+        client.post("/api/benchmarks/continue", json={"run_id": run_id})
+        client.post("/api/benchmarks/continue", json={"run_id": run_id})
+
+        assert _poll(lambda: len([e for e in events if e["type"] == "config_wait"]) >= 2)
+        time.sleep(0.5)
+        assert api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "running"
+
+        r2 = client.post("/api/benchmarks/continue", json={"run_id": run_id})
+        assert r2.status_code == 200
+        assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
+    finally:
+        api_mod.state._ws_clients.discard(ws)
