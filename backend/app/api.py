@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 KNOWN_SERVERS = ("llama.cpp", "vllm", "sglang")
 
+AUTO_ADVANCE_GRACE_S = 3.0
+
 
 def _download_command(repo_id: str, server_id: str, gguf_filename: str | None = None,
                       cache_dir: str | None = None) -> list[str]:
@@ -115,6 +117,8 @@ class AppState:
         self._download_cancelled = False
         self._prune_proc: asyncio.subprocess.Process | None = None
         self._prune_answer: asyncio.Queue[str] | None = None
+        self._continue_queue: asyncio.Queue | None = None
+        self._active_run_id: int | None = None
 
 
 state: AppState | None = None
@@ -493,14 +497,29 @@ async def start_run(payload: dict):
             raise HTTPException(409, "A benchmark is already running")
     repo_id = payload["repo_id"]
     configs = payload.get("configs", [])
+    pause = bool(payload.get("pause", True))
     run_id = db_mod.create_run(s.conn, repo_id, len(configs))
     with s._state_lock:
         s._job_active = True
-    asyncio.create_task(_run_job(s, run_id, configs))
+    asyncio.create_task(_run_job(s, run_id, configs, pause=pause))
     return {"run_id": run_id}
 
 
-async def _run_job(s: AppState, run_id: int, configs: list[dict]):
+@router.post("/benchmarks/continue")
+async def continue_run(payload: dict):
+    s = _require_state()
+    if s._continue_queue is None or s._active_run_id is None:
+        raise HTTPException(409, "No benchmark is waiting for input")
+    if payload.get("run_id") != s._active_run_id:
+        raise HTTPException(409, "Run is not waiting for input")
+    await s._continue_queue.put("continue")
+    return {"ok": True}
+
+
+async def _run_job(s: AppState, run_id: int, configs: list[dict], pause: bool = True):
+    queue: asyncio.Queue | None = asyncio.Queue() if pause else None
+    s._continue_queue = queue
+    s._active_run_id = run_id
     try:
         async with s.lock:
             try:
@@ -516,7 +535,12 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                         timeout_s=s.settings.benchmark_timeout_s,
                     )
                     s.runner = runner
-                    result = await runner.run()
+
+                    async def on_output(kind: str, text: str, _i: int = i) -> None:
+                        await broadcast(s, {"type": "bench_log", "run_id": run_id, "index": _i,
+                                            "kind": kind, "text": text})
+
+                    result = await runner.run(on_output=on_output)
                     s.runner = None
                     cfg_id = db_mod.create_config(
                         s.conn, run_id, cfg["server_id"], _coerce_model_id(cfg.get("model_id")),
@@ -530,6 +554,9 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                     if result["status"] == "aborted":
                         status = "aborted"
                         break
+                    if pause:
+                        await broadcast(s, {"type": "config_wait", "run_id": run_id, "index": i})
+                        await _await_continue(s, queue)
                 db_mod.set_run_status(s.conn, run_id, status)
                 await broadcast(s, {"type": "run_done", "run_id": run_id, "status": status})
             except Exception:
@@ -538,8 +565,27 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                 await broadcast(s, {"type": "run_done", "run_id": run_id, "status": "failed"})
     finally:
         s.runner = None
+        s._continue_queue = None
+        s._active_run_id = None
         with s._state_lock:
             s._job_active = False
+
+
+async def _await_continue(s: AppState, queue: asyncio.Queue | None) -> None:
+    if queue is None:
+        return
+    empty_for = 0.0
+    while True:
+        if not queue.empty():
+            queue.get_nowait()
+            return
+        if len(s._ws_clients) == 0:
+            empty_for += 0.2
+            if empty_for >= AUTO_ADVANCE_GRACE_S:
+                return
+        else:
+            empty_for = 0.0
+        await asyncio.sleep(0.2)
 
 
 def _coerce_model_id(raw) -> int | None:
