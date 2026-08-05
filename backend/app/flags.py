@@ -44,6 +44,8 @@ def _gpu_util_for_vram(server_id: str, vram_gb: float) -> str:
 
 _SPEC_TYPE_ALIASES = {"mtp": "draft-mtp", "draft-mtp": "draft-mtp"}
 
+_LLAMA_MODEL_FLAGS = {"-m", "-hf", "-hfr", "--hf-repo", "-hff", "--hf-file", "-hft", "--hf-token"}
+
 
 def _baseline(server_id: str, readme_flags: dict[str, str], vram_gb: float) -> dict[str, str]:
     flags: dict[str, str] = {}
@@ -101,6 +103,8 @@ def build_serving_command(server_id: str, repo_id: str, flags: dict[str, str],
             cmd += ["--hf-repo", repo_id, "--hf-file", gguf_filename]
         elif gguf_path:
             cmd += ["-m", gguf_path]
+        if gguf_filename or gguf_path:
+            flags = {k: v for k, v in flags.items() if k not in _LLAMA_MODEL_FLAGS}
         cmd += _flag_tokens(flags)
         return " ".join(cmd)
     if server_id == "vllm":

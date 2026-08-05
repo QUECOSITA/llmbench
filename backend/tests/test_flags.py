@@ -100,3 +100,16 @@ def test_llama_spec_type_sweeps_variants():
     n_max = {c["flags"]["--spec-draft-n-max"] for c in configs}
     assert spec_types == {"draft-mtp", "none"}
     assert n_max == {"2", "3"}
+
+
+def test_llama_serving_command_strips_readme_m_when_hf_file_given():
+    cmd = build_serving_command(
+        "llama.cpp", "org/model",
+        {"-m": "Qwen.gguf", "--hf-repo": "org/model", "--hf-file": "Qwen.gguf",
+         "--spec-type": "draft-mtp", "-c": "4096"},
+        gguf_filename="Qwen.gguf")
+    assert "--hf-repo org/model" in cmd
+    assert "--hf-file Qwen.gguf" in cmd
+    assert "-m" not in cmd.split()
+    assert "--spec-type draft-mtp" in cmd
+    assert "-c 4096" in cmd
