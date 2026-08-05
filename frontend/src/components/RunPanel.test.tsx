@@ -149,3 +149,22 @@ test("console is hidden when there are no lines", () => {
   );
   expect(document.querySelector(".dl-console")).toBeNull();
 });
+
+test("Enter does nothing when not waiting", () => {
+  const onContinue = vi.fn();
+  render(
+    <RunPanel
+      running
+      onRun={vi.fn()}
+      progress={null}
+      lines={["x"]}
+      currentCommand="bench"
+      waiting={false}
+      pause={true}
+      onPauseChange={vi.fn()}
+      onContinue={onContinue}
+    />,
+  );
+  fireEvent.keyDown(window, { key: "Enter" });
+  expect(onContinue).not.toHaveBeenCalled();
+});

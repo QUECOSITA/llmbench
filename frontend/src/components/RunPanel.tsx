@@ -44,7 +44,10 @@ export function RunPanel({
   useEffect(() => {
     if (!waiting) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Enter") onContinue();
+      if (e.key !== "Enter") return;
+      if (e.repeat) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      onContinue();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
