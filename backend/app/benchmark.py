@@ -81,6 +81,8 @@ class BenchmarkRunner:
 
     def abort(self) -> None:
         self._aborted.set()
+        if self._proc is not None:
+            self._proc.kill()
 
     async def run(self, on_output=None) -> dict:
         """Run the bench command, streaming decoded (kind, text) events to
@@ -106,12 +108,17 @@ class BenchmarkRunner:
             self._done.set()
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
                     "duration_s": duration, "output": f"timeout after {self.timeout_s}s"}
+        except Exception:
+            self._proc.kill()
+            await self._proc.wait()
+            self._done.set()
+            raise
         finally:
             self._proc = None
         duration = asyncio.get_event_loop().time() - start
         stdout = stdout_bytes.decode(errors="replace")
         stderr = stderr_bytes.decode(errors="replace")
-        output = stdout + ("\n" + stderr if stderr else "")
+        output = "\n".join(part for part in (stdout, stderr) if part)
         if self._aborted.is_set():
             self._done.set()
             return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,

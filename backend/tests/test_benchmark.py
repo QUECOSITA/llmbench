@@ -217,3 +217,53 @@ async def test_runner_abort(monkeypatch):
     runner.abort()
     result = await runner.run()
     assert result["status"] == "aborted"
+
+
+async def test_runner_abort_mid_run_kills_proc(monkeypatch):
+    captured = {}
+    killed_evt = asyncio.Event()
+
+    class MidReader(asyncio.StreamReader):
+        def __init__(self):
+            super().__init__()
+            self.fed = False
+
+        async def read(self, n=-1):
+            if not self.fed:
+                self.fed = True
+                return b"partial stdout\n"
+            await killed_evt.wait()
+            return b""
+
+    class MidProc(FakeProc):
+        def __init__(self):
+            self.stdout = MidReader()
+            self.stderr = _reader(b"")
+            self.returncode = 0
+
+        async def wait(self):
+            return self.returncode
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+            killed_evt.set()
+
+    async def fake_create(*a, **k):
+        p = MidProc()
+        captured["proc"] = p
+        return p
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    runner = BenchmarkRunner(server_id="llama.cpp", bench_command=["llama-bench"], timeout_s=60)
+
+    async def do_abort():
+        await asyncio.sleep(0.02)
+        runner.abort()
+
+    abort_task = asyncio.create_task(do_abort())
+    result = await runner.run()
+    await abort_task
+    assert result["status"] == "aborted"
+    assert "partial stdout" in result["output"]
+    assert captured["proc"].killed
