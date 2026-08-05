@@ -455,21 +455,25 @@ async def generate(payload: dict):
         raise HTTPException(422, str(e))
     weights = payload.get("weights_bytes")
     resolved_gguf = payload.get("gguf_path")
+    gguf_filename = os.path.basename(resolved_gguf) if resolved_gguf else None
     if resolved_gguf is None and server_id == "llama.cpp":
-        local_path, _name, _size = _resolve_download_path(s, repo_id, "llama.cpp", None)
+        local_path, name, _size = _resolve_download_path(s, repo_id, "llama.cpp", None)
         resolved_gguf = local_path
+        gguf_filename = name
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
     for cfg in configs:
         cfg["serving_command"] = build_serving_command(
             server_id, repo_id, cfg["flags"],
+            gguf_filename=gguf_filename,
             gguf_path=resolved_gguf,
         )
-        model_ref = resolved_gguf or repo_id
+        bench_ref = repo_id if gguf_filename else (resolved_gguf or repo_id)
         cfg["bench_command"] = build_bench_command(
-            server_id, model_ref, cfg["flags"],
+            server_id, bench_ref, cfg["flags"],
             workload=str(s.settings.workload_file),
             timeout_s=s.settings.benchmark_timeout_s,
             bin_dir=bin_dir,
+            gguf_filename=gguf_filename,
         )
         if weights is None:
             cfg["fit"] = None

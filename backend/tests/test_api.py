@@ -131,7 +131,11 @@ def test_generate_configs_llama_uses_gguf_path(client):
     for cfg in r.json()["configs"]:
         cmd = cfg["bench_command"]
         assert cmd[0] == "llama-bench"
-        assert cmd[cmd.index("-m") + 1] == "/tmp/models/model.Q4_K_M.gguf"
+        assert cmd[cmd.index("-hfr") + 1] == "org/model"
+        assert cmd[cmd.index("-hff") + 1] == "model.Q4_K_M.gguf"
+        assert "--hf-repo org/model" in cfg["serving_command"]
+        assert "--hf-file model.Q4_K_M.gguf" in cfg["serving_command"]
+        assert "/tmp/models/model.Q4_K_M.gguf" not in cfg["serving_command"]
 
 
 def _make_snapshot_gguf(settings, repo_id: str) -> str:
@@ -152,8 +156,11 @@ def test_generate_configs_llama_resolves_local_gguf(client):
     })
     assert r.status_code == 200
     for cfg in r.json()["configs"]:
-        assert cfg["bench_command"][cfg["bench_command"].index("-m") + 1] == gguf_path
-        assert gguf_path in cfg["serving_command"]
+        assert cfg["bench_command"][cfg["bench_command"].index("-hfr") + 1] == "org/model"
+        assert cfg["bench_command"][cfg["bench_command"].index("-hff") + 1] == "model.Q4_K_M.gguf"
+        assert "--hf-repo org/model" in cfg["serving_command"]
+        assert "--hf-file model.Q4_K_M.gguf" in cfg["serving_command"]
+        assert gguf_path not in cfg["serving_command"]
 
 
 def test_generate_configs_llama_falls_back_to_repo_id_when_no_gguf(client):
@@ -165,6 +172,7 @@ def test_generate_configs_llama_falls_back_to_repo_id_when_no_gguf(client):
     cfg = r.json()["configs"][0]
     assert cfg["bench_command"][cfg["bench_command"].index("-m") + 1] == "org/model"
     assert "--fit-ctx" in cfg["bench_command"]
+    assert "--hf-file" not in cfg["serving_command"]
 
 
 def test_start_run_rejects_duplicate(client, monkeypatch):
