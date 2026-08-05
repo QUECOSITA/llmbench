@@ -189,3 +189,36 @@ test("bench_log for a different run_id is ignored", () => {
   });
   expect(next.lines).toEqual([]);
 });
+
+test("config_start clears waiting from a previous config wait", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 2 }));
+  const waiting = progressReducer(state, { type: "config_wait", run_id: 1, index: 0 });
+  expect(waiting.waiting).toBe(true);
+  const next = progressReducer(waiting, {
+    type: "config_start",
+    run_id: 1,
+    index: 1,
+    total: 2,
+    config: { bench_command: ["llama-bench"] },
+  });
+  expect(next.waiting).toBe(false);
+});
+
+test("run_sync clears waiting", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const waiting = progressReducer(state, { type: "config_wait", run_id: 1, index: 0 });
+  const done = progressReducer(waiting, ev("run_sync", 1, { results: [] }));
+  expect(done.waiting).toBe(false);
+});
+
+test("config_start header numbering increments across configs", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 2 }));
+  const first = progressReducer(state, {
+    type: "config_start", run_id: 1, index: 0, total: 2, config: { bench_command: ["bench"] },
+  });
+  const second = progressReducer(first, {
+    type: "config_start", run_id: 1, index: 1, total: 2, config: { bench_command: ["bench"] },
+  });
+  expect(first.lines).toEqual(["▸ config 1/2 — $ bench"]);
+  expect(second.lines).toEqual(["▸ config 1/2 — $ bench", "▸ config 2/2 — $ bench"]);
+});

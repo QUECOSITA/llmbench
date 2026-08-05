@@ -72,6 +72,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       index: event.index ?? state.index,
       total: event.total ?? state.total,
       currentCommand: command,
+      waiting: false,
       lines: [...state.lines, header],
     };
   }
