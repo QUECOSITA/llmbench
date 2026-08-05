@@ -27,11 +27,14 @@ def test_resolve_bench_binary_falls_back_to_path(monkeypatch):
 def test_build_bench_command_llama(tmp_path):
     workload = tmp_path / "p.jsonl"
     workload.write_text('{"prompt": "hello world"}\n')
-    cmd = build_bench_command("llama.cpp", model_ref="/models/x.gguf",
+    cmd = build_bench_command("llama.cpp", model_ref="org/model",
                               flags={"--ctx-size": "4096", "--n-gpu-layers": "999", "-hf": "org/model"},
-                              workload=str(workload), timeout_s=60)
+                              workload=str(workload), timeout_s=60,
+                              gguf_filename="x.gguf")
     assert cmd[0] == "llama-bench"
-    assert cmd[cmd.index("-m") + 1] == "/models/x.gguf"
+    assert cmd[cmd.index("-hfr") + 1] == "org/model"
+    assert cmd[cmd.index("-hff") + 1] == "x.gguf"
+    assert "-m" not in cmd
     assert cmd[cmd.index("--fit-ctx") + 1] == "4096"
     assert "-c" not in cmd
     assert "-hf" not in cmd
@@ -57,15 +60,18 @@ def test_build_bench_command_llama_filters_server_only_flags(tmp_path):
         "--n-gpu-layers": "999",
         "--fit": "on",
         "--spec-type": "mtp",
+        "--spec-draft-n-max": "2",
         "--no-mmap": "\\",
         "--jinja": "\\",
         "-m": "Qwen3.6-27B-MTP-UD-IQ3_XXS.gguf",
     }
-    cmd = build_bench_command("llama.cpp", "/models/x.gguf", flags,
-                              workload=str(workload), timeout_s=60)
-    assert cmd.count("-m") == 1
-    assert cmd[cmd.index("-m") + 1] == "/models/x.gguf"
-    for bad in ("--fit", "--spec-type", "--no-mmap", "--jinja", "Qwen3.6-27B-MTP-UD-IQ3_XXS.gguf"):
+    cmd = build_bench_command("llama.cpp", "org/model", flags,
+                              workload=str(workload), timeout_s=60,
+                              gguf_filename="Qwen3.6-27B-MTP-UD-IQ3_XXS.gguf")
+    assert cmd[cmd.index("-hfr") + 1] == "org/model"
+    assert cmd[cmd.index("-hff") + 1] == "Qwen3.6-27B-MTP-UD-IQ3_XXS.gguf"
+    assert "-m" not in cmd
+    for bad in ("--fit", "--spec-type", "--spec-draft-n-max", "--no-mmap", "--jinja"):
         assert bad not in cmd
 
 
@@ -126,3 +132,12 @@ def test_build_bench_command_sglang_empty_max_running_requests():
     cmd = build_bench_command("sglang", "org/model", {"--max-running-requests": ""},
                               workload="/tmp/p.jsonl", timeout_s=60)
     assert cmd[cmd.index("--batch-size") + 1] == "16"
+
+
+def test_build_bench_command_llama_no_gguf_filename_uses_m(tmp_path):
+    workload = tmp_path / "p.jsonl"
+    workload.write_text('{"prompt": "hello world"}\n')
+    cmd = build_bench_command("llama.cpp", "org/model", {"--ctx-size": "4096"},
+                              workload=str(workload), timeout_s=60)
+    assert cmd[cmd.index("-m") + 1] == "org/model"
+    assert "-hfr" not in cmd

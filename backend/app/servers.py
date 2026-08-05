@@ -101,10 +101,15 @@ def _flag_tokens(flags: dict[str, str]) -> list[str]:
 
 
 def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
-                        workload: str, timeout_s: int, bin_dir: str | None = None) -> list[str]:
+                        workload: str, timeout_s: int, bin_dir: str | None = None,
+                        gguf_filename: str | None = None) -> list[str]:
     flags = _canonical_flags(server_id, flags)
     if server_id == "llama.cpp":
-        cmd = [resolve_bench_binary("llama.cpp", bin_dir) or "llama-bench", "-m", model_ref]
+        bench = resolve_bench_binary("llama.cpp", bin_dir) or "llama-bench"
+        if gguf_filename:
+            cmd = [bench, "-hfr", model_ref, "-hff", gguf_filename]
+        else:
+            cmd = [bench, "-m", model_ref]
         mapped = {"--ctx-size": "--fit-ctx", "--n-gpu-layers": "-ngl", "--batch-size": "-b", "--threads": "-t"}
         for flag, value in flags.items():
             if flag in _LLAMA_HF_FLAGS or flag == "-m":
