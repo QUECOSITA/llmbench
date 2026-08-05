@@ -85,6 +85,7 @@ export function App() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelInput, setModelInput] = useState("");
+  const [pause, setPause] = useState(true);
   const [downloaded, setDownloaded] = useState<
     Array<{ server_id: string; repo_id: string; status: string; gguf_filename?: string | null }>
   >([]);
@@ -241,6 +242,7 @@ export function App() {
     try {
       const { run_id } = await api.startBenchmark({
         repo_id: analysis.repo_id,
+        pause,
         configs: configs.map((c) => ({
           server_id: analysis.detected_server,
           flags: c.flags,
@@ -255,7 +257,18 @@ export function App() {
       setRunning(false);
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [analysis, configs, pollRun]);
+  }, [analysis, configs, pause, pollRun]);
+
+  const onContinue = useCallback(async () => {
+    if (progressState.runId === null) return;
+    try {
+      await api.continueRun(progressState.runId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith("409")) return;
+      setError(message);
+    }
+  }, [progressState.runId]);
 
   const events = useBenchmarkProgress();
 
@@ -356,6 +369,12 @@ export function App() {
                       }
                     : null
                 }
+                lines={progressState.lines}
+                currentCommand={progressState.currentCommand}
+                waiting={progressState.waiting}
+                pause={pause}
+                onPauseChange={setPause}
+                onContinue={onContinue}
               />
               {error && <p style={{ color: "var(--accent)", fontSize: 12 }}>Error: {error}</p>}
 
