@@ -121,6 +121,10 @@ export const api = {
     method: "POST",
     body: JSON.stringify(body),
   }),
+  continueRun: (runId: number) => request<{ ok: boolean }>("/benchmarks/continue", {
+    method: "POST",
+    body: JSON.stringify({ run_id: runId }),
+  }),
   listModels: () => request<{ models: DownloadedModel[] }>("/models"),
   downloadModel: (body: { repo_id: string; server_id: string; gguf_filename?: string }) =>
     request<{ ok: boolean }>("/models/download", {
