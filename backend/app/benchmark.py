@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import re
+from app.tty_stream import TtyStream
 
 
 def parse_llama_bench_csv(text: str) -> dict:
@@ -81,7 +82,9 @@ class BenchmarkRunner:
     def abort(self) -> None:
         self._aborted.set()
 
-    async def run(self) -> dict:
+    async def run(self, on_output=None) -> dict:
+        """Run the bench command, streaming decoded (kind, text) events to
+        on_output. Returns the parsed result with full output text."""
         self._done.clear()
         if self._aborted.is_set():
             self._done.set()
@@ -94,8 +97,8 @@ class BenchmarkRunner:
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout, _stderr = await asyncio.wait_for(self._proc.communicate(), timeout=self.timeout_s)
-            rc = self._proc.returncode
+            stdout_bytes, stderr_bytes, rc = await asyncio.wait_for(
+                self._collect(self._proc, on_output), timeout=self.timeout_s)
         except asyncio.TimeoutError:
             self._proc.kill()
             await self._proc.wait()
@@ -106,24 +109,55 @@ class BenchmarkRunner:
         finally:
             self._proc = None
         duration = asyncio.get_event_loop().time() - start
+        stdout = stdout_bytes.decode(errors="replace")
+        stderr = stderr_bytes.decode(errors="replace")
+        output = stdout + ("\n" + stderr if stderr else "")
         if self._aborted.is_set():
             self._done.set()
             return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,
-                    "duration_s": duration, "output": ""}
-        text = stdout.decode(errors="replace")
+                    "duration_s": duration, "output": output}
         if rc != 0:
             self._done.set()
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
-                    "duration_s": duration, "output": text[-2000:]}
+                    "duration_s": duration, "output": output}
         try:
-            parsed = PARSERS[self.server_id](text)
+            parsed = PARSERS[self.server_id](stdout)
         except Exception:
             self._done.set()
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
-                    "duration_s": duration, "output": text[-2000:]}
+                    "duration_s": duration, "output": output}
         if parsed["decode_tps"] is None:
             self._done.set()
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
-                    "duration_s": duration, "output": text[-2000:]}
+                    "duration_s": duration, "output": output}
         self._done.set()
-        return {"status": "ok", **parsed, "duration_s": duration, "output": text[-2000:]}
+        return {"status": "ok", **parsed, "duration_s": duration, "output": output}
+
+    async def _collect(self, proc, on_output) -> tuple[bytes, bytes, int]:
+        out_tty = TtyStream()
+        err_tty = TtyStream()
+        out_parts: list[bytes] = []
+        err_parts: list[bytes] = []
+
+        async def pump(stream, tty, parts):
+            while True:
+                chunk = await stream.read(4096)
+                if not chunk:
+                    break
+                if self._aborted.is_set():
+                    proc.kill()
+                    break
+                parts.append(chunk)
+                if on_output is not None:
+                    for kind, text in tty.feed(chunk):
+                        await on_output(kind, text)
+            if on_output is not None:
+                for kind, text in tty.flush():
+                    await on_output(kind, text)
+
+        await asyncio.gather(pump(proc.stdout, out_tty, out_parts),
+                             pump(proc.stderr, err_tty, err_parts))
+        rc = proc.returncode
+        if rc is None:
+            rc = await proc.wait()
+        return b"".join(out_parts), b"".join(err_parts), rc
