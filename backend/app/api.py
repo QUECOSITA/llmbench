@@ -1,8 +1,11 @@
 import asyncio
+import fcntl
 import logging
 import os
 import shutil
 import signal
+import struct
+import termios
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,7 +52,18 @@ def _prune_command(cache_dir: str | None = None) -> list[str]:
 
 
 def _open_pty() -> tuple[int, int]:
-    return os.openpty()
+    """Open a pty with a real window size.
+
+    os.openpty() defaults to a 0x0 terminal. Tools like tqdm query the size and
+    suppress their progress bars entirely when it reads 0 columns/rows, so set a
+    sane default on the slave before the child is spawned.
+    """
+    master_fd, slave_fd = os.openpty()
+    try:
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+    except OSError:
+        pass
+    return master_fd, slave_fd
 
 
 async def _spawn_pty(cmd: list[str], stdin_fd: int, stdout_fd: int, stderr_fd: int):

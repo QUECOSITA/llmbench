@@ -1,4 +1,5 @@
 import asyncio
+import os
 import signal
 import time
 
@@ -320,6 +321,26 @@ def test_download_cli_missing_400_with_manual_command(client, monkeypatch):
     assert "HF CLI not found." in detail
     assert "hf download" in detail and "org/model" in detail
     assert "--format" in detail and "human" in detail
+
+
+def test_open_pty_sets_a_terminal_window_size():
+    """tqdm reads the pty's window size and suppresses its bars entirely when
+    it is 0x0, so _open_pty must set a real size on the slave fd."""
+    import app.api as api_mod
+
+    master_fd, slave_fd = api_mod._open_pty()
+    try:
+        import fcntl
+        import struct
+        import termios
+
+        packed = fcntl.ioctl(slave_fd, termios.TIOCGWINSZ, b"\x00" * 8)
+        rows, cols = struct.unpack("HHHH", packed)[:2]
+        assert rows > 0, "pty slave has zero terminal rows"
+        assert cols > 0, "pty slave has zero terminal columns"
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
 
 
 class FakeDownloadProc:

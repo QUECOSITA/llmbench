@@ -55,3 +55,31 @@ def test_partial_utf8_buffered_across_chunks():
     s.feed("\u2713".encode("utf-8")[:1])
     events = s.feed("\u2713".encode("utf-8")[1:] + b" ok\n")
     assert events == [("line", "\u2713 ok")]
+
+
+def test_tqdm_multibar_crlf_redraws_are_progress():
+    """A pty turns tqdm's cursor-move \\n into \\r\\n, so a multi-bar redraw
+    arrives as '<bar>\\r\\n\\r<next-bar>'. The redrawn bars must be 'progress'
+    (in-place update) events, not finalized 'line' events."""
+    s = TtyStream()
+    events = s.feed(
+        b"\rFetching 5 files:  20%|####      | 1/5 [00:00<00:00, 5.0it/s]\r\n"
+        b"\rDownloading bytes: 200B\r\n\r\n"
+        b"\rReconstructing...:  20%|####      | 200B / 1.0kB\r"
+        b"\rFetching 5 files:  40%|########  | 2/5 [00:00<00:00, 5.0it/s]\r\n"
+        b"\rDownloading bytes: 400B"
+    )
+    assert events == [
+        ("progress", "Fetching 5 files:  20%|####      | 1/5 [00:00<00:00, 5.0it/s]"),
+        ("progress", "Downloading bytes: 200B"),
+        ("progress", "Reconstructing...:  20%|####      | 200B / 1.0kB"),
+        ("progress", "Fetching 5 files:  40%|########  | 2/5 [00:00<00:00, 5.0it/s]"),
+    ]
+    assert s.flush() == [("line", "Downloading bytes: 400B")]
+
+
+def test_crlf_line_followed_by_text_stays_a_line():
+    s = TtyStream()
+    events = s.feed(b"one\r\ntwo three\n")
+    assert events == [("line", "one"), ("line", "two three")]
+    assert s.flush() == []
