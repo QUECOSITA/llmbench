@@ -5,6 +5,13 @@ _KV_PER_TOKEN_BYTES = 4.0
 
 DEFAULT_ARCH = {"layers": 32, "heads": 32, "hidden": 4096, "max_ctx": 8192}
 
+# Reference parameter count DEFAULT_ARCH represents (~7B). Used to scale the KV
+# estimate when the real architecture is unknown (GGUF repos usually ship no
+# config.json): assume fp16 weights (~2 bytes/param) to back out a param count,
+# then scale DEFAULT_ARCH's KV cache by (params / 7B)**(2/3), matching how layer
+# count and hidden width grow with model size.
+_REF_PARAMS = 7_000_000_000
+
 _CTX_FLAGS = {
     "llama.cpp": "--ctx-size",
     "vllm": "--max-model-len",
@@ -15,6 +22,19 @@ _CTX_FLAGS = {
 def _kv_cache_bytes(ctx: int, layers: int, heads: int, hidden: int) -> float:
     per_head = hidden / heads
     return _KV_PER_TOKEN_BYTES * ctx * layers * heads * per_head
+
+
+def _estimate_kv_bytes(weights_bytes: float, ctx: int) -> float:
+    """Estimate KV-cache bytes for an unknown architecture.
+
+    The fixed 7B-scale default would otherwise dwarf small models (e.g. ~4 GB KV
+    vs. a 350M model's 0.7 GB of weights). Scale it with the model's own size.
+    """
+    params = max(weights_bytes / 2.0, 1.0)
+    scale = (params / _REF_PARAMS) ** (2.0 / 3.0)
+    return _kv_cache_bytes(
+        ctx, DEFAULT_ARCH["layers"], DEFAULT_ARCH["heads"], DEFAULT_ARCH["hidden"]
+    ) * scale
 
 
 def _to_int(value, default: int) -> int:
@@ -32,8 +52,11 @@ def _to_float(value, default: float) -> float:
 
 
 def fit_verdict(weights_bytes: float, vram_gb: float, ram_gb: float,
-                ctx: int = 8192, layers: int = 32, heads: int = 32, hidden: int = 4096) -> dict:
-    kv = _kv_cache_bytes(ctx, layers, heads, hidden)
+                ctx: int = DEFAULT_ARCH["max_ctx"], arch: dict | None = None) -> dict:
+    if arch is not None:
+        kv = _kv_cache_bytes(arch["max_ctx"], arch["layers"], arch["heads"], arch["hidden"])
+    else:
+        kv = _estimate_kv_bytes(weights_bytes, ctx)
     needed = weights_bytes + kv
     vram = vram_gb * _ONE_GB
     ram = ram_gb * _ONE_GB
@@ -65,12 +88,18 @@ def arch_from_config(config: dict | None) -> dict:
 
 def config_fit(server_id: str, flags: dict[str, str], weights_bytes: float,
                vram_gb: float, ram_gb: float, arch: dict | None = None) -> dict:
-    arch = arch or DEFAULT_ARCH
-    ctx = _to_int(flags.get(_CTX_FLAGS.get(server_id, "")), arch["max_ctx"])
-    layers = arch["layers"]
-    heads = arch["heads"]
-    hidden = arch["hidden"]
-    kv = _kv_cache_bytes(ctx, layers, heads, hidden)
+    if arch is not None:
+        ctx = _to_int(flags.get(_CTX_FLAGS.get(server_id, "")), arch["max_ctx"])
+        layers = arch["layers"]
+        heads = arch["heads"]
+        hidden = arch["hidden"]
+        kv = _kv_cache_bytes(ctx, layers, heads, hidden)
+    else:
+        ctx = _to_int(flags.get(_CTX_FLAGS.get(server_id, "")), DEFAULT_ARCH["max_ctx"])
+        layers = DEFAULT_ARCH["layers"]
+        heads = DEFAULT_ARCH["heads"]
+        hidden = DEFAULT_ARCH["hidden"]
+        kv = _estimate_kv_bytes(weights_bytes, ctx)
     needed = weights_bytes + kv
     weights_gb = round(weights_bytes / _ONE_GB, 1)
     kv_gb = round(kv / _ONE_GB, 1)

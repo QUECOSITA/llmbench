@@ -95,6 +95,25 @@ def test_analyze_direct_file_link_uses_single_file_size(client, httpx_mock):
     assert body["fit_verdict"]["needed_gb"] < 8.0
 
 
+def test_analyze_single_file_without_config_scales_fit_to_file(client, httpx_mock):
+    """A small GGUF repo without config.json must not inherit the 7B-scale
+    default's ~4 GB KV cache: a ~711 MB file should fit with < 2 GB needed."""
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main?recursive=true",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model-F16.gguf", "type": "file", "size": 711_483_104},
+              {"path": "model-Q4_K_M.gguf", "type": "file", "size": 229_310_176}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n")
+    r = client.post("/api/models/analyze",
+                    json={"input": "https://huggingface.co/org/model/resolve/main/model-F16.gguf"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["weights_bytes"] == 711_483_104
+    assert body["fit_verdict"]["needed_gb"] < 2.0
+
+
 def test_analyze_includes_fit_verdict_and_hardware(client, httpx_mock):
     httpx_mock.add_response(
         url="https://huggingface.co/api/models/org/model/tree/main",

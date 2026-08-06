@@ -198,9 +198,7 @@ async def analyze(payload: dict):
             arch = arch_from_config(_hf.fetch_config(repo_id))
         except Exception:
             arch = None
-    verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"],
-                          **({"ctx": arch["max_ctx"], "layers": arch["layers"],
-                              "heads": arch["heads"], "hidden": arch["hidden"]} if arch else {}))
+    verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"], arch=arch)
     return {
         "repo_id": repo_id,
         "detected_server": detected,
