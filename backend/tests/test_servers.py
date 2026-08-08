@@ -314,6 +314,16 @@ def test_parse_speed_bench_flags_equals_form():
     assert flags == ["--bench", "qualitative", "--category", "coding"]
 
 
+def test_parse_speed_bench_flags_keeps_dash_prefixed_value_attached():
+    flags = parse_speed_bench_flags("--model=-hf:org/Qwen3")
+    assert flags == ["--model=-hf:org/Qwen3"]
+
+
+def test_validate_speed_bench_flags_dash_prefixed_value_ok():
+    assert validate_speed_bench_flags(["--model=-hf:org/Qwen3"]) is None
+    assert validate_speed_bench_flags(["--bench", "throughput_1k", "--model=-hf:org/Qwen3"]) is None
+
+
 def test_validate_speed_bench_flags_valid():
     assert validate_speed_bench_flags(["--bench", "throughput_1k", "--category", "all", "--limit", "1", "--osl", "128"]) is None
 

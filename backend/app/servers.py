@@ -148,7 +148,10 @@ def parse_speed_bench_flags(text: str) -> list[str]:
     for tok in tokens:
         if tok.startswith("--") and "=" in tok:
             name, _, value = tok.partition("=")
-            out.extend([name, value])
+            if value.startswith("-"):
+                out.append(tok)
+            else:
+                out.extend([name, value])
         else:
             out.append(tok)
     return out
@@ -173,7 +176,9 @@ def validate_speed_bench_flags(flags: list[str]) -> str | None:
             return f"unexpected token '{tok}'"
         name = tok
         value = None
-        if i + 1 < len(flags) and not flags[i + 1].startswith("-"):
+        if tok.startswith("--") and "=" in tok:
+            name, _, value = tok.partition("=")
+        elif i + 1 < len(flags) and not flags[i + 1].startswith("-"):
             value = flags[i + 1]
             i += 1
         if name not in SPEED_BENCH_CLI_FLAGS:
