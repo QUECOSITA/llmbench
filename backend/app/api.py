@@ -1,8 +1,11 @@
 import asyncio
+import fcntl
 import logging
 import os
 import shutil
 import signal
+import struct
+import termios
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +21,9 @@ from app.flags import build_serving_command, generate_configs
 from app.hardware import detect_hardware
 from app.hf import HfClient, InvalidModelInput, normalize_input, parse_input
 from app.readme_parser import detect_serving_programs, extract_flags, top_serving_program
-from app.servers import build_bench_command, detect_binaries
+from app.servers import (build_bench_command, build_server_command, build_speed_bench_command,
+                         detect_binaries, is_spec_decoding_model, model_ref_from_flags,
+                         parse_serving_command, resolve_speed_bench_script)
 from app.tty_stream import TtyStream
 
 router = APIRouter(prefix="/api")
@@ -49,7 +54,18 @@ def _prune_command(cache_dir: str | None = None) -> list[str]:
 
 
 def _open_pty() -> tuple[int, int]:
-    return os.openpty()
+    """Open a pty with a real window size.
+
+    os.openpty() defaults to a 0x0 terminal. Tools like tqdm query the size and
+    suppress their progress bars entirely when it reads 0 columns/rows, so set a
+    sane default on the slave before the child is spawned.
+    """
+    master_fd, slave_fd = os.openpty()
+    try:
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+    except OSError:
+        pass
+    return master_fd, slave_fd
 
 
 async def _spawn_pty(cmd: list[str], stdin_fd: int, stdout_fd: int, stderr_fd: int):
@@ -108,7 +124,7 @@ class AppState:
         self.settings = settings
         self.conn = db_mod.init_db(settings.data_dir / "llmbench.db")
         self.lock = asyncio.Lock()
-        self.runner: benchmark_mod.BenchmarkRunner | None = None
+        self.runner: benchmark_mod.BenchmarkRunner | benchmark_mod.SpeedBenchRunner | None = None
         self._ws_clients: set[WebSocket] = set()
         self._state_lock = threading.Lock()
         self._job_active = False
@@ -184,9 +200,7 @@ async def analyze(payload: dict):
             arch = arch_from_config(_hf.fetch_config(repo_id))
         except Exception:
             arch = None
-    verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"],
-                          **({"ctx": arch["max_ctx"], "layers": arch["layers"],
-                              "heads": arch["heads"], "hidden": arch["hidden"]} if arch else {}))
+    verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"], arch=arch)
     return {
         "repo_id": repo_id,
         "detected_server": detected,
@@ -465,20 +479,38 @@ async def generate(payload: dict):
         resolved_gguf = local_path
         gguf_filename = name
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
+    uses_speed_bench = (
+        server_id == "llama.cpp"
+        and is_spec_decoding_model(repo_id, gguf_filename, payload.get("readme_flags", {}))
+    )
     for cfg in configs:
         cfg["serving_command"] = build_serving_command(
             server_id, repo_id, cfg["flags"],
             gguf_filename=gguf_filename,
             gguf_path=resolved_gguf,
         )
-        bench_ref = repo_id if gguf_filename else (resolved_gguf or repo_id)
-        cfg["bench_command"] = build_bench_command(
-            server_id, bench_ref, cfg["flags"],
-            workload=str(s.settings.workload_file),
-            timeout_s=s.settings.benchmark_timeout_s,
-            bin_dir=bin_dir,
-            gguf_filename=gguf_filename,
-        )
+        cfg["bench_tool"] = "speed-bench" if uses_speed_bench else "llama-bench"
+        if uses_speed_bench:
+            script = resolve_speed_bench_script(bin_dir, configured=s.settings.speed_bench_script)
+            if script:
+                cfg["bench_command"] = build_speed_bench_command(
+                    script, osl=s.settings.speed_bench_osl,
+                    output=str(s.settings.data_dir / "speed-bench.json"))
+            else:
+                cfg["bench_command"] = []
+                cfg["bench_error"] = (
+                    "speed-bench is not available for this model: could not locate speed_bench.py "
+                    "next to llama-server. Set LLMBENCH_SPEED_BENCH_SCRIPT or install llama.cpp "
+                    "with the speed-bench tool.")
+        else:
+            bench_ref = repo_id if gguf_filename else (resolved_gguf or repo_id)
+            cfg["bench_command"] = build_bench_command(
+                server_id, bench_ref, cfg["flags"],
+                workload=str(s.settings.workload_file),
+                timeout_s=s.settings.benchmark_timeout_s,
+                bin_dir=bin_dir,
+                gguf_filename=gguf_filename,
+            )
         if weights is None:
             cfg["fit"] = None
         else:
@@ -489,6 +521,42 @@ async def generate(payload: dict):
     return {"configs": configs}
 
 
+def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
+    """Re-derive the executed commands from the user's edited serving command so
+    edits to the config bank actually take effect at run time. speed-bench runs
+    need both a server command (llama-server) and a client command
+    (speed_bench.py); llama-bench/vllm/sglang keep the single bench command."""
+    if not cfg.get("server_id"):
+        return
+    if cfg.get("bench_tool") == "speed-bench":
+        bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
+        cfg["server_command"] = build_server_command(cfg.get("serving_command", ""), bin_dir)
+        script = resolve_speed_bench_script(bin_dir, configured=s.settings.speed_bench_script)
+        if not script:
+            cfg["bench_command"] = []
+            cfg["bench_error"] = (
+                "speed-bench is not available: could not locate speed_bench.py next to llama-server. "
+                "Set LLMBENCH_SPEED_BENCH_SCRIPT or install llama.cpp with the speed-bench tool.")
+            return
+        cfg["bench_command"] = build_speed_bench_command(
+            script, osl=s.settings.speed_bench_osl,
+            output=str(s.settings.data_dir / "speed-bench.json"))
+        return
+    flags = parse_serving_command(cfg.get("server_id", ""), cfg.get("serving_command", ""))
+    if not flags:
+        flags = cfg.get("flags") or {}
+    if not flags:
+        return
+    model_ref, gguf_filename = model_ref_from_flags(cfg["server_id"], flags, repo_id)
+    cfg["bench_command"] = build_bench_command(
+        cfg["server_id"], model_ref, flags,
+        workload=str(s.settings.workload_file),
+        timeout_s=s.settings.benchmark_timeout_s,
+        bin_dir=str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None,
+        gguf_filename=gguf_filename,
+    )
+
+
 @router.post("/benchmarks")
 async def start_run(payload: dict):
     s = _require_state()
@@ -497,6 +565,10 @@ async def start_run(payload: dict):
             raise HTTPException(409, "A benchmark is already running")
     repo_id = payload["repo_id"]
     configs = payload.get("configs", [])
+    for cfg in configs:
+        _rebuild_bench_command(s, cfg, repo_id)
+        if cfg.get("bench_error"):
+            raise HTTPException(422, cfg["bench_error"])
     pause = bool(payload.get("pause", True))
     run_id = db_mod.create_run(s.conn, repo_id, len(configs))
     with s._state_lock:
@@ -528,11 +600,20 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict], pause: bool = 
                 for i, cfg in enumerate(configs):
                     await broadcast(s, {"type": "config_start", "run_id": run_id, "index": i,
                                         "total": len(configs), "config": cfg})
-                    runner = benchmark_mod.BenchmarkRunner(
-                        server_id=cfg["server_id"],
-                        bench_command=cfg["bench_command"],
-                        timeout_s=s.settings.benchmark_timeout_s,
-                    )
+                    if cfg.get("bench_tool") == "speed-bench":
+                        runner = benchmark_mod.SpeedBenchRunner(
+                            server_command=cfg.get("server_command", []),
+                            bench_command=cfg.get("bench_command", []),
+                            timeout_s=s.settings.speed_bench_timeout_s,
+                            startup_timeout_s=s.settings.speed_bench_timeout_s,
+                            output_dir=s.settings.data_dir,
+                        )
+                    else:
+                        runner = benchmark_mod.BenchmarkRunner(
+                            server_id=cfg["server_id"],
+                            bench_command=cfg["bench_command"],
+                            timeout_s=s.settings.benchmark_timeout_s,
+                        )
                     s.runner = runner
 
                     async def on_output(kind: str, text: str, _i: int = i) -> None:

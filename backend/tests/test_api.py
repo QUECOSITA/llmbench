@@ -1059,3 +1059,99 @@ def test_double_continue_does_not_skip_next_wait(client, monkeypatch):
         assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
     finally:
         api_mod.state._ws_clients.discard(ws)
+
+
+import sys
+
+
+def test_generate_configs_llama_spec_readme_uses_speed_bench(tmp_path):
+    bin_dir = tmp_path / "llama" / "build" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    (bin_dir / "llama-bench").write_text("#!/bin/sh\n")
+    script = tmp_path / "llama" / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("#!/usr/bin/env python3\n")
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl",
+                        llama_cpp_bin_dir=bin_dir)
+    (tmp_path / "prompts.jsonl").write_text("{\"prompt\": \"hi\"}\n")
+    with TestClient(create_app(settings)) as c:
+        r = c.post("/api/configs/generate", json={
+            "server_id": "llama.cpp",
+            "repo_id": "org/Qwen3-MTP",
+            "n": 1,
+            "readme_flags": {"--spec-type": "draft-mtp"},
+        })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["bench_tool"] == "speed-bench"
+    cmd = cfg["bench_command"]
+    assert cmd[0] == sys.executable
+    assert cmd[1] == str(script)
+    assert cmd[cmd.index("--limit") + 1] == "1"
+    assert cmd[cmd.index("--category") + 1] == "all"
+    assert cmd[cmd.index("--bench") + 1] == "throughput_1k"
+    assert "draft-mtp" in cfg["serving_command"]
+
+
+def test_generate_configs_llama_non_spec_uses_llama_bench(client):
+    r = client.post("/api/configs/generate", json={
+        "server_id": "llama.cpp",
+        "repo_id": "org/plain-model",
+        "n": 1,
+        "readme_flags": {},
+    })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["bench_tool"] == "llama-bench"
+    assert cfg["bench_command"][0] == "llama-bench"
+
+
+def test_rebuild_bench_command_speed_bench(tmp_path):
+    from app.api import _rebuild_bench_command, AppState
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    script = tmp_path / "speed_bench.py"
+    script.write_text("x")
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl",
+                        llama_cpp_bin_dir=bin_dir, speed_bench_script=script)
+    (tmp_path / "prompts.jsonl").write_text("x\n")
+    s = AppState(settings)
+    cfg = {
+        "server_id": "llama.cpp",
+        "bench_tool": "speed-bench",
+        "serving_command": "llama-server -m /models/x.gguf --spec-type draft-mtp --port 9999 --host 0.0.0.0",
+        "flags": {},
+        "bench_command": [],
+    }
+    _rebuild_bench_command(s, cfg, "org/model")
+    assert cfg["server_command"][0] == str(bin_dir / "llama-server")
+    assert "--port" not in cfg["server_command"]
+    assert "--host" not in cfg["server_command"]
+    assert "--spec-type" in cfg["server_command"]
+    assert cfg["bench_command"][0] == sys.executable
+    assert cfg["bench_command"][1] == str(script)
+    assert "bench_error" not in cfg
+
+
+def test_start_run_speed_bench_unavailable_rejected(client, monkeypatch):
+    monkeypatch.setattr("app.api.resolve_speed_bench_script", lambda *a, **k: None)
+    config = {
+        "server_id": "llama.cpp",
+        "bench_tool": "speed-bench",
+        "serving_command": "llama-server -m /models/x.gguf --spec-type draft-mtp",
+        "flags": {},
+        "bench_command": [],
+    }
+    r = client.post("/api/benchmarks", json={
+        "repo_id": "org/model",
+        "configs": [config],
+        "pause": False,
+    })
+    assert r.status_code == 422
+    assert "speed-bench" in r.json()["detail"]
