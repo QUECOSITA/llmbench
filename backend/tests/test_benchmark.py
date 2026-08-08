@@ -267,3 +267,147 @@ async def test_runner_abort_mid_run_kills_proc(monkeypatch):
     assert result["status"] == "aborted"
     assert "partial stdout" in result["output"]
     assert captured["proc"].killed
+
+
+import json
+
+import app.benchmark as bench_mod
+from app.benchmark import parse_speed_bench_json, SpeedBenchRunner
+
+SPEED_JSON = json.dumps({
+    "summary": [
+        {"category": "high_entropy", "requests": 1, "avg_prompt_t_s": 900.0, "avg_pred_t_s": 50.0},
+        {"category": "overall", "requests": 3, "avg_prompt_t_s": 1000.0, "avg_pred_t_s": 88.8},
+    ],
+})
+
+
+def test_parse_speed_bench_json_overall():
+    r = parse_speed_bench_json(SPEED_JSON)
+    assert r["prompt_processing_tps"] == 1000.0
+    assert r["decode_tps"] == 88.8
+
+
+def test_parse_speed_bench_json_no_overall():
+    r = parse_speed_bench_json(json.dumps({"summary": [{"category": "high_entropy"}]}))
+    assert r["prompt_processing_tps"] is None
+    assert r["decode_tps"] is None
+
+
+def test_parse_speed_bench_json_invalid():
+    r = parse_speed_bench_json("not json")
+    assert r["prompt_processing_tps"] is None
+    assert r["decode_tps"] is None
+
+
+def test_substitute_speed_bench_command():
+    cmd = bench_mod._substitute_speed_bench_command(
+        ["python", "s.py", "--url", "localhost:8080", "--limit", "1", "--output", "out.json"],
+        port=9999, output_path="/tmp/real.json")
+    assert cmd[cmd.index("--url") + 1] == "localhost:9999"
+    assert cmd[cmd.index("--output") + 1] == "/tmp/real.json"
+    assert cmd[cmd.index("--limit") + 1] == "1"
+
+
+def test_free_port_returns_int():
+    assert isinstance(bench_mod._free_port(), int)
+
+
+class _FakeTempfile:
+    def __init__(self, path):
+        self._path = str(path)
+
+    def mktemp(self, **kwargs):
+        return self._path
+
+
+async def test_speed_bench_runner_ok(monkeypatch, tmp_path):
+    seen = []
+    procs = []
+    spawned = []
+    spawn_count = {"n": 0}
+
+    def new_proc(out=b"", rc=0):
+        p = FakeProc(out, rc=rc)
+        procs.append(p)
+        return p
+
+    async def fake_create(*a, **k):
+        spawned.append(a)
+        spawn_count["n"] += 1
+        if spawn_count["n"] == 1:
+            p = new_proc(out=b"")
+            p.returncode = None  # server still running until torn down
+            return p
+        return new_proc(out=b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+    async def fake_health(*a, **k):
+        return True
+
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+    out_path = tmp_path / "out.json"
+    out_path.write_text(SPEED_JSON)
+    monkeypatch.setattr(bench_mod, "tempfile", _FakeTempfile(out_path))
+
+    runner = SpeedBenchRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf", "--spec-type", "draft-mtp"],
+        bench_command=["python", "speed_bench.py", "--url", "localhost:8080", "--limit", "1",
+                       "--category", "all", "--bench", "throughput_1k", "--output", "x.json"],
+        timeout_s=60, startup_timeout_s=60, output_dir=tmp_path)
+
+    async def on_output(kind, text):
+        seen.append((kind, text))
+
+    result = await runner.run(on_output=on_output)
+    assert result["status"] == "ok"
+    assert result["decode_tps"] == 88.8
+    assert result["prompt_processing_tps"] == 1000.0
+    assert len(spawned) == 2
+    assert spawned[0][0] == "llama-server"
+    assert "--port" in spawned[0] and "9123" in spawned[0]
+    assert spawned[1][0] == "python"
+    client_cmd = spawned[1]
+    assert client_cmd[client_cmd.index("--url") + 1] == "localhost:9123"
+    assert client_cmd[client_cmd.index("--output") + 1] == str(out_path)
+    assert procs[0].killed is True
+
+
+async def test_speed_bench_runner_server_not_ready(monkeypatch, tmp_path):
+    async def fake_create(*a, **k):
+        return FakeProc(b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+    async def fake_health(*a, **k):
+        return False
+
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+
+    runner = SpeedBenchRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf"],
+        bench_command=["python", "speed_bench.py", "--url", "localhost:8080"],
+        timeout_s=60, startup_timeout_s=5, output_dir=tmp_path)
+    result = await runner.run()
+    assert result["status"] == "failed"
+    assert "not become ready" in result["output"]
+
+
+async def test_speed_bench_runner_client_fails(monkeypatch, tmp_path):
+    async def fake_create(*a, **k):
+        return FakeProc(b"boom", rc=1)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+    async def fake_health(*a, **k):
+        return True
+
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+
+    runner = SpeedBenchRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf"],
+        bench_command=["python", "speed_bench.py", "--url", "localhost:8080"],
+        timeout_s=60, startup_timeout_s=5, output_dir=tmp_path)
+    result = await runner.run()
+    assert result["status"] == "failed"

@@ -1,4 +1,5 @@
 import asyncio
+import os
 import signal
 import time
 
@@ -58,7 +59,7 @@ def client(tmp_path):
 def test_servers_endpoint(client):
     r = client.get("/api/servers")
     assert r.status_code == 200
-    assert set(r.json()["readiness"]) == {"llama.cpp", "vllm", "sglang"}
+    assert set(r.json()["readiness"]) == {"llama.cpp", "vllm", "sglang", "speed-bench"}
 
 
 def test_analyze_normalizes_and_reads_readme(client, httpx_mock):
@@ -92,6 +93,25 @@ def test_analyze_direct_file_link_uses_single_file_size(client, httpx_mock):
     assert body["weights_bytes"] == 4_000_000_000
     assert [g["path"] for g in body["gguf_files"]] == ["model.Q4_K_M.gguf"]
     assert body["fit_verdict"]["needed_gb"] < 8.0
+
+
+def test_analyze_single_file_without_config_scales_fit_to_file(client, httpx_mock):
+    """A small GGUF repo without config.json must not inherit the 7B-scale
+    default's ~4 GB KV cache: a ~711 MB file should fit with < 2 GB needed."""
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main?recursive=true",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model-F16.gguf", "type": "file", "size": 711_483_104},
+              {"path": "model-Q4_K_M.gguf", "type": "file", "size": 229_310_176}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n")
+    r = client.post("/api/models/analyze",
+                    json={"input": "https://huggingface.co/org/model/resolve/main/model-F16.gguf"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["weights_bytes"] == 711_483_104
+    assert body["fit_verdict"]["needed_gb"] < 2.0
 
 
 def test_analyze_includes_fit_verdict_and_hardware(client, httpx_mock):
@@ -305,6 +325,31 @@ def test_full_run_completes_and_persists(client, monkeypatch):
     assert detail["total"] == 1
 
 
+def test_run_executes_rebuilt_bench_command_from_edited_serving_command(client, monkeypatch):
+    captured = {}
+
+    async def fake_create(*a, **k):
+        captured["argv"] = list(a)
+        return FakeProcess(FAKE_BENCH.encode())
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    cfg = {
+        "server_id": "llama.cpp",
+        "flags": {"--ctx-size": "4096"},
+        "model_id": "org/model",
+        "serving_command": "llama-server -m x --ctx-size 54000",
+        "bench_command": ["llama-bench", "-m", "x", "--fit-ctx", "4096"],
+    }
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg], "pause": False})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+    assert _poll(lambda: bool(client.get(f"/api/benchmarks/{run_id}").json()["results"]))
+    assert "--fit-ctx" in captured["argv"]
+    assert captured["argv"][captured["argv"].index("--fit-ctx") + 1] == "54000"
+    assert "4096" not in captured["argv"]
+
+
 def test_download_missing_fields_422(client):
     assert client.post("/api/models/download", json={}).status_code == 422
     assert client.post("/api/models/download", json={"repo_id": "org/model"}).status_code == 422
@@ -320,6 +365,26 @@ def test_download_cli_missing_400_with_manual_command(client, monkeypatch):
     assert "HF CLI not found." in detail
     assert "hf download" in detail and "org/model" in detail
     assert "--format" in detail and "human" in detail
+
+
+def test_open_pty_sets_a_terminal_window_size():
+    """tqdm reads the pty's window size and suppresses its bars entirely when
+    it is 0x0, so _open_pty must set a real size on the slave fd."""
+    import app.api as api_mod
+
+    master_fd, slave_fd = api_mod._open_pty()
+    try:
+        import fcntl
+        import struct
+        import termios
+
+        packed = fcntl.ioctl(slave_fd, termios.TIOCGWINSZ, b"\x00" * 8)
+        rows, cols = struct.unpack("HHHH", packed)[:2]
+        assert rows > 0, "pty slave has zero terminal rows"
+        assert cols > 0, "pty slave has zero terminal columns"
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
 
 
 class FakeDownloadProc:
