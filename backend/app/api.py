@@ -545,9 +545,15 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
             cfg["bench_command"] = []
             cfg["bench_error"] = _speed_bench_error(script)
             return
+        flags_text = cfg.get("bench_flags") or speed_bench_default_flags(s.settings.speed_bench_osl)
+        flags = parse_speed_bench_flags(flags_text)
+        error = validate_speed_bench_flags(flags)
+        if error:
+            cfg["bench_command"] = []
+            cfg["bench_error"] = error
+            return
         cfg["bench_command"] = build_speed_bench_command(
-            script, osl=s.settings.speed_bench_osl,
-            output=str(s.settings.data_dir / "speed-bench.json"))
+            script, flags, output=str(s.settings.data_dir / "speed-bench.json"))
         return
     flags = parse_serving_command(cfg.get("server_id", ""), cfg.get("serving_command", ""))
     if not flags:
