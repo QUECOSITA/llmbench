@@ -16,6 +16,11 @@ dev = [
     "pytest-asyncio>=0.23",
     "pytest-httpx>=0.30",
 ]
+speed-bench = [
+    "datasets>=2.19",
+    "requests>=2.31",
+    "tqdm>=4.66",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
