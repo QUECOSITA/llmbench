@@ -1088,13 +1088,41 @@ def test_generate_configs_llama_spec_readme_uses_speed_bench(tmp_path, monkeypat
     assert r.status_code == 200
     cfg = r.json()["configs"][0]
     assert cfg["bench_tool"] == "speed-bench"
+    assert cfg["bench_flags"] == "--bench throughput_1k --category all --limit 1 --osl 128"
     cmd = cfg["bench_command"]
     assert cmd[0] == sys.executable
     assert cmd[1] == str(script)
     assert cmd[cmd.index("--limit") + 1] == "1"
     assert cmd[cmd.index("--category") + 1] == "all"
     assert cmd[cmd.index("--bench") + 1] == "throughput_1k"
+    assert cmd[cmd.index("--osl") + 1] == "128"
     assert "draft-mtp" in cfg["serving_command"]
+
+
+def test_generate_speed_bench_uses_configured_osl(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: True)
+    bin_dir = tmp_path / "llama" / "build" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    script = tmp_path / "llama" / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("#!/usr/bin/env python3\n")
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl",
+                        llama_cpp_bin_dir=bin_dir, speed_bench_osl=256)
+    (tmp_path / "prompts.jsonl").write_text("{\"prompt\": \"hi\"}\n")
+    with TestClient(create_app(settings)) as c:
+        r = c.post("/api/configs/generate", json={
+            "server_id": "llama.cpp",
+            "repo_id": "org/Qwen3-MTP",
+            "n": 1,
+            "readme_flags": {"--spec-type": "draft-mtp"},
+        })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["bench_flags"] == "--bench throughput_1k --category all --limit 1 --osl 256"
+    assert cfg["bench_command"][cfg["bench_command"].index("--osl") + 1] == "256"
 
 
 def test_generate_configs_llama_non_spec_uses_llama_bench(client):

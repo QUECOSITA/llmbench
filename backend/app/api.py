@@ -24,7 +24,8 @@ from app.readme_parser import detect_serving_programs, extract_flags, top_servin
 from app.servers import (build_bench_command, build_server_command, build_speed_bench_command,
                          detect_binaries, is_spec_decoding_model, model_ref_from_flags,
                          parse_serving_command, resolve_speed_bench_script,
-                         speed_bench_deps_available)
+                         speed_bench_deps_available, parse_speed_bench_flags,
+                         speed_bench_default_flags, validate_speed_bench_flags)
 from app.tty_stream import TtyStream
 
 router = APIRouter(prefix="/api")
@@ -494,8 +495,10 @@ async def generate(payload: dict):
         if uses_speed_bench:
             script = resolve_speed_bench_script(bin_dir, configured=s.settings.speed_bench_script)
             if script and speed_bench_deps_available():
+                flags_text = speed_bench_default_flags(s.settings.speed_bench_osl)
+                cfg["bench_flags"] = flags_text
                 cfg["bench_command"] = build_speed_bench_command(
-                    script, osl=s.settings.speed_bench_osl,
+                    script, parse_speed_bench_flags(flags_text),
                     output=str(s.settings.data_dir / "speed-bench.json"))
             else:
                 cfg["bench_command"] = []
