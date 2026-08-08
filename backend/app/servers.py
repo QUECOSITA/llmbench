@@ -1,4 +1,5 @@
 import shutil
+import sys
 from pathlib import Path
 
 SERVERS = {
@@ -50,6 +51,94 @@ def detect_binaries(bin_dir: str | None = None) -> dict[str, bool]:
     out: dict[str, bool] = {}
     for server_id in SERVERS:
         out[server_id] = resolve_bench_binary(server_id, bin_dir) is not None
+    out["speed-bench"] = resolve_speed_bench_script(bin_dir) is not None
+    return out
+
+
+_SPEC_DECODING_FLAGS = {
+    "--spec-type", "-md", "--model-draft", "--model-mtp", "-mtmd",
+    "--draft-max", "--draft-min", "--draft-p-min",
+    "--spec-draft-n-max", "--spec-draft-n-min", "--spec-raw-logits",
+    "--spec-heuristics", "--spec-heuristic-acc", "--spec-heuristic-min-tokens",
+}
+
+
+def is_spec_decoding_model(repo_id: str, gguf_filename: str | None = None,
+                           readme_flags: dict[str, str] | None = None) -> bool:
+    """True when a model should be benchmarked with speed-bench: the repo/GGUF
+    name contains MTP, or the README proposes a speculative-decoding flag."""
+    if "mtp" in f"{repo_id} {gguf_filename or ''}".lower():
+        return True
+    return any(flag in _SPEC_DECODING_FLAGS for flag in (readme_flags or {}))
+
+
+def resolve_serving_binary(server_id: str, bin_dir: str | None = None) -> str | None:
+    meta = SERVERS[server_id]
+    if server_id == "llama.cpp" and bin_dir:
+        candidate = Path(bin_dir) / "llama-server"
+        if candidate.is_file():
+            return str(candidate)
+    for b in meta["serving_binaries"]:
+        found = shutil.which(b)
+        if found:
+            return found
+    return None
+
+
+def resolve_speed_bench_script(bin_dir: str | None = None,
+                               configured: str | Path | None = None) -> str | None:
+    """Locate speed_bench.py. Honors an explicitly configured path, otherwise
+    auto-discovers it in the llama.cpp source tree that contains the resolved
+    llama-server binary."""
+    if configured:
+        p = Path(configured)
+        if p.is_file():
+            return str(p)
+    server = resolve_serving_binary("llama.cpp", bin_dir)
+    if not server:
+        return None
+    bin_path = Path(server).parent
+    for parent in [bin_path, *bin_path.parents[:3]]:
+        candidate = parent / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def build_speed_bench_command(script: str, osl: int = 128, url: str = "localhost:8080",
+                              output: str = "speed-bench.json") -> list[str]:
+    return [
+        sys.executable, script,
+        "--url", url,
+        "--bench", "throughput_1k",
+        "--category", "all",
+        "--limit", "1",
+        "--osl", str(osl),
+        "--output", output,
+    ]
+
+
+def build_server_command(serving_command: str, bin_dir: str | None = None) -> list[str]:
+    """Turn the editable llama-server serving command into an executable token
+    list: swap in the resolved binary and drop --port/--host (the runner injects
+    its own). -p (--parallel) is left alone."""
+    import shlex
+    tokens = shlex.split(serving_command)
+    if not tokens:
+        return []
+    resolved = resolve_serving_binary("llama.cpp", bin_dir)
+    if resolved:
+        tokens[0] = resolved
+    out: list[str] = []
+    skip_next = False
+    for tok in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if tok in ("--port", "--host"):
+            skip_next = True
+            continue
+        out.append(tok)
     return out
 
 
@@ -98,6 +187,47 @@ def _flag_tokens(flags: dict[str, str]) -> list[str]:
             tokens.append(flag)
             tokens.append(value)
     return tokens
+
+
+def parse_serving_command(server_id: str, command: str) -> dict[str, str]:
+    """Extract flag/value pairs from an edited serving command. Bare boolean
+    flags parse to value "", and positional tokens (binary names, repo ids)
+    are ignored. The result can be fed back into build_bench_command."""
+    import shlex
+    tokens = shlex.split(command)
+    flags: dict[str, str] = {}
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.startswith("-"):
+            if i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
+                flags[tok] = tokens[i + 1]
+                i += 2
+            else:
+                flags[tok] = ""
+                i += 1
+        else:
+            i += 1
+    return flags
+
+
+def model_ref_from_flags(server_id: str, flags: dict[str, str],
+                         fallback_repo: str) -> tuple[str, str | None]:
+    """Resolve the model reference (and optional gguf filename) used by
+    build_bench_command from flags parsed out of a serving command."""
+    if server_id == "llama.cpp":
+        repo = flags.get("--hf-repo") or flags.get("-hfr")
+        file = flags.get("--hf-file") or flags.get("-hff")
+        if file:
+            return (repo or fallback_repo), file
+        model = flags.get("-m")
+        if model:
+            return model, None
+        return fallback_repo, None
+    if server_id == "sglang":
+        ref = flags.get("--model-path") or fallback_repo
+        return ref, None
+    return fallback_repo, None
 
 
 def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
