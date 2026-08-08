@@ -45,3 +45,12 @@ test("renders no badge when config has no fit data", () => {
   render(<ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={configs} />);
   expect(screen.queryByText(/FITS VRAM|NO FIT|OFFLOADED|CPU ONLY/)).not.toBeInTheDocument();
 });
+
+test("renders a SPEED-BENCH badge for speed-bench configs", () => {
+  const configs: ConfigRow[] = [
+    { flags: {}, serving_command: "llama-server --spec-type draft-mtp", bench_tool: "speed-bench" },
+    { flags: {}, serving_command: "llama-server -m x", bench_tool: "llama-bench" },
+  ];
+  const { container } = render(<ConfigBank n={2} onNChange={() => {}} onGenerate={() => {}} configs={configs} />);
+  expect(container.textContent).toContain("SPEED-BENCH");
+});

@@ -46,6 +46,7 @@ const server = createServer((req, res) => {
       configs: [{
         flags: { "--max-model-len": "8192" },
         serving_command: "vllm serve org/model --max-model-len 8192",
+        bench_tool: "llama-bench",
         fit: { stage: "gpu", label: "FITS VRAM", fits_vram: true, offloaded: false, needed_gb: 3.8, kv_gb: 4.3, weights_gb: 4 },
       }],
     });

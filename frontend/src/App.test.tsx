@@ -430,6 +430,32 @@ test("cancel flow: CANCEL shows prune prompt, answering y completes", async () =
   expect(span.getByRole("button", { name: /^download$/i })).toBeInTheDocument();
 });
 
+test("edited config serving_command is sent to the benchmark", async () => {
+  const { api } = await import("./api/client");
+  const startSpy = vi.spyOn(api, "startBenchmark").mockResolvedValue({ run_id: 1 });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+  fireEvent.click(screen.getByText(/generate/i));
+  await screen.findByText(/python serve/i);
+
+  const textarea = screen.getByDisplayValue("python serve.py");
+  fireEvent.change(textarea, { target: { value: "python serve.py --ctx-size 54000" } });
+
+  fireEvent.click(screen.getByText(/run benchmark/i));
+  await waitFor(() => expect(startSpy).toHaveBeenCalled());
+  const body = startSpy.mock.calls[0][0] as { configs: Array<{ serving_command: string }> };
+  expect(body.configs[0].serving_command).toBe("python serve.py --ctx-size 54000");
+});
+
 test("enter-to-continue: waiting prompt continues the run", async () => {
   const { api } = await import("./api/client");
   const { useBenchmarkProgress } = await import("./ws/useBenchmarkProgress");
@@ -465,4 +491,31 @@ test("enter-to-continue: waiting prompt continues the run", async () => {
   expect(await screen.findByText(/press enter to continue/i)).toBeInTheDocument();
   fireEvent.keyDown(window, { key: "Enter" });
   await waitFor(() => expect(continueSpy).toHaveBeenCalledWith(1));
+});
+
+test("run payload round-trips bench_tool", async () => {
+  const { api } = await import("./api/client");
+  const startSpy = vi.spyOn(api, "startBenchmark").mockResolvedValue({ run_id: 1 });
+  vi.mocked(api.generateConfigs).mockResolvedValue({
+    configs: [
+      { flags: {}, serving_command: "llama-server --spec-type draft-mtp", bench_command: [], bench_tool: "speed-bench", fit: null },
+    ],
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+  fireEvent.click(screen.getByText(/generate/i));
+  await screen.findByText(/llama-server --spec-type/i);
+  fireEvent.click(screen.getByText(/run benchmark/i));
+  await waitFor(() => expect(startSpy).toHaveBeenCalled());
+  const body = startSpy.mock.calls[0][0] as { configs: Array<{ bench_tool?: string }> };
+  expect(body.configs[0].bench_tool).toBe("speed-bench");
 });

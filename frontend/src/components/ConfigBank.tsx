@@ -4,6 +4,7 @@ export interface ConfigRow {
   flags: Record<string, string>;
   serving_command: string;
   bench_command?: string[];
+  bench_tool?: string;
   fit?: ConfigFit | null;
 }
 
@@ -40,6 +41,20 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, onEdit }: Props)
             rows={2}
             style={{ flex: 1, fontFamily: "var(--font-mono)" }}
           />
+          {cfg.bench_tool === "speed-bench" && (
+            <span
+              style={{
+                fontSize: 10,
+                letterSpacing: 1,
+                color: "var(--accent)",
+                border: "1px solid var(--hairline)",
+                padding: "2px 6px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              SPEED-BENCH
+            </span>
+          )}
           {cfg.fit && <FitBadge fit={cfg.fit} />}
         </div>
       ))}

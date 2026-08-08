@@ -111,6 +111,7 @@ export const api = {
         flags: Record<string, string>;
         serving_command: string;
         bench_command: string[];
+        bench_tool?: string;
         fit: ConfigFit | null;
       }>;
     }>("/configs/generate", {

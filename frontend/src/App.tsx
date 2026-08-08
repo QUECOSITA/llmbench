@@ -248,6 +248,7 @@ export function App() {
           flags: c.flags,
           serving_command: c.serving_command,
           bench_command: c.bench_command,
+          bench_tool: c.bench_tool,
         })),
       });
       dispatch({ type: "run_started", run_id, total: configs.length });
