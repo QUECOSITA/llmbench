@@ -20,3 +20,18 @@ def test_llama_cpp_bin_dir_from_env(tmp_path, monkeypatch):
     monkeypatch.setenv("LLMBENCH_LLAMA_CPP_BIN_DIR", str(tmp_path))
     s = Settings()
     assert s.llama_cpp_bin_dir == tmp_path
+
+
+def test_speed_bench_settings_defaults():
+    s = Settings()
+    assert s.speed_bench_script is None
+    assert s.speed_bench_timeout_s == 300
+    assert s.speed_bench_osl == 128
+
+
+def test_speed_bench_settings_env(monkeypatch):
+    monkeypatch.setenv("LLMBENCH_SPEED_BENCH_TIMEOUT_S", "450")
+    monkeypatch.setenv("LLMBENCH_SPEED_BENCH_OSL", "256")
+    s = Settings()
+    assert s.speed_bench_timeout_s == 450
+    assert s.speed_bench_osl == 256
