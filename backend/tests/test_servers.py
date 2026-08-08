@@ -3,7 +3,8 @@ import sys
 from app.servers import SERVERS, detect_binaries, build_bench_command, resolve_bench_binary, README_FLAG_MAP
 from app.servers import parse_serving_command, model_ref_from_flags
 from app.servers import (is_spec_decoding_model, resolve_serving_binary, resolve_speed_bench_script,
-                         build_server_command, build_speed_bench_command, speed_bench_deps_available)
+                         build_server_command, build_speed_bench_command, speed_bench_deps_available,
+                         parse_speed_bench_flags, validate_speed_bench_flags, speed_bench_default_flags)
 
 
 def test_detect_finds_llama_bench(monkeypatch):
@@ -288,16 +289,86 @@ def test_resolve_speed_bench_script_missing(tmp_path):
     assert resolve_speed_bench_script(bin_dir=str(bin_dir)) is None
 
 
-def test_build_speed_bench_command_shape(tmp_path):
+def test_speed_bench_default_flags():
+    assert speed_bench_default_flags() == "--bench throughput_1k --category all --limit 1 --osl 128"
+    assert speed_bench_default_flags(osl=256) == "--bench throughput_1k --category all --limit 1 --osl 256"
+
+
+def test_parse_speed_bench_flags_defaults():
+    flags = parse_speed_bench_flags("--bench throughput_1k --category all --limit 1 --osl 128")
+    assert flags == ["--bench", "throughput_1k", "--category", "all", "--limit", "1", "--osl", "128"]
+
+
+def test_parse_speed_bench_flags_drops_leading_bare_tokens():
+    flags = parse_speed_bench_flags("python3 /x/speed_bench.py --bench qualitative --limit 2")
+    assert flags == ["--bench", "qualitative", "--limit", "2"]
+
+
+def test_parse_speed_bench_flags_extra_flags():
+    flags = parse_speed_bench_flags("--bench throughput_1k --concurrency 4 --timeout 120")
+    assert flags == ["--bench", "throughput_1k", "--concurrency", "4", "--timeout", "120"]
+
+
+def test_parse_speed_bench_flags_equals_form():
+    flags = parse_speed_bench_flags("--bench=qualitative --category=coding")
+    assert flags == ["--bench", "qualitative", "--category", "coding"]
+
+
+def test_validate_speed_bench_flags_valid():
+    assert validate_speed_bench_flags(["--bench", "throughput_1k", "--category", "all", "--limit", "1", "--osl", "128"]) is None
+
+
+def test_validate_speed_bench_flags_unknown_flag():
+    err = validate_speed_bench_flags(["--foo", "bar"])
+    assert err is not None and "unknown speed-bench flag '--foo'" in err
+    assert "--url" in err and "--output" in err
+
+
+def test_validate_speed_bench_flags_bad_bench():
+    err = validate_speed_bench_flags(["--bench", "foo"])
+    assert err is not None and "unknown --bench 'foo'" in err
+    assert "throughput_1k" in err
+
+
+def test_validate_speed_bench_flags_bad_category_per_bench():
+    err = validate_speed_bench_flags(["--bench", "throughput_1k", "--category", "coding"])
+    assert err is not None and "unknown --category 'coding' for bench 'throughput_1k'" in err
+    assert "high_entropy" in err
+    err2 = validate_speed_bench_flags(["--bench", "qualitative", "--category", "high_entropy"])
+    assert err2 is not None and "unknown --category 'high_entropy' for bench 'qualitative'" in err2
+
+
+def test_validate_speed_bench_flags_all_category_valid_for_any_bench():
+    assert validate_speed_bench_flags(["--bench", "qualitative", "--category", "all"]) is None
+    assert validate_speed_bench_flags(["--bench", "throughput_1k", "--category", "all"]) is None
+
+
+def test_validate_speed_bench_flags_reserved_url_output():
+    err = validate_speed_bench_flags(["--url", "localhost:9000"])
+    assert err is not None and "managed by the app" in err
+    err2 = validate_speed_bench_flags(["--output", "x.json"])
+    assert err2 is not None and "managed by the app" in err2
+
+
+def test_validate_speed_bench_flags_bare_token():
+    err = validate_speed_bench_flags(["--bench", "throughput_1k", "stray"])
+    assert err is not None and "unexpected token 'stray'" in err
+
+
+def test_validate_speed_bench_flags_missing_value():
+    err = validate_speed_bench_flags(["--osl", "--bench"])
+    assert err is not None and "requires a value" in err
+
+
+def test_build_speed_bench_command_with_flags(tmp_path):
     script = str(tmp_path / "speed_bench.py")
-    cmd = build_speed_bench_command(script, osl=128, url="localhost:8080", output="/tmp/out.json")
+    cmd = build_speed_bench_command(script, ["--bench", "qualitative", "--limit", "2"],
+                                    url="localhost:8080", output="/tmp/out.json")
     assert cmd[0] == sys.executable
     assert cmd[1] == script
+    assert cmd[cmd.index("--bench") + 1] == "qualitative"
+    assert cmd[cmd.index("--limit") + 1] == "2"
     assert cmd[cmd.index("--url") + 1] == "localhost:8080"
-    assert cmd[cmd.index("--limit") + 1] == "1"
-    assert cmd[cmd.index("--category") + 1] == "all"
-    assert cmd[cmd.index("--bench") + 1] == "throughput_1k"
-    assert cmd[cmd.index("--osl") + 1] == "128"
     assert cmd[cmd.index("--output") + 1] == "/tmp/out.json"
 
 

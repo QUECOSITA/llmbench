@@ -116,17 +116,89 @@ def resolve_speed_bench_script(bin_dir: str | None = None,
     return None
 
 
-def build_speed_bench_command(script: str, osl: int = 128, url: str = "localhost:8080",
+SPEED_BENCH_CLI_FLAGS = ("--url", "--model", "--bench", "--category", "--osl",
+                         "--extra-inputs", "--concurrency", "--limit", "--timeout", "--output")
+
+SPEED_BENCH_BENCHES = ("qualitative", "throughput_1k", "throughput_2k",
+                       "throughput_8k", "throughput_16k", "throughput_32k")
+
+SPEED_BENCH_CATEGORIES = {
+    "qualitative": ("coding", "humanities", "math", "qa", "rag", "reasoning",
+                    "stem", "writing", "multilingual", "summarization", "roleplay"),
+    "throughput_1k": ("high_entropy", "mixed", "low_entropy"),
+    "throughput_2k": ("high_entropy", "mixed", "low_entropy"),
+    "throughput_8k": ("high_entropy", "mixed", "low_entropy"),
+    "throughput_16k": ("high_entropy", "mixed", "low_entropy"),
+    "throughput_32k": ("high_entropy", "mixed", "low_entropy"),
+}
+
+
+def speed_bench_default_flags(osl: int = 128) -> str:
+    return f"--bench throughput_1k --category all --limit 1 --osl {osl}"
+
+
+def parse_speed_bench_flags(text: str) -> list[str]:
+    """Split the user-edited flags string into tokens. Drop any leading bare
+    tokens (so pasting the full command works) and normalize --flag=value."""
+    import shlex
+    tokens = shlex.split(text)
+    while tokens and not tokens[0].startswith("-"):
+        tokens = tokens[1:]
+    out: list[str] = []
+    for tok in tokens:
+        if tok.startswith("--") and "=" in tok:
+            name, _, value = tok.partition("=")
+            out.extend([name, value])
+        else:
+            out.append(tok)
+    return out
+
+
+def _speed_bench_categories(bench: str | None) -> set[str]:
+    if bench:
+        return set(SPEED_BENCH_CATEGORIES.get(bench, ()))
+    union: set[str] = set()
+    for cats in SPEED_BENCH_CATEGORIES.values():
+        union.update(cats)
+    return union
+
+
+def validate_speed_bench_flags(flags: list[str]) -> str | None:
+    """Return an error message for invalid speed-bench flags, or None if valid."""
+    parsed: dict[str, list[str]] = {}
+    i = 0
+    while i < len(flags):
+        tok = flags[i]
+        if not tok.startswith("-"):
+            return f"unexpected token '{tok}'"
+        name = tok
+        value = None
+        if i + 1 < len(flags) and not flags[i + 1].startswith("-"):
+            value = flags[i + 1]
+            i += 1
+        if name not in SPEED_BENCH_CLI_FLAGS:
+            return f"unknown speed-bench flag '{name}'; allowed: " + ", ".join(SPEED_BENCH_CLI_FLAGS)
+        if name in ("--url", "--output"):
+            return f"{name} is managed by the app; remove it from the speed-bench flags"
+        if value is None:
+            return f"flag '{name}' requires a value"
+        parsed.setdefault(name, []).append(value)
+        i += 1
+    for b in parsed.get("--bench", []):
+        if b not in SPEED_BENCH_BENCHES:
+            return f"unknown --bench '{b}'; available benches: " + ", ".join(SPEED_BENCH_BENCHES)
+    bench = parsed["--bench"][0] if parsed.get("--bench") else None
+    cats = _speed_bench_categories(bench)
+    for c in parsed.get("--category", []):
+        if c != "all" and c not in cats:
+            avail = "all, " + ", ".join(sorted(cats))
+            return f"unknown --category '{c}' for bench '{bench}'; available: {avail}"
+    return None
+
+
+def build_speed_bench_command(script: str, flags: list[str], url: str = "localhost:8080",
                               output: str = "speed-bench.json") -> list[str]:
-    return [
-        sys.executable, script,
-        "--url", url,
-        "--bench", "throughput_1k",
-        "--category", "all",
-        "--limit", "1",
-        "--osl", str(osl),
-        "--output", output,
-    ]
+    return [sys.executable, script, *flags, "--url", url, "--output", output]
 
 
 def build_server_command(serving_command: str, bin_dir: str | None = None) -> list[str]:
