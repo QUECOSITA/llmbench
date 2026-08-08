@@ -54,3 +54,27 @@ test("renders a SPEED-BENCH badge for speed-bench configs", () => {
   const { container } = render(<ConfigBank n={2} onNChange={() => {}} onGenerate={() => {}} configs={configs} />);
   expect(container.textContent).toContain("SPEED-BENCH");
 });
+
+test("renders and edits a SPEED-BENCH FLAGS textarea for speed-bench configs", () => {
+  const onEditFlags = vi.fn();
+  const configs: ConfigRow[] = [
+    {
+      flags: {},
+      serving_command: "llama-server --spec-type draft-mtp",
+      bench_tool: "speed-bench",
+      bench_flags: "--bench throughput_1k --category all --limit 1 --osl 128",
+    },
+  ];
+  render(
+    <ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={configs} onEditFlags={onEditFlags} />,
+  );
+  const textarea = screen.getByDisplayValue("--bench throughput_1k --category all --limit 1 --osl 128");
+  fireEvent.change(textarea, { target: { value: "--bench qualitative --category coding" } });
+  expect(onEditFlags).toHaveBeenCalledWith(0, "--bench qualitative --category coding");
+});
+
+test("does not render the flags textarea for non-speed-bench configs", () => {
+  const configs: ConfigRow[] = [{ flags: {}, serving_command: "vllm serve m", bench_tool: "llama-bench" }];
+  render(<ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={configs} />);
+  expect(screen.queryByDisplayValue(/--bench/)).not.toBeInTheDocument();
+});

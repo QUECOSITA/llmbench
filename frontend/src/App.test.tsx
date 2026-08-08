@@ -519,3 +519,34 @@ test("run payload round-trips bench_tool", async () => {
   const body = startSpy.mock.calls[0][0] as { configs: Array<{ bench_tool?: string }> };
   expect(body.configs[0].bench_tool).toBe("speed-bench");
 });
+
+test("run payload round-trips edited bench_flags", async () => {
+  const { api } = await import("./api/client");
+  const startSpy = vi.spyOn(api, "startBenchmark").mockResolvedValue({ run_id: 1 });
+  vi.mocked(api.generateConfigs).mockResolvedValue({
+    configs: [
+      { flags: {}, serving_command: "llama-server --spec-type draft-mtp", bench_command: [], bench_tool: "speed-bench", bench_flags: "--bench throughput_1k --category all --limit 1 --osl 128", fit: null },
+    ],
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+  fireEvent.click(screen.getByText(/generate/i));
+  await screen.findByText(/llama-server --spec-type/i);
+
+  const textarea = screen.getByDisplayValue("--bench throughput_1k --category all --limit 1 --osl 128");
+  fireEvent.change(textarea, { target: { value: "--bench qualitative --category coding" } });
+
+  fireEvent.click(screen.getByText(/run benchmark/i));
+  await waitFor(() => expect(startSpy).toHaveBeenCalled());
+  const body = startSpy.mock.calls[0][0] as { configs: Array<{ bench_flags?: string }> };
+  expect(body.configs[0].bench_flags).toBe("--bench qualitative --category coding");
+});

@@ -112,6 +112,7 @@ export const api = {
         serving_command: string;
         bench_command: string[];
         bench_tool?: string;
+        bench_flags?: string;
         fit: ConfigFit | null;
       }>;
     }>("/configs/generate", {

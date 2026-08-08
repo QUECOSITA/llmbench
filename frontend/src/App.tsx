@@ -249,6 +249,7 @@ export function App() {
           serving_command: c.serving_command,
           bench_command: c.bench_command,
           bench_tool: c.bench_tool,
+          bench_flags: c.bench_flags,
         })),
       });
       dispatch({ type: "run_started", run_id, total: configs.length });
@@ -353,6 +354,9 @@ export function App() {
                 configs={configs}
                 onEdit={(i, cmd) =>
                   setConfigs((prev) => prev.map((c, j) => (j === i ? { ...c, serving_command: cmd } : c)))
+                }
+                onEditFlags={(i, flags) =>
+                  setConfigs((prev) => prev.map((c, j) => (j === i ? { ...c, bench_flags: flags } : c)))
                 }
               />
 
