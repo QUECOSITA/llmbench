@@ -3,7 +3,7 @@ import sys
 from app.servers import SERVERS, detect_binaries, build_bench_command, resolve_bench_binary, README_FLAG_MAP
 from app.servers import parse_serving_command, model_ref_from_flags
 from app.servers import (is_spec_decoding_model, resolve_serving_binary, resolve_speed_bench_script,
-                         build_server_command, build_speed_bench_command)
+                         build_server_command, build_speed_bench_command, speed_bench_deps_available)
 
 
 def test_detect_finds_llama_bench(monkeypatch):
@@ -313,3 +313,22 @@ def test_build_server_command_swaps_binary_and_strips_port(tmp_path):
     assert "--host" not in tokens and "0.0.0.0" not in tokens
     assert "-p" in tokens and "4" in tokens
     assert tokens[tokens.index("--spec-type") + 1] == "draft-mtp"
+
+
+def test_speed_bench_deps_available_true(monkeypatch):
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
+    assert speed_bench_deps_available() is True
+
+
+def test_speed_bench_deps_available_false(monkeypatch):
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
+    assert speed_bench_deps_available() is False
+
+
+def test_detect_binaries_speed_bench_deps_gate(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.servers.resolve_speed_bench_script",
+                        lambda *a, **k: str(tmp_path / "speed_bench.py"))
+    monkeypatch.setattr("app.servers.speed_bench_deps_available", lambda: False)
+    assert detect_binaries()["speed-bench"] is False
+    monkeypatch.setattr("app.servers.speed_bench_deps_available", lambda: True)
+    assert detect_binaries()["speed-bench"] is True

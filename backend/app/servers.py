@@ -1,3 +1,4 @@
+import importlib.util
 import shutil
 import sys
 from pathlib import Path
@@ -47,12 +48,22 @@ def resolve_bench_binary(server_id: str, bin_dir: str | None = None) -> str | No
     return None
 
 
+def speed_bench_deps_available() -> bool:
+    """True when the current interpreter (the one speed-bench would be spawned
+    with) can import the speed_bench.py client's third-party deps."""
+    return all(importlib.util.find_spec(m) is not None for m in _SPEED_BENCH_DEPS)
+
+
 def detect_binaries(bin_dir: str | None = None) -> dict[str, bool]:
     out: dict[str, bool] = {}
     for server_id in SERVERS:
         out[server_id] = resolve_bench_binary(server_id, bin_dir) is not None
-    out["speed-bench"] = resolve_speed_bench_script(bin_dir) is not None
+    out["speed-bench"] = (resolve_speed_bench_script(bin_dir) is not None
+                          and speed_bench_deps_available())
     return out
+
+
+_SPEED_BENCH_DEPS = ("requests", "datasets", "tqdm")
 
 
 _SPEC_DECODING_FLAGS = {

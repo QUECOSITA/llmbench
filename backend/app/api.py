@@ -23,7 +23,8 @@ from app.hf import HfClient, InvalidModelInput, normalize_input, parse_input
 from app.readme_parser import detect_serving_programs, extract_flags, top_serving_program
 from app.servers import (build_bench_command, build_server_command, build_speed_bench_command,
                          detect_binaries, is_spec_decoding_model, model_ref_from_flags,
-                         parse_serving_command, resolve_speed_bench_script)
+                         parse_serving_command, resolve_speed_bench_script,
+                         speed_bench_deps_available)
 from app.tty_stream import TtyStream
 
 router = APIRouter(prefix="/api")
@@ -492,16 +493,13 @@ async def generate(payload: dict):
         cfg["bench_tool"] = "speed-bench" if uses_speed_bench else "llama-bench"
         if uses_speed_bench:
             script = resolve_speed_bench_script(bin_dir, configured=s.settings.speed_bench_script)
-            if script:
+            if script and speed_bench_deps_available():
                 cfg["bench_command"] = build_speed_bench_command(
                     script, osl=s.settings.speed_bench_osl,
                     output=str(s.settings.data_dir / "speed-bench.json"))
             else:
                 cfg["bench_command"] = []
-                cfg["bench_error"] = (
-                    "speed-bench is not available for this model: could not locate speed_bench.py "
-                    "next to llama-server. Set LLMBENCH_SPEED_BENCH_SCRIPT or install llama.cpp "
-                    "with the speed-bench tool.")
+                cfg["bench_error"] = _speed_bench_error(script)
         else:
             bench_ref = repo_id if gguf_filename else (resolved_gguf or repo_id)
             cfg["bench_command"] = build_bench_command(
@@ -521,6 +519,14 @@ async def generate(payload: dict):
     return {"configs": configs}
 
 
+def _speed_bench_error(script: str | None) -> str:
+    if script:
+        return ("speed-bench is not available: speed_bench.py requires 'requests', 'datasets', 'tqdm' "
+                "in the backend venv. Install them with `pip install -e '.[speed-bench]'`.")
+    return ("speed-bench is not available: could not locate speed_bench.py next to llama-server. "
+            "Set LLMBENCH_SPEED_BENCH_SCRIPT or install llama.cpp with the speed-bench tool.")
+
+
 def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
     """Re-derive the executed commands from the user's edited serving command so
     edits to the config bank actually take effect at run time. speed-bench runs
@@ -532,11 +538,9 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
         bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
         cfg["server_command"] = build_server_command(cfg.get("serving_command", ""), bin_dir)
         script = resolve_speed_bench_script(bin_dir, configured=s.settings.speed_bench_script)
-        if not script:
+        if not (script and speed_bench_deps_available()):
             cfg["bench_command"] = []
-            cfg["bench_error"] = (
-                "speed-bench is not available: could not locate speed_bench.py next to llama-server. "
-                "Set LLMBENCH_SPEED_BENCH_SCRIPT or install llama.cpp with the speed-bench tool.")
+            cfg["bench_error"] = _speed_bench_error(script)
             return
         cfg["bench_command"] = build_speed_bench_command(
             script, osl=s.settings.speed_bench_osl,

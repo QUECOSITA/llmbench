@@ -1064,7 +1064,8 @@ def test_double_continue_does_not_skip_next_wait(client, monkeypatch):
 import sys
 
 
-def test_generate_configs_llama_spec_readme_uses_speed_bench(tmp_path):
+def test_generate_configs_llama_spec_readme_uses_speed_bench(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: True)
     bin_dir = tmp_path / "llama" / "build" / "bin"
     bin_dir.mkdir(parents=True)
     (bin_dir / "llama-server").write_text("#!/bin/sh\n")
@@ -1109,7 +1110,8 @@ def test_generate_configs_llama_non_spec_uses_llama_bench(client):
     assert cfg["bench_command"][0] == "llama-bench"
 
 
-def test_rebuild_bench_command_speed_bench(tmp_path):
+def test_rebuild_bench_command_speed_bench(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: True)
     from app.api import _rebuild_bench_command, AppState
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(parents=True)
@@ -1141,6 +1143,54 @@ def test_rebuild_bench_command_speed_bench(tmp_path):
 
 def test_start_run_speed_bench_unavailable_rejected(client, monkeypatch):
     monkeypatch.setattr("app.api.resolve_speed_bench_script", lambda *a, **k: None)
+    config = {
+        "server_id": "llama.cpp",
+        "bench_tool": "speed-bench",
+        "serving_command": "llama-server -m /models/x.gguf --spec-type draft-mtp",
+        "flags": {},
+        "bench_command": [],
+    }
+    r = client.post("/api/benchmarks", json={
+        "repo_id": "org/model",
+        "configs": [config],
+        "pause": False,
+    })
+    assert r.status_code == 422
+    assert "speed-bench" in r.json()["detail"]
+
+
+def test_generate_speed_bench_missing_deps_sets_bench_error(tmp_path, monkeypatch):
+    bin_dir = tmp_path / "llama" / "build" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    script = tmp_path / "llama" / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("#!/usr/bin/env python3\n")
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl",
+                        llama_cpp_bin_dir=bin_dir)
+    (tmp_path / "prompts.jsonl").write_text("{\"prompt\": \"hi\"}\n")
+    monkeypatch.setattr("app.api.resolve_speed_bench_script", lambda *a, **k: str(script))
+    monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: False)
+    with TestClient(create_app(settings)) as c:
+        r = c.post("/api/configs/generate", json={
+            "server_id": "llama.cpp",
+            "repo_id": "org/Qwen3-MTP",
+            "n": 1,
+            "readme_flags": {"--spec-type": "draft-mtp"},
+        })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["bench_tool"] == "speed-bench"
+    assert cfg["bench_command"] == []
+    assert "speed-bench" in cfg["bench_error"]
+    assert "speed-bench" in cfg["bench_error"].lower() or "speed-bench" in cfg["bench_error"]
+
+
+def test_start_run_speed_bench_missing_deps_rejected(client, monkeypatch):
+    monkeypatch.setattr("app.api.resolve_speed_bench_script", lambda *a, **k: "/tmp/speed_bench.py")
+    monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: False)
     config = {
         "server_id": "llama.cpp",
         "bench_tool": "speed-bench",
