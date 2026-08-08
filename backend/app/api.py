@@ -554,6 +554,7 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
             return
         cfg["bench_command"] = build_speed_bench_command(
             script, flags, output=str(s.settings.data_dir / "speed-bench.json"))
+        cfg.pop("bench_error", None)
         return
     flags = parse_serving_command(cfg.get("server_id", ""), cfg.get("serving_command", ""))
     if not flags:
@@ -568,6 +569,7 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
         bin_dir=str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None,
         gguf_filename=gguf_filename,
     )
+    cfg.pop("bench_error", None)
 
 
 @router.post("/benchmarks")

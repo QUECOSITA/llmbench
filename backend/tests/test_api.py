@@ -1226,6 +1226,34 @@ def test_rebuild_bench_command_speed_bench_missing_flags_uses_default(tmp_path, 
     assert "bench_error" not in cfg
 
 
+def test_rebuild_bench_command_clears_stale_bench_error(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: True)
+    from app.api import _rebuild_bench_command, AppState
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    script = tmp_path / "speed_bench.py"
+    script.write_text("x")
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl",
+                        llama_cpp_bin_dir=bin_dir, speed_bench_script=script)
+    (tmp_path / "prompts.jsonl").write_text("x\n")
+    s = AppState(settings)
+    cfg = {
+        "server_id": "llama.cpp",
+        "bench_tool": "speed-bench",
+        "serving_command": "llama-server -m /models/x.gguf --spec-type draft-mtp",
+        "flags": {},
+        "bench_flags": "--bench qualitative --category coding",
+        "bench_command": [],
+        "bench_error": "stale error from generate",
+    }
+    _rebuild_bench_command(s, cfg, "org/model")
+    assert "bench_error" not in cfg
+    assert cfg["bench_command"][cfg["bench_command"].index("--bench") + 1] == "qualitative"
+
+
 def test_start_run_speed_bench_invalid_flags_rejected(client, monkeypatch):
     monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: True)
     monkeypatch.setattr("app.api.resolve_speed_bench_script", lambda *a, **k: "/tmp/speed_bench.py")
