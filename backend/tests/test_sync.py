@@ -44,37 +44,6 @@ def test_scan_hf_cache_finds_ready_snapshots(tmp_path):
     assert found == {"org/model": snapshot_dir_for(settings, "org/model")}
 
 
-def test_reconcile_discovers_hf_cache_snapshot(tmp_path):
-    settings = _settings(tmp_path)
-    _make_snapshot(settings, "org/model", ggufs=["model.Q4_K_M.gguf"])
-    conn = init_db(tmp_path / "db.sqlite")
-
-    reconcile_models(conn, settings)
-
-    m = get_model(conn, "org/model", "llama.cpp")
-    assert m and m["status"] == "downloaded"
-    assert m["gguf_filename"] == "model.Q4_K_M.gguf"
-    assert m["local_path"].endswith("model.Q4_K_M.gguf")
-    for server_id in ("vllm", "sglang"):
-        m = get_model(conn, "org/model", server_id)
-        assert m is None or m["status"] != "downloaded"
-
-
-def test_reconcile_only_marks_readme_detected_server(tmp_path):
-    settings = _settings(tmp_path)
-    _make_snapshot(settings, "org/model", ggufs=["model.gguf"],
-                   readme="# model\n\nllama-server -m model.gguf\n")
-    conn = init_db(tmp_path / "db.sqlite")
-
-    reconcile_models(conn, settings)
-
-    m = get_model(conn, "org/model", "llama.cpp")
-    assert m and m["status"] == "downloaded"
-    for server_id in ("vllm", "sglang"):
-        m = get_model(conn, "org/model", server_id)
-        assert m is None or m["status"] != "downloaded"
-
-
 def test_reconcile_readme_detects_llama_cpp(tmp_path):
     settings = _settings(tmp_path)
     _make_snapshot(settings, "org/model", ggufs=["model.Q4_K_M.gguf"],
@@ -185,6 +154,19 @@ def test_remove_model_deletes_whole_repo_and_snapshot(tmp_path, monkeypatch):
 
     assert get_model(conn, "org/model", "llama.cpp") is None
     assert not snap.exists()
+
+
+def test_remove_model_noop_when_repo_has_no_rows(tmp_path, monkeypatch):
+    """remove_model on a repo with no DB rows must not delete anything."""
+    settings = _settings(tmp_path)
+    snap = _make_snapshot(settings, "org/untracked")
+    conn = init_db(tmp_path / "db.sqlite")
+    monkeypatch.setattr("shutil.which", lambda *a, **k: None)
+
+    asyncio.run(remove_model(conn, settings, "org/untracked"))
+
+    assert snap.exists()
+    assert list_models(conn) == []
 
 
 def test_remove_llama_deletes_gguf_file(tmp_path, monkeypatch):

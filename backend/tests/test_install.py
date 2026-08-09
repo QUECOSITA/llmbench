@@ -64,3 +64,19 @@ def test_install_commands_unknown():
 def test_main_unknown_server(capsys):
     assert main(["nope"]) == 2
     assert "unknown server" in capsys.readouterr().out
+
+
+def test_main_prints_llama_detection_and_commands(capsys, monkeypatch):
+    monkeypatch.setattr("app.install._module_importable", lambda name: False)
+    monkeypatch.setattr("app.install.resolve_bench_binary",
+                        lambda server_id, bin_dir=None: None)
+    monkeypatch.setattr("app.install.detect_hardware", lambda: {
+        "os": "Linux", "arch": "x86_64", "gpu_name": None, "gpu_vram_gb": 0.0,
+    })
+    monkeypatch.setattr("app.install._nvidia_driver_version", lambda: None)
+    monkeypatch.setattr("app.install._disk_free_gb", lambda: 50.0)
+    rc = main(["llama.cpp"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "NOT installed" in out
+    assert "cmake" in out and "llama.cpp" in out
