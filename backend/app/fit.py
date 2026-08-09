@@ -14,8 +14,6 @@ _REF_PARAMS = 7_000_000_000
 
 _CTX_FLAGS = {
     "llama.cpp": "--ctx-size",
-    "vllm": "--max-model-len",
-    "sglang": "--context-length",
 }
 
 
@@ -40,13 +38,6 @@ def _estimate_kv_bytes(weights_bytes: float, ctx: int) -> float:
 def _to_int(value, default: int) -> int:
     try:
         return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _to_float(value, default: float) -> float:
-    try:
-        return float(value)
     except (TypeError, ValueError):
         return default
 
@@ -118,13 +109,6 @@ def config_fit(server_id: str, flags: dict[str, str], weights_bytes: float,
             gpu_share = weights_bytes * (ngl / layers) + kv
             if gpu_share <= vram and needed <= vram + ram:
                 stage = "offload"
-    elif server_id in ("vllm", "sglang"):
-        fraction = _to_float(
-            flags.get("--gpu-memory-utilization" if server_id == "vllm" else "--mem-fraction-static"),
-            0.9,
-        )
-        if needed <= vram * fraction:
-            stage = "gpu"
 
     labels = {
         "gpu": "FITS VRAM",

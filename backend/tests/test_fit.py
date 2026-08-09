@@ -84,28 +84,3 @@ def test_config_fit_llama_partial_offload():
 def test_config_fit_llama_partial_no_fit():
     f = config_fit("llama.cpp", {"--n-gpu-layers": "16"}, 60e9, 24.0, 64.0, ARCH)
     assert f["stage"] == "no_fit"
-
-
-def test_config_fit_vllm_uses_gpu_utilization():
-    assert config_fit("vllm", {"--gpu-memory-utilization": "0.9"}, 10e9, 24.0, 64.0, ARCH)["stage"] == "gpu"
-    assert config_fit("vllm", {"--gpu-memory-utilization": "0.9"}, 40e9, 24.0, 64.0, ARCH)["stage"] == "no_fit"
-
-
-def test_config_fit_sglang_uses_mem_fraction():
-    f = config_fit("sglang", {"--context-length": "4096", "--mem-fraction-static": "0.85"}, 15e9, 24.0, 64.0, ARCH)
-    assert f["stage"] == "gpu"
-    assert f["fits_vram"] is True
-
-
-def test_config_fit_ctx_flag_scales_kv():
-    low = config_fit("vllm", {"--max-model-len": "2048"}, 15e9, 24.0, 64.0, ARCH)
-    high = config_fit("vllm", {"--max-model-len": "16384"}, 15e9, 24.0, 64.0, ARCH)
-    assert high["kv_gb"] > low["kv_gb"]
-    assert low["stage"] == "gpu"
-    assert high["stage"] == "no_fit"
-
-
-def test_config_fit_defaults_arch_and_ctx():
-    f = config_fit("vllm", {}, 10e9, 24.0, 64.0)
-    assert f["stage"] == "gpu"
-    assert f["needed_gb"] > 10.0
