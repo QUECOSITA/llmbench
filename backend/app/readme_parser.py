@@ -1,17 +1,10 @@
 import re
 
-_SERVERS = ("llama.cpp", "vllm", "sglang")
+_SERVERS = ("llama.cpp",)
 
 _COMMAND_PATTERNS = {
     "llama.cpp": [
         r"\bllama-server\b", r"\bllama-cli\b", r"\bllama-bench\b", r"\bllama\.cpp\b",
-    ],
-    "vllm": [
-        r"\bvllm\s+serve\b", r"\bfrom\s+vllm\b", r"\bapi_server\b",
-        r"\bfrom\s+vllm\.entrypoints\b",
-    ],
-    "sglang": [
-        r"\bsglang\.launch_server\b", r"\bsglang\s+serve\b", r"\bimport\s+sglang\b",
     ],
 }
 
@@ -25,7 +18,7 @@ _VALUE_TERMINATORS = {"--", "-m", "-c", "-t", "-b", "-ngl", "&&", "|", ";", "\\"
 
 
 def detect_serving_programs(readme: str, has_gguf: bool) -> dict[str, int]:
-    scores = {"llama.cpp": 0, "vllm": 0, "sglang": 0}
+    scores = {"llama.cpp": 0}
     if has_gguf:
         scores["llama.cpp"] += 3
     for server, patterns in _COMMAND_PATTERNS.items():
@@ -55,7 +48,8 @@ def extract_flags(text: str, servers: list[str]) -> dict[str, str]:
     """Return {flag: value|''} parsed from code blocks plus the full text,
     gated on known server command mentions."""
     flags: dict[str, str] = {}
-    blocks = re.findall(r"```[^\n]*\n(.*?)```", text, re.DOTALL) + [text]
+    fenced = re.findall(r"```[^\n]*\n(.*?)```", text, re.DOTALL)
+    blocks = fenced if fenced else [text]
     for block in blocks:
         if not any(any(re.search(p, block, re.IGNORECASE) for p in _COMMAND_PATTERNS[s]) for s in servers):
             continue

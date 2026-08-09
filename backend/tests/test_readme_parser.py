@@ -1,22 +1,20 @@
-from app.readme_parser import detect_serving_programs, extract_flags
-
-
-def test_detect_vllm_by_command():
-    text = "Quickstart:\n```bash\nvllm serve Org/Model --max-model-len 8192\n```"
-    scores = detect_serving_programs(text, has_gguf=False)
-    assert scores["vllm"] > scores["llama.cpp"]
-    assert scores["vllm"] > scores["sglang"]
+from app.readme_parser import detect_serving_programs, extract_flags, top_serving_program
 
 
 def test_detect_llamacpp_by_gguf():
     scores = detect_serving_programs("Use the GGUF below.", has_gguf=True)
-    assert scores["llama.cpp"] > scores["vllm"]
+    assert scores == {"llama.cpp": 3}
 
 
-def test_detect_sglang():
-    text = "python -m sglang.launch_server --model-path Org/Model --port 30000"
+def test_vllm_only_readme_is_not_detected():
+    """A README proposing only vllm/sglang is not a supported server anymore."""
+    text = (
+        "python -m sglang.launch_server --model-path Qwen/Qwen3.6-27B\n"
+        "vllm serve Qwen/Qwen3.6-27B --tensor-parallel-size 8\n"
+    )
     scores = detect_serving_programs(text, has_gguf=False)
-    assert scores["sglang"] == max(scores.values())
+    assert scores == {"llama.cpp": 0}
+    assert top_serving_program(scores) is None
 
 
 def test_extract_flags():
@@ -24,20 +22,6 @@ def test_extract_flags():
     flags = extract_flags(text, ["llama.cpp"])
     assert flags["-c"] == "4096"
     assert flags["--n-gpu-layers"] == "999"
-
-
-def test_extract_flag_equals_form():
-    text = "vllm serve M --max-model-len=16384 --enforce-eager"
-    flags = extract_flags(text, ["vllm"])
-    assert flags["--max-model-len"] == "16384"
-    assert flags["--enforce-eager"] == ""
-
-
-def test_extract_flags_adjacent_bool_flags():
-    text = "vllm serve M --enforce-eager --trust-remote-code"
-    flags = extract_flags(text, ["vllm"])
-    assert flags["--enforce-eager"] == ""
-    assert flags["--trust-remote-code"] == ""
 
 
 def test_extract_flags_backslash_line_continuation_is_bare_flag():
@@ -48,7 +32,20 @@ def test_extract_flags_backslash_line_continuation_is_bare_flag():
     assert flags["--fit"] == "on"
 
 
-def test_extract_flags_negative_number_value():
-    text = "sglang.launch_server --mem-fraction-static -0.5"
-    flags = extract_flags(text, ["sglang"])
-    assert flags["--mem-fraction-static"] == "-0.5"
+def test_extract_flags_does_not_bleed_other_servers_flags():
+    """A README documenting multiple servers must not leak other servers' flags
+    into the requested server's extraction (regression: full-text fallback)."""
+    text = (
+        "# MTP model\n"
+        "```bash\nllama-server -m model.gguf -c 4096 -ngl 999 --spec-type draft-mtp\n```\n"
+        "```bash\nvllm serve Qwen/Qwen3.6-27B --tensor-parallel-size 8 --max-model-len 1010000\n```\n"
+        "```bash\nsglang.launch_server --model-path Qwen/Qwen3.6-27B --tp-size 8 --context-length 1010000\n```\n"
+    )
+    llama = extract_flags(text, ["llama.cpp"])
+    assert llama["-c"] == "4096"
+    assert llama["--spec-type"] == "draft-mtp"
+    assert "--tensor-parallel-size" not in llama
+    assert "--max-model-len" not in llama
+    assert "--tp-size" not in llama
+    assert "--context-length" not in llama
+    assert "--model-path" not in llama
