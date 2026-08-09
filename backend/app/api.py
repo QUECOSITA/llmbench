@@ -26,6 +26,7 @@ from app.servers import (build_bench_command, build_server_command, build_speed_
                          parse_serving_command, resolve_speed_bench_script,
                          speed_bench_deps_available, parse_speed_bench_flags,
                          speed_bench_default_flags, validate_speed_bench_flags)
+from app.spawn import spawn_env
 from app.tty_stream import TtyStream
 
 router = APIRouter(prefix="/api")
@@ -73,6 +74,7 @@ def _open_pty() -> tuple[int, int]:
 async def _spawn_pty(cmd: list[str], stdin_fd: int, stdout_fd: int, stderr_fd: int):
     return await asyncio.create_subprocess_exec(
         *cmd, stdin=stdin_fd, stdout=stdout_fd, stderr=stderr_fd, start_new_session=True,
+        env=spawn_env(),
     )
 
 

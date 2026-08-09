@@ -411,3 +411,60 @@ async def test_speed_bench_runner_client_fails(monkeypatch, tmp_path):
         timeout_s=60, startup_timeout_s=5, output_dir=tmp_path)
     result = await runner.run()
     assert result["status"] == "failed"
+
+
+async def test_runner_spawns_with_wsl2_pin_memory_env(monkeypatch):
+    spawned_env = {}
+
+    async def fake_create(*a, **k):
+        spawned_env.update(k.get("env", {}) or {})
+        return FakeProc(FAKE_BENCH.encode())
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    runner = BenchmarkRunner(server_id="llama.cpp", bench_command=["llama-bench", "-m", "x"],
+                             timeout_s=60)
+    result = await runner.run()
+    assert result["status"] == "ok"
+    assert spawned_env.get("VLLM_WSL2_ENABLE_PIN_MEMORY") == "1"
+    assert "PATH" in spawned_env
+
+
+async def test_speed_bench_runner_spawns_with_wsl2_pin_memory_env(monkeypatch, tmp_path):
+    spawned_envs = []
+    procs = []
+    spawn_count = {"n": 0}
+
+    def new_proc(out=b"", rc=0):
+        p = FakeProc(out, rc=rc)
+        procs.append(p)
+        return p
+
+    async def fake_create(*a, **k):
+        spawned_envs.append(k.get("env", {}) or {})
+        spawn_count["n"] += 1
+        if spawn_count["n"] == 1:
+            p = new_proc(out=b"")
+            p.returncode = None  # server still running until torn down
+            return p
+        return new_proc(out=b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+    async def fake_health(*a, **k):
+        return True
+
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+    out_path = tmp_path / "out.json"
+    out_path.write_text(SPEED_JSON)
+    monkeypatch.setattr(bench_mod, "tempfile", _FakeTempfile(out_path))
+
+    runner = SpeedBenchRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf"],
+        bench_command=["python", "speed_bench.py", "--url", "localhost:8080"],
+        timeout_s=60, startup_timeout_s=5, output_dir=tmp_path)
+    result = await runner.run()
+    assert result["status"] == "ok"
+    assert len(spawned_envs) == 2
+    for env in spawned_envs:
+        assert env.get("VLLM_WSL2_ENABLE_PIN_MEMORY") == "1"
+        assert "PATH" in env

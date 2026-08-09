@@ -7,6 +7,7 @@ import socket
 import tempfile
 from pathlib import Path
 
+from app.spawn import spawn_env
 from app.tty_stream import TtyStream
 
 
@@ -130,6 +131,7 @@ class BenchmarkRunner:
             *self.bench_command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=spawn_env(),
         )
         try:
             stdout_bytes, stderr_bytes, rc = await asyncio.wait_for(
@@ -303,7 +305,9 @@ class SpeedBenchRunner:
         parts: list[bytes] = []
         try:
             server_proc = await asyncio.create_subprocess_exec(
-                *server_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                *server_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                env=spawn_env(),
+            )
             self._procs.append(server_proc)
             server_pump = asyncio.create_task(self._pump(server_proc, parts, on_output))
 
@@ -319,7 +323,9 @@ class SpeedBenchRunner:
                                   f"within {self.startup_timeout_s}s\n{_decode_parts(parts)}"}
 
             client_proc = await asyncio.create_subprocess_exec(
-                *client_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                *client_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                env=spawn_env(),
+            )
             self._procs.append(client_proc)
             try:
                 await asyncio.wait_for(self._pump(client_proc, parts, on_output), timeout=self.timeout_s)
