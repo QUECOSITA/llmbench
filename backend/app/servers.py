@@ -253,6 +253,17 @@ _LLAMA_BENCH_FLAGS = {
     "-ub", "--ubatch-size", "-d", "--n-depth",
 }
 
+# `vllm bench throughput` accepts a subset of vLLM flags. Serving-only flags
+# extracted from a model card (e.g. --port, --host, --enable-auto-tool-choice,
+# --tool-call-parser) moved to the `serve` CLI and must not leak into the bench
+# invocation.
+_VLLM_BENCH_FLAGS = {
+    "--dtype", "--max-model-len", "--max-num-seqs", "--quantization",
+    "--enforce-eager", "--kv-cache-dtype", "--attention-backend",
+    "--tensor-parallel-size", "--gpu-memory-utilization", "--enable-chunked-prefill",
+    "--trust-remote-code",
+}
+
 
 def _llama_token_counts(workload: str) -> tuple[int, int]:
     prompt = 512
@@ -355,10 +366,12 @@ def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
         cmd += ["-p", str(prompt), "-n", str(gen), "-r", "2", "-o", "csv"]
         return cmd
     if server_id == "vllm":
-        cmd = [sys.executable, "-m", "vllm.benchmarks.benchmark_throughput",
+        cmd = [sys.executable, "-m", "vllm.entrypoints.cli.main", "bench", "throughput",
                "--model", model_ref, "--input-len", "512", "--output-len", "128",
                "--num-prompts", "20", "--trust-remote-code", "--output-json", "/dev/stdout"]
         for flag, value in flags.items():
+            if flag not in _VLLM_BENCH_FLAGS:
+                continue
             if value:
                 cmd += [flag, value]
             elif flag.startswith("--"):

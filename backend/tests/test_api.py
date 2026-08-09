@@ -144,7 +144,8 @@ def test_generate_configs_endpoint(client):
     for cfg in configs:
         assert isinstance(cfg["bench_command"], list)
         assert cfg["bench_command"][0] == sys.executable
-        assert any("benchmark_throughput" in tok for tok in cfg["bench_command"])
+        assert "vllm.entrypoints.cli.main" in cfg["bench_command"]
+        assert "throughput" in cfg["bench_command"]
 
 
 def test_generate_configs_llama_uses_gguf_path(client):

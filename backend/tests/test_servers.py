@@ -138,7 +138,10 @@ def test_build_bench_command_vllm():
     cmd = build_bench_command("vllm", model_ref="org/model", flags={"--max-num-seqs": "32"},
                               workload="/tmp/p.jsonl", timeout_s=60)
     assert cmd[0] == sys.executable
-    assert any("benchmark_throughput" in tok for tok in cmd)
+    assert cmd[cmd.index("-m") + 1] == "vllm.entrypoints.cli.main"
+    assert cmd[cmd.index("vllm.entrypoints.cli.main") + 1] == "bench"
+    assert "throughput" in cmd
+    assert cmd[cmd.index("--max-num-seqs") + 1] == "32"
 
 
 def test_readme_flag_map_aliases():
@@ -154,7 +157,27 @@ def test_build_bench_command_vllm_bare_bool_flag():
     assert idx != -1
     assert cmd[idx] == "--enforce-eager"
     assert idx == len(cmd) - 1 or cmd[idx + 1] != "--enforce-eager"
-    assert any("benchmark_throughput" in tok for tok in cmd)
+    assert "vllm.entrypoints.cli.main" in cmd
+    assert "bench" in cmd and "throughput" in cmd
+
+
+def test_build_bench_command_vllm_filters_server_only_flags():
+    flags = {
+        "--max-model-len": "32768", "--quantization": "modelopt", "--dtype": "auto",
+        "--kv-cache-dtype": "fp8", "--attention-backend": "flashinfer",
+        "--enable-chunked-prefill": "", "--port": "30000",
+        "--enable-auto-tool-choice": "", "--tool-call-parser": "hermes",
+    }
+    cmd = build_bench_command("vllm", "org/model", flags,
+                              workload="/tmp/p.jsonl", timeout_s=60)
+    for accepted in ("--max-model-len", "--quantization", "--dtype",
+                     "--kv-cache-dtype", "--attention-backend", "--enable-chunked-prefill"):
+        assert accepted in cmd
+    for dropped in ("--port", "--enable-auto-tool-choice", "--tool-call-parser"):
+        assert dropped not in cmd
+    assert cmd[cmd.index("--quantization") + 1] == "modelopt"
+    assert cmd[cmd.index("--attention-backend") + 1] == "flashinfer"
+    assert cmd[cmd.index("--enable-chunked-prefill")] == "--enable-chunked-prefill"
 
 
 def test_build_bench_command_sglang_uses_sys_executable():
