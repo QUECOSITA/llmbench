@@ -123,6 +123,8 @@ def rm_command(repo_id: str, cache_dir: str | None = None) -> list[str]:
 
 async def remove_model(conn, settings, repo_id: str) -> None:
     rows = [r for r in db_mod.list_models(conn) if r["repo_id"] == repo_id]
+    if not rows:
+        return
 
     snap = snapshot_dir_for(settings, repo_id)
     if snap.exists():
