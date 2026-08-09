@@ -55,7 +55,7 @@ def init_db(path: str | Path) -> sqlite3.Connection:
     conn.executescript(SCHEMA)
     conn.executescript(
         "INSERT OR IGNORE INTO servers(id, display_name) VALUES "
-        "('llama.cpp','llama.cpp'), ('vllm','vLLM'), ('sglang','sglang');"
+        "('llama.cpp','llama.cpp');"
     )
     conn.commit()
     return conn
@@ -167,5 +167,19 @@ def get_run(conn, run_id):
     return dict(row) if row else None
 
 
+def get_active_run(conn):
+    return _row(
+        conn,
+        "SELECT * FROM runs WHERE status IN ('running', 'queued') ORDER BY id DESC",
+    )
+
+
 def list_runs(conn):
     return [dict(r) for r in conn.execute("SELECT * FROM runs ORDER BY id DESC")]
+
+
+def fail_stale_runs(conn):
+    """Mark runs left in 'running' or 'queued' state (e.g. from a crashed/
+    restarted process) as failed so they no longer appear as in-flight."""
+    conn.execute("UPDATE runs SET status='failed' WHERE status IN ('running', 'queued')")
+    conn.commit()
