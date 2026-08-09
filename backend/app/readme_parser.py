@@ -51,7 +51,7 @@ def extract_flags(text: str, servers: list[str]) -> dict[str, str]:
     fenced = re.findall(r"```[^\n]*\n(.*?)```", text, re.DOTALL)
     blocks = fenced if fenced else [text]
     for block in blocks:
-        if not any(any(re.search(p, block, re.IGNORECASE) for p in _COMMAND_PATTERNS[s]) for s in servers):
+        if not any(any(re.search(p, block, re.IGNORECASE) for p in _COMMAND_PATTERNS.get(s, ())) for s in servers):
             continue
         for m in _FLAG_RE.finditer(block):
             flag = m.group(1)
