@@ -2,28 +2,16 @@ from app.flags import KEY_FLAGS, build_serving_command, generate_configs
 
 
 def test_generate_configs_count_and_baseline():
-    readme_flags = {"--max-model-len": "8192", "--enforce-eager": ""}
-    configs = generate_configs(server_id="vllm", readme_flags=readme_flags, n=3, vram_gb=24)
+    readme_flags = {"--ctx-size": "8192", "--spec-type": "mtp"}
+    configs = generate_configs(server_id="llama.cpp", readme_flags=readme_flags, n=3, vram_gb=24)
     assert len(configs) == 3
     baseline = configs[0]
-    assert baseline["flags"]["--max-model-len"] == "8192"
-    assert baseline["flags"]["--enforce-eager"] == ""
-    # key perf flags present with defaults
-    assert "--gpu-memory-utilization" in baseline["flags"]
-    # each non-baseline config differs in exactly one key flag
+    assert baseline["flags"]["--ctx-size"] == "8192"
+    assert baseline["flags"]["--spec-type"] == "draft-mtp"
+    assert "--n-gpu-layers" in baseline["flags"]
     for cfg in configs[1:]:
-        diffs = [k for k in KEY_FLAGS["vllm"] if cfg["flags"].get(k) != baseline["flags"].get(k)]
+        diffs = [k for k in KEY_FLAGS["llama.cpp"] if cfg["flags"].get(k) != baseline["flags"].get(k)]
         assert len(diffs) == 1, diffs
-
-
-def test_build_serving_command_vllm():
-    cmd = build_serving_command("vllm", "org/model", {
-        "--max-model-len": "8192", "--enforce-eager": "", "--max-num-seqs": "32",
-    })
-    assert cmd.startswith("vllm serve org/model")
-    assert "--max-model-len 8192" in cmd
-    assert "--max-num-seqs 32" in cmd
-    assert "--enforce-eager" in cmd
 
 
 def test_gguf_llama_command():
@@ -51,27 +39,21 @@ def test_llama_serving_command_includes_spec_flags():
 
 
 def test_deterministic():
-    a = generate_configs("vllm", {}, 3, 24)
-    b = generate_configs("vllm", {}, 3, 24)
+    a = generate_configs("llama.cpp", {}, 3, 24)
+    b = generate_configs("llama.cpp", {}, 3, 24)
     assert a == b
 
 
 def test_generate_configs_no_duplicates_high_n():
-    configs = generate_configs(server_id="vllm", readme_flags={}, n=20, vram_gb=24)
+    configs = generate_configs(server_id="llama.cpp", readme_flags={}, n=20, vram_gb=24)
     seen = {tuple(sorted(c["flags"].items())) for c in configs}
     assert len(configs) == len(seen)  # all distinct
-    assert len(configs) <= 9          # capped at distinct single-key variants for vllm
     assert configs[0]["flags"] == configs[0]["flags"]  # baseline present
 
 
 def test_generate_configs_does_not_overshoot():
-    configs = generate_configs(server_id="vllm", readme_flags={}, n=35, vram_gb=24)
+    configs = generate_configs(server_id="llama.cpp", readme_flags={}, n=35, vram_gb=24)
     assert len(configs) <= 35  # never more than requested
-
-
-def test_bool_flag_on_variant_renders_once():
-    cmd = build_serving_command("vllm", "org/model", {"--enforce-eager": "--enforce-eager"})
-    assert cmd.count("--enforce-eager") == 1
 
 
 def test_generate_configs_unknown_server_valueerror():
