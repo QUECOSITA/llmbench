@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 
 from app import db as db_mod
+from app.readme_parser import detect_serving_programs, top_serving_program
 
 _CACHE_PREFIX = "models--"
 
@@ -50,18 +51,52 @@ def _ggufs_in_snapshot(snap: Path) -> list[Path]:
     return out
 
 
+def _readme_in_snapshot(snap: Path) -> str | None:
+    snaps_dir = snap / "snapshots"
+    if not snaps_dir.is_dir():
+        return None
+    for ref in sorted(snaps_dir.iterdir()):
+        if ref.is_dir():
+            p = ref / "README.md"
+            if p.is_file():
+                return p.read_text(errors="replace")
+    return None
+
+
+def detect_server_from_snapshot(snap: Path, has_gguf: bool) -> str | None:
+    readme = _readme_in_snapshot(snap)
+    if readme is not None:
+        return top_serving_program(detect_serving_programs(readme, has_gguf=has_gguf))
+    if has_gguf:
+        return "llama.cpp"
+    return None
+
+
+def _set_downloaded_servers(conn, repo_id: str, allowed: tuple[str, ...]) -> None:
+    """Downgrade any other 'downloaded' rows for a repo to 'missing'."""
+    for m in db_mod.list_models(conn):
+        if m["repo_id"] != repo_id or m["server_id"] in allowed:
+            continue
+        if m["status"] == "downloaded":
+            db_mod.upsert_model(conn, repo_id=m["repo_id"], server_id=m["server_id"],
+                                format=m["format"], local_path=m["local_path"], status="missing")
+
+
 def reconcile_models(conn, settings) -> None:
-    """Scan the HF cache and sync the models table to what exists on disk."""
+    """Scan the HF cache and sync the models table to what exists on disk,
+    keeping llama.cpp as the only serving server. Never downgrades rows when
+    detection fails — that preserves existing data."""
     cache_root = _hf_cache_root(settings)
     for repo_id, snap in scan_hf_cache(cache_root).items():
-        snap_path = str(snap)
-        for server_id in ("vllm", "sglang"):
-            db_mod.upsert_model(conn, repo_id, server_id, "hf", snap_path, "downloaded")
         ggufs = _ggufs_in_snapshot(snap)
-        if ggufs:
+        detected = detect_server_from_snapshot(snap, has_gguf=bool(ggufs))
+        if detected is None:
+            continue
+        if detected == "llama.cpp" and ggufs:
             g = max(ggufs, key=lambda p: p.stat().st_size)
             db_mod.upsert_model(conn, repo_id, "llama.cpp", "hf", str(g),
                                 "downloaded", gguf_filename=g.name, size_bytes=g.stat().st_size)
+        _set_downloaded_servers(conn, repo_id, ("llama.cpp",))
 
     for m in db_mod.list_models(conn):
         if m["status"] != "downloaded":
@@ -88,8 +123,6 @@ def rm_command(repo_id: str, cache_dir: str | None = None) -> list[str]:
 
 async def remove_model(conn, settings, repo_id: str) -> None:
     rows = [r for r in db_mod.list_models(conn) if r["repo_id"] == repo_id]
-    if not rows:
-        return
 
     snap = snapshot_dir_for(settings, repo_id)
     if snap.exists():
