@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Link, Route, Routes } from "react-router-dom";
 import { api, FitVerdict, RunDetail } from "./api/client";
+import type { ApiErrorContext } from "./api/client";
 import { INITIAL_STATE, progressReducer, ResultRow, useBenchmarkProgress } from "./ws/useBenchmarkProgress";
 import { useDownloadProgress } from "./ws/useDownloadProgress";
 import { ConfigBank, ConfigRow } from "./components/ConfigBank";
@@ -12,18 +13,16 @@ import { ResultsTable } from "./components/ResultsTable";
 import { RunPanel } from "./components/RunPanel";
 import { Results } from "./pages/Results";
 import {
-  downloadActive,
   downloadReducer,
   DownloadState,
 } from "./ws/downloadReducer";
 import "./styles/app.css";
 
-const KNOWN_SERVERS = ["llama.cpp", "vllm", "sglang"] as const;
-
 interface Analysis {
   repo_id?: string;
   detected_server?: string | null;
   readme_flags?: Record<string, string>;
+  readme_flags_by_server?: Record<string, Record<string, string>>;
   gguf_files?: Array<{ path: string; size: number }>;
   weights_bytes?: number;
   downloaded?: Record<string, boolean>;
@@ -77,13 +76,36 @@ function toResultRow(r: RunDetail["results"][number]): ResultRow {
   };
 }
 
+function ErrorContextLine({ context }: { context: ApiErrorContext }) {
+  const parts: string[] = [];
+  if (context.active_run?.id != null) {
+    parts.push(
+      `run #${context.active_run.id} · ${context.active_run.repo_id ?? "?"} · ${context.active_run.status ?? "?"}`,
+    );
+  } else if (context.active_run_id != null) {
+    parts.push(`run #${context.active_run_id}`);
+  }
+  if (context.config_index != null) {
+    parts.push(`config #${context.config_index}${context.server_id ? ` · ${context.server_id}` : ""}`);
+  }
+  if (parts.length === 0) return null;
+  return (
+    <p style={{ color: "var(--anode)", fontSize: 12, opacity: 0.75, marginTop: 2 }}>
+      {parts.join(" · ")}
+    </p>
+  );
+}
+
 export function App() {
   const [hardware, setHardware] = useState<Record<string, unknown>>({});
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [server, setServer] = useState<string>("");
   const [n, setN] = useState(4);
   const [configs, setConfigs] = useState<ConfigRow[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorContext, setErrorContext] = useState<ApiErrorContext | null>(null);
+  const [watchingRunId, setWatchingRunId] = useState<number | null>(null);
   const [modelInput, setModelInput] = useState("");
   const [pause, setPause] = useState(true);
   const [downloaded, setDownloaded] = useState<
@@ -92,8 +114,7 @@ export function App() {
 
   const [downloads, setDownloads] = useState<DownloadState>({});
   const [downloadKey, setDownloadKey] = useState<string | null>(null);
-  const downloadActiveNow = downloadActive(downloads);
-  const downloadEvents = useDownloadProgress(downloadActiveNow);
+  const downloadEvents = useDownloadProgress();
 
   useEffect(() => {
     for (const ev of downloadEvents) {
@@ -169,6 +190,7 @@ export function App() {
   const onAnalyze = useCallback(async (input: string) => {
     const data = await api.analyze(input);
     setAnalysis(data);
+    setServer(data.detected_server ?? "");
     setConfigs([]);
     setDownloads({});
     setDownloadKey(null);
@@ -183,19 +205,25 @@ export function App() {
   );
 
   const onGenerate = useCallback(async (count: number) => {
-    if (!analysis?.repo_id || !analysis.detected_server) return;
+    if (!analysis?.repo_id) return;
+    const effectiveServer = server || analysis.detected_server;
+    if (!effectiveServer) {
+      setError("No serving server selected — pick one in MODEL INPUT to generate configs.");
+      return;
+    }
     const data = await api.generateConfigs({
       repo_id: analysis.repo_id,
-      server_id: analysis.detected_server,
+      server_id: effectiveServer,
       n: count,
       vram_gb: (hardware.gpu_vram_gb as number) ?? 0,
-      readme_flags: analysis.readme_flags ?? {},
+      readme_flags:
+        analysis.readme_flags_by_server?.[effectiveServer] ?? analysis.readme_flags ?? {},
       weights_bytes: analysis.weights_bytes,
       ram_gb: (hardware.ram_total_gb as number) ?? 0,
       model_arch: analysis.model_arch,
     });
     setConfigs(data.configs);
-  }, [analysis, hardware]);
+  }, [analysis, hardware, server]);
 
   const [progressState, dispatch] = useReducer(progressReducer, INITIAL_STATE);
 
@@ -231,20 +259,55 @@ export function App() {
     pollTimerRef.current = window.setTimeout(tick, 1000);
   }, []);
 
+  const watchRun = useCallback((runId: number) => {
+    let stopped = false;
+    const tick = async () => {
+      if (stopped) return;
+      try {
+        const detail = await api.getRun(runId);
+        if (stopped) return;
+        const status = detail.status;
+        const active = status === "running" || status === "queued";
+        dispatch({
+          type: "run_watch",
+          run_id: runId,
+          status,
+          total: detail.total,
+          results: (detail.results ?? []).map(toResultRow),
+        });
+        if (active) {
+          pollTimerRef.current = window.setTimeout(tick, 1000);
+          return;
+        }
+        setRunning(false);
+        setWatchingRunId(null);
+        if (status && status !== "completed") {
+          setError(`run ${status}`);
+        }
+      } catch {
+        pollTimerRef.current = window.setTimeout(tick, 1000);
+      }
+    };
+    pollTimerRef.current = window.setTimeout(tick, 1000);
+  }, []);
+
   useEffect(() => () => {
     if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
   }, []);
 
   const onRun = useCallback(async () => {
     if (!analysis?.repo_id || configs.length === 0) return;
+    const effectiveServer = server || analysis.detected_server;
+    if (!effectiveServer) return;
     setError(null);
+    setErrorContext(null);
     setRunning(true);
     try {
       const { run_id } = await api.startBenchmark({
         repo_id: analysis.repo_id,
         pause,
         configs: configs.map((c) => ({
-          server_id: analysis.detected_server,
+          server_id: effectiveServer,
           flags: c.flags,
           serving_command: c.serving_command,
           bench_command: c.bench_command,
@@ -256,10 +319,26 @@ export function App() {
       if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
       pollRun(run_id);
     } catch (err) {
+      const apiErr = err as { status?: number; context?: ApiErrorContext };
+      const activeRun = apiErr.context?.active_run;
+      if (apiErr.status === 409 && activeRun?.id) {
+        setWatchingRunId(activeRun.id);
+        dispatch({
+          type: "run_started",
+          run_id: activeRun.id,
+          total: activeRun.requested_n ?? 0,
+        });
+        if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
+        watchRun(activeRun.id);
+        return;
+      }
       setRunning(false);
       setError(err instanceof Error ? err.message : String(err));
+      if (apiErr.context && Object.keys(apiErr.context).length > 0) {
+        setErrorContext(apiErr.context);
+      }
     }
-  }, [analysis, configs, pause, pollRun]);
+  }, [analysis, configs, pause, pollRun, server, watchRun]);
 
   const onContinue = useCallback(async () => {
     if (progressState.runId === null) return;
@@ -279,7 +358,10 @@ export function App() {
     for (let i = processedEventsRef.current; i < events.length; i++) {
       const ev = events[i];
       dispatch(ev);
-      if (ev.type === "run_done") setRunning(false);
+      if (ev.type === "run_done") {
+        setRunning(false);
+        setWatchingRunId(null);
+      }
     }
     processedEventsRef.current = events.length;
   }, [events]);
@@ -304,16 +386,40 @@ export function App() {
                 <ModelInput value={modelInput} onChange={setModelInput} onAnalyze={onAnalyze} />
                 {analysis?.repo_id && (
                   <p style={{ color: "var(--anode)", fontSize: 12, marginBottom: 4 }}>
-                    → {analysis.repo_id} · server {analysis.detected_server ?? "manual"} ·{" "}
-                    {Object.keys(analysis.readme_flags ?? {}).length} flags
+                    → {analysis.repo_id} · server {server || analysis.detected_server || "manual"} ·{" "}
+                    {Object.keys(
+                      (server && analysis.readme_flags_by_server?.[server]) || analysis.readme_flags || {},
+                    ).length}{" "}
+                    flags
+                  </p>
+                )}
+                {analysis?.repo_id && analysis.detected_server && (
+                  <div className="row" style={{ gap: 12, marginTop: 4, flexWrap: "wrap" }}>
+                    <label style={{ color: "var(--anode)", fontSize: 12 }}>
+                      serving server
+                      <select
+                        aria-label="serving server"
+                        value={server || analysis.detected_server}
+                        onChange={(e) => setServer(e.target.value)}
+                        style={{ marginLeft: 6 }}
+                      >
+                        <option value={analysis.detected_server}>{analysis.detected_server}</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
+                {analysis?.repo_id && !analysis.detected_server && (
+                  <p style={{ color: "var(--accent)", fontSize: 12, margin: "4px 0 0" }}>
+                    no serving server proposed by this repo's README — model not supported by the
+                    serving servers yet
                   </p>
                 )}
                 {analysis?.fit_verdict && (
                   <FitStatusLine verdict={analysis.fit_verdict} hardware={analysis.hardware} />
                 )}
-                {analysis?.repo_id && (
+                {analysis?.repo_id && analysis.detected_server && (
                   <div className="row" style={{ gap: 12, marginTop: 8, flexWrap: "wrap" }}>
-                    {KNOWN_SERVERS.map((sid) => {
+                    {[analysis.detected_server].map((sid) => {
                       const k = `${sid}::${analysis.repo_id}`;
                       const dl = downloads[k];
                       const already = analysis.downloaded?.[sid];
@@ -351,6 +457,7 @@ export function App() {
                 n={n}
                 onNChange={setN}
                 onGenerate={onGenerate}
+                canGenerate={Boolean(server || analysis?.detected_server)}
                 configs={configs}
                 onEdit={(i, cmd) =>
                   setConfigs((prev) => prev.map((c, j) => (j === i ? { ...c, serving_command: cmd } : c)))
@@ -362,7 +469,7 @@ export function App() {
 
               <RunPanel
                 running={running}
-                canRun={Boolean(analysis?.repo_id) && configs.length > 0}
+                canRun={Boolean(analysis?.repo_id) && configs.length > 0 && Boolean(server || analysis?.detected_server)}
                 onRun={onRun}
                 progress={
                   progressState.running || progressState.results.length > 0
@@ -381,7 +488,13 @@ export function App() {
                 onPauseChange={setPause}
                 onContinue={onContinue}
               />
+              {watchingRunId !== null && (
+                <p style={{ color: "var(--anode)", fontSize: 12 }}>
+                  → watching benchmark run #{watchingRunId} in progress
+                </p>
+              )}
               {error && <p style={{ color: "var(--accent)", fontSize: 12 }}>Error: {error}</p>}
+              {errorContext && <ErrorContextLine context={errorContext} />}
 
               <section className="panel">
                 <span className="panel-cap">05 · RESULTS — RANKED</span>
