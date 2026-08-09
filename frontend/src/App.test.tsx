@@ -7,7 +7,7 @@ vi.mock("./api/client", () => ({
     getServers: vi.fn().mockResolvedValue({ readiness: {}, hardware: {} }),
     listModels: vi.fn().mockResolvedValue({ models: [] }),
     listRuns: vi.fn().mockResolvedValue({ runs: [] }),
-    analyze: vi.fn().mockResolvedValue({ repo_id: "org/model", detected_server: "vllm", readme_flags: {} }),
+    analyze: vi.fn().mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {} }),
     generateConfigs: vi.fn().mockResolvedValue({
       configs: [{ flags: { "--n-gpu": "1" }, serving_command: "python serve.py", bench_command: [] }],
     }),
@@ -33,10 +33,10 @@ vi.mock("./ws/useDownloadProgress", () => ({
 test("LOAD on a downloaded row fills MODEL INPUT and analyzes", async () => {
   const { api } = await import("./api/client");
   vi.mocked(api.listModels).mockResolvedValue({
-    models: [{ server_id: "vllm", repo_id: "org/model", status: "downloaded" }],
+    models: [{ server_id: "llama.cpp", repo_id: "org/model", status: "downloaded" }],
   });
   const analyzeSpy = vi.spyOn(api, "analyze");
-  analyzeSpy.mockResolvedValue({ repo_id: "org/model", detected_server: "vllm", readme_flags: {} });
+  analyzeSpy.mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {} });
 
   render(
     <MemoryRouter>
@@ -44,7 +44,7 @@ test("LOAD on a downloaded row fills MODEL INPUT and analyzes", async () => {
     </MemoryRouter>,
   );
 
-  await screen.findByText("vLLM");
+  await screen.findByText("llama.cpp");
   fireEvent.click(screen.getByRole("button", { name: "LOAD" }));
 
   await waitFor(() => expect(analyzeSpy).toHaveBeenCalledWith("org/model"));
@@ -79,7 +79,7 @@ test("REMOVE deletes the whole repo and refreshes the list", async () => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
   vi.mocked(api.listModels)
     .mockResolvedValueOnce({
-      models: [{ server_id: "vllm", repo_id: "org/model", status: "downloaded" }],
+      models: [{ server_id: "llama.cpp", repo_id: "org/model", status: "downloaded" }],
     })
     .mockResolvedValueOnce({ models: [] });
 
@@ -192,9 +192,9 @@ test("completed run populates ranked results and re-enables RUN", async () => {
     results: [
       {
         config_id: 1,
-        server_id: "vllm",
+        server_id: "llama.cpp",
         flag_conf: { "--max-model-len": "8192" },
-        serving_command: "vllm serve org/model",
+        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --ctx-size 8192",
         prompt_processing_tps: 100.0,
         decode_tps: 42.0,
       },
@@ -225,16 +225,65 @@ test("completed run populates ranked results and re-enables RUN", async () => {
   }, { timeout: 3000 });
 });
 
+test("409 already-running switches into watch mode showing the live run", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.startBenchmark).mockRejectedValueOnce({
+    status: 409,
+    detail: "A benchmark is already running",
+    context: { active_run: { id: 7, repo_id: "org/other", requested_n: 3, status: "running" } },
+  });
+  vi.mocked(api.getRun).mockResolvedValue({
+    status: "running",
+    total: 3,
+    results: [
+      {
+        config_id: 1,
+        server_id: "llama.cpp",
+        flag_conf: { "--max-model-len": "8192" },
+        serving_command: "llama-server --hf-repo org/other --hf-file model.gguf --ctx-size 8192",
+        prompt_processing_tps: 100.0,
+        decode_tps: 42.0,
+      },
+    ],
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+  fireEvent.click(screen.getByText(/generate/i));
+  await screen.findByText(/python serve/i);
+  fireEvent.click(screen.getByText(/run benchmark/i));
+
+  await waitFor(() => {
+    expect(screen.getByText(/watching benchmark run #7 in progress/i)).toBeInTheDocument();
+  });
+  await waitFor(() => {
+    expect(screen.getByText(/run benchmark/i)).toBeDisabled();
+  });
+  await waitFor(() => {
+    const table = document.querySelector(".results-table") as HTMLElement | null;
+    expect(within(table!).getByText("42.0")).toBeInTheDocument();
+  }, { timeout: 3000 });
+  expect(vi.mocked(api.getRun)).toHaveBeenCalledWith(7);
+});
+
 test("fit line renders NO FIT when verdict is no_fit", async () => {
   const { api } = await import("./api/client");
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValueOnce({
     repo_id: "org/model",
-    detected_server: "vllm",
+    detected_server: "llama.cpp",
     readme_flags: {},
     fit_verdict: { stage: "no_fit", warning: true, needed_gb: 40.5 },
     hardware: { gpu_vram_gb: 8, ram_total_gb: 32, gpu_name: "RTX 4090" },
-    downloaded: { "llama.cpp": false, vllm: false, sglang: false },
+    downloaded: { "llama.cpp": false },
   });
 
   render(
@@ -255,11 +304,11 @@ test("fit line renders FITS VRAM when verdict is gpu", async () => {
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValueOnce({
     repo_id: "org/model",
-    detected_server: "vllm",
+    detected_server: "llama.cpp",
     readme_flags: {},
     fit_verdict: { stage: "gpu", warning: false, needed_gb: 3.8 },
     hardware: { gpu_vram_gb: 24, ram_total_gb: 64, gpu_name: "RTX 4090" },
-    downloaded: { "llama.cpp": false, vllm: false, sglang: false },
+    downloaded: { "llama.cpp": false },
   });
 
   render(
@@ -284,11 +333,11 @@ test("fit line renders OFFLOADS TO RAM when verdict is ram_offload", async () =>
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValueOnce({
     repo_id: "org/model",
-    detected_server: "vllm",
+    detected_server: "llama.cpp",
     readme_flags: {},
     fit_verdict: { stage: "ram_offload", warning: false, needed_gb: 14.2 },
     hardware: { gpu_vram_gb: 8, ram_total_gb: 64, gpu_name: "RTX 4090" },
-    downloaded: { "llama.cpp": false, vllm: false, sglang: false },
+    downloaded: { "llama.cpp": false },
   });
 
   render(
@@ -307,6 +356,7 @@ test("fit line renders OFFLOADS TO RAM when verdict is ram_offload", async () =>
 test("download flow: click Download, shows downloading then downloaded and refreshes list", async () => {
   const { api } = await import("./api/client");
   const { useDownloadProgress } = await import("./ws/useDownloadProgress");
+  vi.mocked(api.analyze).mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {} });
   vi.mocked(api.listModels).mockClear();
   const downloadModelSpy = vi.spyOn(api, "downloadModel");
   downloadModelSpy.mockClear();
@@ -323,14 +373,14 @@ test("download flow: click Download, shows downloading then downloaded and refre
   fireEvent.click(screen.getByText(/analyze/i));
   await screen.findByText(/org\/model/i);
 
-  const downloadBtn = within(screen.getByText("vllm:").closest("span")!).getByText("Download");
+  const downloadBtn = within(screen.getByText("llama.cpp:").closest("span")!).getByText("Download");
   fireEvent.click(downloadBtn);
   expect(await screen.findByText(/downloading/i)).toBeInTheDocument();
-  expect(downloadModelSpy).toHaveBeenCalledWith({ repo_id: "org/model", server_id: "vllm" });
+  expect(downloadModelSpy).toHaveBeenCalledWith({ repo_id: "org/model", server_id: "llama.cpp" });
 
   vi.mocked(useDownloadProgress).mockReturnValue([
-    { type: "download_log", server_id: "vllm", repo_id: "org/model", line: "Fetching..." },
-    { type: "download_done", server_id: "vllm", repo_id: "org/model", status: "downloaded", local_path: "/x" },
+    { type: "download_log", server_id: "llama.cpp", repo_id: "org/model", line: "Fetching..." },
+    { type: "download_done", server_id: "llama.cpp", repo_id: "org/model", status: "downloaded", local_path: "/x" },
   ]);
   view.rerender(
     <MemoryRouter>
@@ -353,7 +403,7 @@ test("download for direct file link passes the single gguf filename", async () =
     detected_server: "llama.cpp",
     readme_flags: {},
     gguf_files: [{ path: "model.Q4_K_M.gguf", size: 4_000_000_000 }],
-    downloaded: { "llama.cpp": false, vllm: false, sglang: false },
+    downloaded: { "llama.cpp": false },
   });
 
   render(
@@ -381,6 +431,7 @@ test("download for direct file link passes the single gguf filename", async () =
 test("cancel flow: CANCEL shows prune prompt, answering y completes", async () => {
   const { api } = await import("./api/client");
   const { useDownloadProgress } = await import("./ws/useDownloadProgress");
+  vi.mocked(api.analyze).mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {} });
   const cancelSpy = vi.spyOn(api, "cancelDownload").mockResolvedValue({ ok: true });
   const pruneSpy = vi.spyOn(api, "answerPrune").mockResolvedValue({ ok: true });
   vi.mocked(useDownloadProgress).mockReturnValue([]);
@@ -396,12 +447,12 @@ test("cancel flow: CANCEL shows prune prompt, answering y completes", async () =
   fireEvent.click(screen.getByText(/analyze/i));
   await screen.findByText(/org\/model/i);
 
-  fireEvent.click(within(screen.getByText("vllm:").closest("span")!).getByText("Download"));
+  fireEvent.click(within(screen.getByText("llama.cpp:").closest("span")!).getByText("Download"));
   expect(await screen.findByRole("button", { name: /cancel/i })).toBeInTheDocument();
 
   vi.mocked(useDownloadProgress).mockReturnValue([
-    { type: "download_started", server_id: "vllm", repo_id: "org/model", command: "hf download org/model" },
-    { type: "download_log", server_id: "vllm", repo_id: "org/model", line: "Fetching..." },
+    { type: "download_started", server_id: "llama.cpp", repo_id: "org/model", command: "hf download org/model" },
+    { type: "download_log", server_id: "llama.cpp", repo_id: "org/model", line: "Fetching..." },
   ]);
   view.rerender(<MemoryRouter><App /></MemoryRouter>);
 
@@ -409,10 +460,10 @@ test("cancel flow: CANCEL shows prune prompt, answering y completes", async () =
   expect(cancelSpy).toHaveBeenCalled();
 
   vi.mocked(useDownloadProgress).mockReturnValue([
-    { type: "download_cancelled", server_id: "vllm", repo_id: "org/model" },
-    { type: "prune_started", server_id: "vllm", repo_id: "org/model", command: "hf cache prune --format human" },
-    { type: "prune_log", server_id: "vllm", repo_id: "org/model", line: "About to delete 1 incomplete download(s)." },
-    { type: "prune_prompt", server_id: "vllm", repo_id: "org/model" },
+    { type: "download_cancelled", server_id: "llama.cpp", repo_id: "org/model" },
+    { type: "prune_started", server_id: "llama.cpp", repo_id: "org/model", command: "hf cache prune --format human" },
+    { type: "prune_log", server_id: "llama.cpp", repo_id: "org/model", line: "About to delete 1 incomplete download(s)." },
+    { type: "prune_prompt", server_id: "llama.cpp", repo_id: "org/model" },
   ]);
   view.rerender(<MemoryRouter><App /></MemoryRouter>);
 
@@ -421,12 +472,12 @@ test("cancel flow: CANCEL shows prune prompt, answering y completes", async () =
   expect(pruneSpy).toHaveBeenCalledWith("y");
 
   vi.mocked(useDownloadProgress).mockReturnValue([
-    { type: "prune_done", server_id: "vllm", repo_id: "org/model", accepted: true },
+    { type: "prune_done", server_id: "llama.cpp", repo_id: "org/model", accepted: true },
   ]);
   view.rerender(<MemoryRouter><App /></MemoryRouter>);
 
   expect(await screen.findByText(/cache pruned/i)).toBeInTheDocument();
-  const span = within(screen.getByText("vllm:").closest("span")!);
+  const span = within(screen.getByText("llama.cpp:").closest("span")!);
   expect(span.getByRole("button", { name: /^download$/i })).toBeInTheDocument();
 });
 
@@ -549,4 +600,87 @@ test("run payload round-trips edited bench_flags", async () => {
   await waitFor(() => expect(startSpy).toHaveBeenCalled());
   const body = startSpy.mock.calls[0][0] as { configs: Array<{ bench_flags?: string }> };
   expect(body.configs[0].bench_flags).toBe("--bench qualitative --category coding");
+});
+
+test("detection returning null hides the select, shows the unsupported notice, and disables GENERATE/RUN", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: null,
+    readme_flags: {},
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  expect(screen.queryByLabelText(/serving server/i)).not.toBeInTheDocument();
+  expect(
+    await screen.findByText(/model not supported by llama.cpp/i),
+  ).toBeInTheDocument();
+  expect(screen.getByText("GENERATE")).toBeDisabled();
+  expect(screen.getByText("RUN BENCHMARK")).toBeDisabled();
+});
+
+test("GENERATE with no detected server and no manual pick stays disabled", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.generateConfigs).mockClear();
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: null,
+    readme_flags: {},
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  fireEvent.click(screen.getByText("GENERATE"));
+  expect(screen.getByText("GENERATE")).toBeDisabled();
+  expect(vi.mocked(api.generateConfigs)).not.toHaveBeenCalled();
+});
+
+test("only the README-detected server appears in the select and download row", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_flags: {},
+    downloaded: { "llama.cpp": false },
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  const select = screen.getByLabelText(/serving server/i) as HTMLSelectElement;
+  expect(select.value).toBe("llama.cpp");
+  expect(select.querySelectorAll("option").length).toBe(1);
+  expect(screen.getByText("llama.cpp:")).toBeInTheDocument();
+  expect(screen.getByText("GENERATE")).not.toBeDisabled();
+  expect(screen.getByText("RUN BENCHMARK")).toBeDisabled();
 });

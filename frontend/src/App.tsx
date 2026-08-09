@@ -410,8 +410,7 @@ export function App() {
                 )}
                 {analysis?.repo_id && !analysis.detected_server && (
                   <p style={{ color: "var(--accent)", fontSize: 12, margin: "4px 0 0" }}>
-                    no serving server proposed by this repo's README — model not supported by the
-                    serving servers yet
+                    no serving server proposed by this repo's README — model not supported by llama.cpp
                   </p>
                 )}
                 {analysis?.fit_verdict && (
