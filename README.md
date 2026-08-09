@@ -2,15 +2,15 @@
 
 [![CI](https://github.com/QUECOSITA/llmbench/actions/workflows/ci.yml/badge.svg)](https://github.com/QUECOSITA/llmbench/actions/workflows/ci.yml)
 
-Benchmark Hugging Face coding LLMs across llama.cpp, vLLM, and sglang to find the best serving config by DECODE STAGE tokens/sec.
+Benchmark Hugging Face coding LLMs with llama.cpp to find the best serving config by DECODE STAGE tokens/sec.
 
-The tool reads the model's README to detect the intended serving program and proposed flags, generates N editable config commands, and benchmarks them serially with each server's native bench tool.
+The tool reads the model's README to detect the intended serving program (llama.cpp) and proposed flags, generates N editable config commands, and benchmarks them serially with llama.cpp's native bench tools.
 
 ## Features
 
 - Analyze a model from a HF link or `user/model`: serving-program detection, proposed flags, hardware fit verdict (VRAM/RAM vs. model size) with a warning banner when headroom is tight.
 - Download models via the HF CLI as a background job with live WebSocket log streaming; llama.cpp downloads resolve the GGUF file path and size. Concurrent or duplicate downloads are rejected (409).
-- Per-server download buttons with progress in the model input panel.
+- Model download button with progress in the model input panel.
 - Serial benchmarks ranked by DECODE STAGE t/s (PROMPT PROCESSING t/s also reported), persisted in SQLite.
 - llama.cpp models that propose speculative decoding (README `--spec-type` / spec flags) or carry `MTP` in the name are benchmarked with `speed-bench` (llama-server + `speed_bench.py`) instead of `llama-bench`, so MTP configs are actually measured.
 
@@ -18,7 +18,7 @@ The tool reads the model's README to detect the intended serving program and pro
 
 - NVIDIA GPU workstation; Python 3.11+, Node 20+.
 - HF CLI (`hf` / `huggingface-cli`) for downloads.
-- Serving binaries to benchmark: llama.cpp (`llama-bench`/`llama-server`), vLLM, sglang. Availability is auto-detected and shown as readiness in the UI.
+- Serving binaries to benchmark: llama.cpp (`llama-bench`/`llama-server`). Availability is auto-detected and shown as readiness in the UI.
 - To benchmark speculative-decoding / MTP llama.cpp models, the llama.cpp source tree must include `tools/server/bench/speed-bench/speed_bench.py` (auto-discovered next to `llama-server`, or point `LLMBENCH_SPEED_BENCH_SCRIPT` at it) and its Python deps installed (`cd backend && pip install -e '.[speed-bench]'`). The speed-bench client always runs with `--limit 1 --category all --bench throughput_1k`.
 
 ## Run
