@@ -143,7 +143,7 @@ def test_generate_configs_endpoint(client):
     assert len(configs) == 3
     for cfg in configs:
         assert isinstance(cfg["bench_command"], list)
-        assert cfg["bench_command"][0] == "python"
+        assert cfg["bench_command"][0] == sys.executable
         assert any("benchmark_throughput" in tok for tok in cfg["bench_command"])
 
 

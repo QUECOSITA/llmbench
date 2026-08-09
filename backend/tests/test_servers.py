@@ -14,7 +14,30 @@ def test_detect_finds_llama_bench(monkeypatch):
 
 def test_detect_missing(monkeypatch):
     monkeypatch.setattr("app.servers.shutil.which", lambda name: None)
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
     assert detect_binaries() == {"llama.cpp": False, "vllm": False, "sglang": False, "speed-bench": False}
+
+
+def test_detect_vllm_requires_module_not_python(monkeypatch):
+    """A bare python on PATH must NOT mark vLLM ready; the vllm module must be importable."""
+    monkeypatch.setattr("app.servers.shutil.which", lambda name: "/usr/bin/python" if name == "python" else None)
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
+    assert detect_binaries()["vllm"] is False
+    assert detect_binaries()["sglang"] is False
+
+
+def test_detect_vllm_module_importable_is_ready(monkeypatch):
+    monkeypatch.setattr("importlib.util.find_spec",
+                        lambda name: object() if name == "vllm" else None)
+    assert detect_binaries()["vllm"] is True
+    assert detect_binaries()["sglang"] is False
+
+
+def test_detect_sglang_module_importable_is_ready(monkeypatch):
+    monkeypatch.setattr("importlib.util.find_spec",
+                        lambda name: object() if name == "sglang" else None)
+    assert detect_binaries()["sglang"] is True
+    assert detect_binaries()["vllm"] is False
 
 
 def test_resolve_bench_binary_uses_bin_dir(tmp_path):
@@ -114,7 +137,7 @@ def test_build_bench_command_llama_bare_bool_flag(tmp_path):
 def test_build_bench_command_vllm():
     cmd = build_bench_command("vllm", model_ref="org/model", flags={"--max-num-seqs": "32"},
                               workload="/tmp/p.jsonl", timeout_s=60)
-    assert cmd[0].startswith("python")
+    assert cmd[0] == sys.executable
     assert any("benchmark_throughput" in tok for tok in cmd)
 
 
@@ -126,12 +149,19 @@ def test_readme_flag_map_aliases():
 def test_build_bench_command_vllm_bare_bool_flag():
     cmd = build_bench_command("vllm", "org/model", {"--enforce-eager": ""},
                               workload="/tmp/p.jsonl", timeout_s=60)
-    assert cmd[0].startswith("python")
+    assert cmd[0] == sys.executable
     idx = cmd.index("--enforce-eager")
     assert idx != -1
     assert cmd[idx] == "--enforce-eager"
     assert idx == len(cmd) - 1 or cmd[idx + 1] != "--enforce-eager"
     assert any("benchmark_throughput" in tok for tok in cmd)
+
+
+def test_build_bench_command_sglang_uses_sys_executable():
+    cmd = build_bench_command("sglang", "org/model", {},
+                              workload="/tmp/p.jsonl", timeout_s=60)
+    assert cmd[0] == sys.executable
+    assert any("bench_one_batch_server" in tok for tok in cmd)
 
 
 def test_build_bench_command_sglang_empty_max_running_requests():

@@ -11,12 +11,14 @@ SERVERS = {
     },
     "vllm": {
         "display": "vLLM",
-        "bench_binaries": ["python"],
+        "module": "vllm",
+        "bench_binaries": [],
         "serving_binaries": ["vllm"],
     },
     "sglang": {
         "display": "sglang",
-        "bench_binaries": ["python"],
+        "module": "sglang",
+        "bench_binaries": [],
         "serving_binaries": ["sglang"],
     },
 }
@@ -35,12 +37,22 @@ README_FLAG_MAP = {
 }
 
 
+def _module_importable(module: str) -> bool:
+    return importlib.util.find_spec(module) is not None
+
+
 def resolve_bench_binary(server_id: str, bin_dir: str | None = None) -> str | None:
+    """Resolve the executable that runs a server's benchmark. Module-based servers
+    (vLLM, sglang) are ready only when their module is importable in the current
+    interpreter; the returned value is that interpreter, matching how the bench is
+    spawned. Binary servers resolve like llama.cpp."""
     meta = SERVERS[server_id]
     if server_id == "llama.cpp" and bin_dir:
         candidate = Path(bin_dir) / "llama-bench"
         if candidate.is_file():
             return str(candidate)
+    if meta.get("module"):
+        return sys.executable if _module_importable(meta["module"]) else None
     for b in meta["bench_binaries"]:
         found = shutil.which(b)
         if found:
@@ -343,7 +355,7 @@ def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
         cmd += ["-p", str(prompt), "-n", str(gen), "-r", "2", "-o", "csv"]
         return cmd
     if server_id == "vllm":
-        cmd = ["python", "-m", "vllm.benchmarks.benchmark_throughput",
+        cmd = [sys.executable, "-m", "vllm.benchmarks.benchmark_throughput",
                "--model", model_ref, "--input-len", "512", "--output-len", "128",
                "--num-prompts", "20", "--trust-remote-code", "--output-json", "/dev/stdout"]
         for flag, value in flags.items():
@@ -353,7 +365,7 @@ def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
                 cmd += [flag]
         return cmd
     if server_id == "sglang":
-        cmd = ["python", "-m", "sglang.bench_one_batch_server",
+        cmd = [sys.executable, "-m", "sglang.bench_one_batch_server",
                "--model-path", model_ref, "--input-len", "512", "--output-len", "128",
                "--batch-size", (flags.get("--max-running-requests") or "16")]
         return cmd
