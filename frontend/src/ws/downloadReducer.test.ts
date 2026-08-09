@@ -3,16 +3,16 @@ import type { DownloadEvent } from "./useDownloadProgress";
 
 const ev = (type: DownloadEvent["type"], extra: Partial<DownloadEvent> = {}): DownloadEvent => ({
   type,
-  server_id: "vllm",
+  server_id: "llama.cpp",
   repo_id: "org/model",
   ...extra,
 });
 
 test("started sets downloading and command, resets lines", () => {
   let s = downloadReducer({}, ev("download_started", { command: "hf download org/model" }));
-  expect(s["vllm::org/model"].status).toBe("downloading");
-  expect(s["vllm::org/model"].command).toBe("hf download org/model");
-  expect(key("vllm", "org/model")).toBe("vllm::org/model");
+  expect(s["llama.cpp::org/model"].status).toBe("downloading");
+  expect(s["llama.cpp::org/model"].command).toBe("hf download org/model");
+  expect(key("llama.cpp", "org/model")).toBe("llama.cpp::org/model");
 });
 
 test("log appends and progress replaces the last line", () => {
@@ -20,38 +20,38 @@ test("log appends and progress replaces the last line", () => {
   s = downloadReducer(s, ev("download_log", { line: "Fetching..." }));
   s = downloadReducer(s, ev("download_progress", { line: "45%" }));
   s = downloadReducer(s, ev("download_progress", { line: "100%" }));
-  expect(s["vllm::org/model"].lines).toEqual(["Fetching...", "100%"]);
+  expect(s["llama.cpp::org/model"].lines).toEqual(["Fetching...", "100%"]);
 });
 
 test("progress with no prior lines creates one line", () => {
   const s = downloadReducer({}, ev("download_progress", { line: "45%" }));
-  expect(s["vllm::org/model"].lines).toEqual(["45%"]);
+  expect(s["llama.cpp::org/model"].lines).toEqual(["45%"]);
 });
 
 test("done and error set terminal states", () => {
   let s = downloadReducer({}, ev("download_started"));
   s = downloadReducer(s, ev("download_done", { local_path: "/x" }));
-  expect(s["vllm::org/model"].status).toBe("downloaded");
-  expect(s["vllm::org/model"].local_path).toBe("/x");
+  expect(s["llama.cpp::org/model"].status).toBe("downloaded");
+  expect(s["llama.cpp::org/model"].local_path).toBe("/x");
   let t = downloadReducer({}, ev("download_started"));
   t = downloadReducer(t, ev("download_error", { message: "boom" }));
-  expect(t["vllm::org/model"].status).toBe("error");
-  expect(t["vllm::org/model"].message).toBe("boom");
+  expect(t["llama.cpp::org/model"].status).toBe("error");
+  expect(t["llama.cpp::org/model"].message).toBe("boom");
 });
 
 test("cancel then prune sequence keeps the console entry", () => {
   let s = downloadReducer({}, ev("download_started"));
   s = downloadReducer(s, ev("download_cancelled"));
-  expect(s["vllm::org/model"].status).toBe("cancelled");
+  expect(s["llama.cpp::org/model"].status).toBe("cancelled");
   s = downloadReducer(s, ev("prune_started", { command: "hf cache prune --format human" }));
-  expect(s["vllm::org/model"].status).toBe("pruning");
+  expect(s["llama.cpp::org/model"].status).toBe("pruning");
   s = downloadReducer(s, ev("prune_log", { line: "About to delete 1 incomplete download(s)." }));
   s = downloadReducer(s, ev("prune_prompt"));
-  expect(s["vllm::org/model"].waitingInput).toBe(true);
+  expect(s["llama.cpp::org/model"].waitingInput).toBe(true);
   s = downloadReducer(s, ev("prune_done", { accepted: true }));
-  expect(s["vllm::org/model"].status).toBe("pruned");
-  expect(s["vllm::org/model"].pruneAccepted).toBe(true);
-  expect(s["vllm::org/model"].waitingInput).toBe(false);
+  expect(s["llama.cpp::org/model"].status).toBe("pruned");
+  expect(s["llama.cpp::org/model"].pruneAccepted).toBe(true);
+  expect(s["llama.cpp::org/model"].waitingInput).toBe(false);
 });
 
 test("downloadActive is true while downloading/cancelled/pruning", () => {

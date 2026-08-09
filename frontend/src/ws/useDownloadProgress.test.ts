@@ -29,8 +29,8 @@ test("useDownloadProgress connects on mount and collects events", () => {
     expect(FakeWS.instances).toHaveLength(1);
     const ws = FakeWS.instances[0];
     act(() => {
-      ws.emit({ type: "download_log", server_id: "vllm", repo_id: "org/model", line: "Fetching" });
-      ws.emit({ type: "download_done", server_id: "vllm", repo_id: "org/model", status: "downloaded" });
+      ws.emit({ type: "download_log", server_id: "llama.cpp", repo_id: "org/model", line: "Fetching" });
+      ws.emit({ type: "download_done", server_id: "llama.cpp", repo_id: "org/model", status: "downloaded" });
     });
     const events = result.current as DownloadEvent[];
     expect(events).toHaveLength(2);
