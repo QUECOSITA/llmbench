@@ -26,6 +26,7 @@ from app.servers import (build_bench_command, build_server_command, build_speed_
                          parse_serving_command, resolve_speed_bench_script,
                          speed_bench_deps_available, parse_speed_bench_flags,
                          speed_bench_default_flags, validate_speed_bench_flags)
+from app.spawn import spawn_env
 from app.tty_stream import TtyStream
 
 router = APIRouter(prefix="/api")
@@ -33,7 +34,18 @@ router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
 
 
-KNOWN_SERVERS = ("llama.cpp", "vllm", "sglang")
+class ApiError(Exception):
+    """Structured API error: keeps FastAPI's `detail` string while adding
+    machine-readable context the frontend can render alongside the message."""
+
+    def __init__(self, status_code: int, message: str, context: dict | None = None):
+        self.status_code = status_code
+        self.message = message
+        self.context = context or {}
+        super().__init__(message)
+
+
+KNOWN_SERVERS = ("llama.cpp",)
 
 AUTO_ADVANCE_GRACE_S = 3.0
 
@@ -41,8 +53,7 @@ AUTO_ADVANCE_GRACE_S = 3.0
 def _download_command(repo_id: str, server_id: str, gguf_filename: str | None = None,
                       cache_dir: str | None = None) -> list[str]:
     cmd = ["hf", "download", "--format", "human", repo_id]
-    if server_id == "llama.cpp":
-        cmd += ["--include", gguf_filename or "*.gguf"]
+    cmd += ["--include", gguf_filename or "*.gguf", "--include", "README.md"]
     if cache_dir:
         cmd += ["--cache-dir", cache_dir]
     return cmd
@@ -73,6 +84,7 @@ def _open_pty() -> tuple[int, int]:
 async def _spawn_pty(cmd: list[str], stdin_fd: int, stdout_fd: int, stderr_fd: int):
     return await asyncio.create_subprocess_exec(
         *cmd, stdin=stdin_fd, stdout=stdout_fd, stderr=stderr_fd, start_new_session=True,
+        env=spawn_env(),
     )
 
 
@@ -146,6 +158,7 @@ _hf = HfClient()
 def init_state(settings: Settings) -> AppState:
     global state
     state = AppState(settings)
+    db_mod.fail_stale_runs(state.conn)
     return state
 
 
@@ -193,7 +206,10 @@ async def analyze(payload: dict):
     gguf = _hf.gguf_files(files)
     scores = detect_serving_programs(readme, has_gguf=bool(gguf))
     detected = top_serving_program(scores)
-    flags = extract_flags(readme, [detected or "vllm"])
+    readme_flags_by_server = {
+        "llama.cpp": extract_flags(readme, ["llama.cpp"]),
+    }
+    flags = readme_flags_by_server.get(detected) if detected else {}
     weights = _hf.weights_size_bytes(files)
     hw = detect_hardware()
     arch = None
@@ -208,6 +224,7 @@ async def analyze(payload: dict):
         "detected_server": detected,
         "server_scores": scores,
         "readme_flags": flags,
+        "readme_flags_by_server": readme_flags_by_server,
         "gguf_files": gguf,
         "weights_bytes": weights,
         "downloaded": _model_status(s, repo_id),
@@ -223,7 +240,7 @@ async def analyze(payload: dict):
 
 def _model_status(s: AppState, repo_id: str) -> dict[str, bool]:
     out = {}
-    for server_id in ("llama.cpp", "vllm", "sglang"):
+    for server_id in ("llama.cpp",):
         m = db_mod.get_model(s.conn, repo_id, server_id)
         out[server_id] = bool(m and m["status"] == "downloaded")
     return out
@@ -235,22 +252,17 @@ def _hf_snapshot_dir(settings: Settings, repo_id: str) -> Path:
 
 def _resolve_download_path(s: AppState, repo_id: str, server_id: str,
                            gguf_filename: str | None) -> tuple[str | None, str | None, int | None]:
-    if server_id == "llama.cpp":
-        gguf_dir = s.settings.resolved_gguf_dir
-        if gguf_filename and (gguf_dir / gguf_filename).exists():
-            p = gguf_dir / gguf_filename
-            return str(p), gguf_filename, p.stat().st_size
-        for p in sorted(gguf_dir.glob("*.gguf")):
-            return str(p), p.name, p.stat().st_size
-        snapshot = _hf_snapshot_dir(s.settings, repo_id)
-        ggufs = sync_mod._ggufs_in_snapshot(snapshot)
-        if ggufs:
-            g = max(ggufs, key=lambda p: p.stat().st_size)
-            return str(g), g.name, g.stat().st_size
-        return None, None, None
+    gguf_dir = s.settings.resolved_gguf_dir
+    if gguf_filename and (gguf_dir / gguf_filename).exists():
+        p = gguf_dir / gguf_filename
+        return str(p), gguf_filename, p.stat().st_size
+    for p in sorted(gguf_dir.glob("*.gguf")):
+        return str(p), p.name, p.stat().st_size
     snapshot = _hf_snapshot_dir(s.settings, repo_id)
-    if snapshot.exists():
-        return str(snapshot), None, None
+    ggufs = sync_mod._ggufs_in_snapshot(snapshot)
+    if ggufs:
+        g = max(ggufs, key=lambda p: p.stat().st_size)
+        return str(g), g.name, g.stat().st_size
     return None, None, None
 
 
@@ -534,7 +546,7 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
     """Re-derive the executed commands from the user's edited serving command so
     edits to the config bank actually take effect at run time. speed-bench runs
     need both a server command (llama-server) and a client command
-    (speed_bench.py); llama-bench/vllm/sglang keep the single bench command."""
+    (speed_bench.py); llama-bench keeps the single bench command."""
     if not cfg.get("server_id"):
         return
     if cfg.get("bench_tool") == "speed-bench":
@@ -577,13 +589,19 @@ async def start_run(payload: dict):
     s = _require_state()
     with s._state_lock:
         if s._job_active:
-            raise HTTPException(409, "A benchmark is already running")
+            active = db_mod.get_active_run(s.conn)
+            raise ApiError(
+                409, "A benchmark is already running",
+                context={"active_run": active or {"id": s._active_run_id}})
     repo_id = payload["repo_id"]
     configs = payload.get("configs", [])
     for cfg in configs:
         _rebuild_bench_command(s, cfg, repo_id)
         if cfg.get("bench_error"):
-            raise HTTPException(422, cfg["bench_error"])
+            raise ApiError(422, cfg["bench_error"],
+                           context={"config_index": configs.index(cfg),
+                                    "server_id": cfg.get("server_id"),
+                                    "bench_tool": cfg.get("bench_tool")})
     pause = bool(payload.get("pause", True))
     run_id = db_mod.create_run(s.conn, repo_id, len(configs))
     with s._state_lock:
@@ -596,9 +614,11 @@ async def start_run(payload: dict):
 async def continue_run(payload: dict):
     s = _require_state()
     if s._continue_queue is None or s._active_run_id is None:
-        raise HTTPException(409, "No benchmark is waiting for input")
+        raise ApiError(409, "No benchmark is waiting for input",
+                       context={"active_run_id": s._active_run_id})
     if payload.get("run_id") != s._active_run_id:
-        raise HTTPException(409, "Run is not waiting for input")
+        raise ApiError(409, "Run is not waiting for input",
+                       context={"active_run_id": s._active_run_id})
     await s._continue_queue.put("continue")
     return {"ok": True}
 
@@ -649,7 +669,7 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict], pause: bool = 
                     if result["status"] == "aborted":
                         status = "aborted"
                         break
-                    if pause:
+                    if pause and result["status"] == "ok":
                         wait_queue: asyncio.Queue = asyncio.Queue()
                         s._continue_queue = wait_queue
                         await broadcast(s, {"type": "config_wait", "run_id": run_id, "index": i})
