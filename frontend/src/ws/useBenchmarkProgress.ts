@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 export interface ProgressEvent {
-  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "bench_log" | "config_wait";
+  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "config_wait";
   run_id: number;
   index?: number;
   total?: number;
@@ -118,6 +118,22 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
 
   if (event.type === "run_done" && event.run_id === state.runId) {
     return { ...state, running: false, waiting: false };
+  }
+
+  if (event.type === "run_watch" && event.run_id === state.runId) {
+    const results = event.results ?? [];
+    const last = results[results.length - 1];
+    return {
+      ...state,
+      running: true,
+      runId: event.run_id,
+      index: results.length,
+      total: event.total ?? state.total,
+      promptTps: last?.prompt_processing_tps ?? null,
+      decodeTps: last?.decode_tps ?? null,
+      results,
+      waiting: false,
+    };
   }
 
   if (event.type === "run_sync" && event.run_id === state.runId) {

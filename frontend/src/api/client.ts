@@ -1,5 +1,28 @@
 const BASE = "http://localhost:8000/api";
 
+export interface ApiErrorContext {
+  active_run?: { id?: number | null; repo_id?: string | null; requested_n?: number | null; created_at?: string | null; status?: string | null } | null;
+  active_run_id?: number | null;
+  config_index?: number;
+  server_id?: string | null;
+  bench_tool?: string | null;
+  [key: string]: unknown;
+}
+
+export class ApiError extends Error {
+  status: number;
+  detail: string;
+  context: ApiErrorContext;
+
+  constructor(status: number, detail: string, context: ApiErrorContext = {}) {
+    super(`${status}: ${detail}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+    this.context = context;
+  }
+}
+
 export function normalizeInput(raw: string): string {
   return raw.trim();
 }
@@ -31,6 +54,7 @@ export interface Analysis {
   repo_id?: string;
   detected_server?: string | null;
   readme_flags?: Record<string, string>;
+  readme_flags_by_server?: Record<string, Record<string, string>>;
   gguf_files?: Array<{ path: string; size: number }>;
   weights_bytes?: number;
   downloaded?: Record<string, boolean>;
@@ -86,8 +110,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${res.status}: ${text.slice(0, 300)}`);
+    let detail = res.statusText;
+    let context: ApiErrorContext = {};
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+      if (body?.context && typeof body.context === "object") context = body.context;
+    } catch {
+      const text = await res.text();
+      if (text) detail = text.slice(0, 300);
+    }
+    throw new ApiError(res.status, detail, context);
   }
   return res.json() as Promise<T>;
 }
