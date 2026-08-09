@@ -7,7 +7,7 @@ from pathlib import Path
 from app.hardware import detect_hardware
 from app.servers import SERVERS, _module_importable, resolve_bench_binary
 
-_USAGE = "usage: python -m app.install <server_id>  (vllm | sglang | llama.cpp)"
+_USAGE = "usage: python -m app.install llama.cpp"
 
 
 def server_detection(server_id: str) -> dict:
@@ -54,17 +54,7 @@ def requirements_for(server_id: str, hardware: dict) -> list[str]:
     out: list[str] = []
     gpu = hardware.get("gpu_name")
     driver = hardware.get("nvidia_driver")
-    if server_id in ("vllm", "sglang"):
-        if not gpu:
-            out.append("NVIDIA GPU required (none detected)")
-        else:
-            if not driver:
-                out.append("NVIDIA driver version not detected — install a CUDA-capable driver")
-            vram = hardware.get("gpu_vram_gb") or 0
-            if vram and vram < 8:
-                out.append("at least 8 GB VRAM recommended")
-            out.append("Blackwell/sm_120 GPUs (e.g. RTX 50-series) need a recent torch + vLLM/sglang build")
-    elif server_id == "llama.cpp":
+    if server_id == "llama.cpp":
         if not gpu:
             out.append("CPU-only build is fine; a CUDA build requires an NVIDIA GPU")
         elif not driver:
@@ -99,16 +89,6 @@ def verify_system(server_id: str) -> dict:
 def install_commands(server_id: str) -> list[str]:
     """The commands that install server_id. These are printed, never executed by
     the app; the agent runs them after the user approves."""
-    if server_id == "vllm":
-        return [
-            f"{sys.executable} -m pip install --upgrade pip",
-            f"{sys.executable} -m pip install vllm",
-        ]
-    if server_id == "sglang":
-        return [
-            f"{sys.executable} -m pip install --upgrade pip",
-            f'{sys.executable} -m pip install "sglang[all]"',
-        ]
     if server_id == "llama.cpp":
         return [
             "git clone https://github.com/ggml-org/llama.cpp $HOME/llama.cpp",
