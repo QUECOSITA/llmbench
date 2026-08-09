@@ -2,11 +2,11 @@ import asyncio
 import csv
 import io
 import json
-import re
 import socket
 import tempfile
 from pathlib import Path
 
+from app.spawn import spawn_env
 from app.tty_stream import TtyStream
 
 
@@ -46,30 +46,8 @@ def parse_llama_bench_csv(text: str) -> dict:
     return {"prompt_processing_tps": pp, "decode_tps": tg}
 
 
-def parse_vllm_throughput(text: str) -> dict:
-    matches = re.findall(r"\{.*?\}", text, re.DOTALL)
-    if not matches:
-        return {"prompt_processing_tps": None, "decode_tps": None}
-    data = json.loads(matches[-1])
-    return {
-        "prompt_processing_tps": data.get("input_token_throughput"),
-        "decode_tps": data.get("tokens_per_second", data.get("output_token_throughput")),
-    }
-
-
-def parse_sglang_bench(text: str) -> dict:
-    pp = re.search(r"prefill throughput:\s*([\d.]+)", text)
-    tg = re.search(r"decode throughput:\s*([\d.]+)", text)
-    return {
-        "prompt_processing_tps": float(pp.group(1)) if pp else None,
-        "decode_tps": float(tg.group(1)) if tg else None,
-    }
-
-
 PARSERS = {
     "llama.cpp": parse_llama_bench_csv,
-    "vllm": parse_vllm_throughput,
-    "sglang": parse_sglang_bench,
 }
 
 
@@ -130,6 +108,7 @@ class BenchmarkRunner:
             *self.bench_command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=spawn_env(),
         )
         try:
             stdout_bytes, stderr_bytes, rc = await asyncio.wait_for(
@@ -303,7 +282,9 @@ class SpeedBenchRunner:
         parts: list[bytes] = []
         try:
             server_proc = await asyncio.create_subprocess_exec(
-                *server_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                *server_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                env=spawn_env(),
+            )
             self._procs.append(server_proc)
             server_pump = asyncio.create_task(self._pump(server_proc, parts, on_output))
 
@@ -319,7 +300,9 @@ class SpeedBenchRunner:
                                   f"within {self.startup_timeout_s}s\n{_decode_parts(parts)}"}
 
             client_proc = await asyncio.create_subprocess_exec(
-                *client_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                *client_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                env=spawn_env(),
+            )
             self._procs.append(client_proc)
             try:
                 await asyncio.wait_for(self._pump(client_proc, parts, on_output), timeout=self.timeout_s)
