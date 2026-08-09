@@ -15,29 +15,7 @@ def test_detect_finds_llama_bench(monkeypatch):
 def test_detect_missing(monkeypatch):
     monkeypatch.setattr("app.servers.shutil.which", lambda name: None)
     monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
-    assert detect_binaries() == {"llama.cpp": False, "vllm": False, "sglang": False, "speed-bench": False}
-
-
-def test_detect_vllm_requires_module_not_python(monkeypatch):
-    """A bare python on PATH must NOT mark vLLM ready; the vllm module must be importable."""
-    monkeypatch.setattr("app.servers.shutil.which", lambda name: "/usr/bin/python" if name == "python" else None)
-    monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
-    assert detect_binaries()["vllm"] is False
-    assert detect_binaries()["sglang"] is False
-
-
-def test_detect_vllm_module_importable_is_ready(monkeypatch):
-    monkeypatch.setattr("importlib.util.find_spec",
-                        lambda name: object() if name == "vllm" else None)
-    assert detect_binaries()["vllm"] is True
-    assert detect_binaries()["sglang"] is False
-
-
-def test_detect_sglang_module_importable_is_ready(monkeypatch):
-    monkeypatch.setattr("importlib.util.find_spec",
-                        lambda name: object() if name == "sglang" else None)
-    assert detect_binaries()["sglang"] is True
-    assert detect_binaries()["vllm"] is False
+    assert detect_binaries() == {"llama.cpp": False, "speed-bench": False}
 
 
 def test_resolve_bench_binary_uses_bin_dir(tmp_path):
@@ -134,63 +112,8 @@ def test_build_bench_command_llama_bare_bool_flag(tmp_path):
     assert cmd[-4:] == ["-r", "2", "-o", "csv"]
 
 
-def test_build_bench_command_vllm():
-    cmd = build_bench_command("vllm", model_ref="org/model", flags={"--max-num-seqs": "32"},
-                              workload="/tmp/p.jsonl", timeout_s=60)
-    assert cmd[0] == sys.executable
-    assert cmd[cmd.index("-m") + 1] == "vllm.entrypoints.cli.main"
-    assert cmd[cmd.index("vllm.entrypoints.cli.main") + 1] == "bench"
-    assert "throughput" in cmd
-    assert cmd[cmd.index("--max-num-seqs") + 1] == "32"
-
-
 def test_readme_flag_map_aliases():
     assert README_FLAG_MAP["llama.cpp"]["-c"] == "--ctx-size"
-    assert README_FLAG_MAP["vllm"]["--max-model-len"] == "--max-model-len"
-
-
-def test_build_bench_command_vllm_bare_bool_flag():
-    cmd = build_bench_command("vllm", "org/model", {"--enforce-eager": ""},
-                              workload="/tmp/p.jsonl", timeout_s=60)
-    assert cmd[0] == sys.executable
-    idx = cmd.index("--enforce-eager")
-    assert idx != -1
-    assert cmd[idx] == "--enforce-eager"
-    assert idx == len(cmd) - 1 or cmd[idx + 1] != "--enforce-eager"
-    assert "vllm.entrypoints.cli.main" in cmd
-    assert "bench" in cmd and "throughput" in cmd
-
-
-def test_build_bench_command_vllm_filters_server_only_flags():
-    flags = {
-        "--max-model-len": "32768", "--quantization": "modelopt", "--dtype": "auto",
-        "--kv-cache-dtype": "fp8", "--attention-backend": "flashinfer",
-        "--enable-chunked-prefill": "", "--port": "30000",
-        "--enable-auto-tool-choice": "", "--tool-call-parser": "hermes",
-    }
-    cmd = build_bench_command("vllm", "org/model", flags,
-                              workload="/tmp/p.jsonl", timeout_s=60)
-    for accepted in ("--max-model-len", "--quantization", "--dtype",
-                     "--kv-cache-dtype", "--attention-backend", "--enable-chunked-prefill"):
-        assert accepted in cmd
-    for dropped in ("--port", "--enable-auto-tool-choice", "--tool-call-parser"):
-        assert dropped not in cmd
-    assert cmd[cmd.index("--quantization") + 1] == "modelopt"
-    assert cmd[cmd.index("--attention-backend") + 1] == "flashinfer"
-    assert cmd[cmd.index("--enable-chunked-prefill")] == "--enable-chunked-prefill"
-
-
-def test_build_bench_command_sglang_uses_sys_executable():
-    cmd = build_bench_command("sglang", "org/model", {},
-                              workload="/tmp/p.jsonl", timeout_s=60)
-    assert cmd[0] == sys.executable
-    assert any("bench_one_batch_server" in tok for tok in cmd)
-
-
-def test_build_bench_command_sglang_empty_max_running_requests():
-    cmd = build_bench_command("sglang", "org/model", {"--max-running-requests": ""},
-                              workload="/tmp/p.jsonl", timeout_s=60)
-    assert cmd[cmd.index("--batch-size") + 1] == "16"
 
 
 def test_build_bench_command_llama_no_gguf_filename_uses_m(tmp_path):
@@ -226,26 +149,8 @@ def test_parse_serving_command_llama_bare_bool_flag():
     }
 
 
-def test_parse_serving_command_vllm():
-    assert parse_serving_command("vllm", "vllm serve org/model --max-model-len 8192 --enforce-eager") == {
-        "--max-model-len": "8192",
-        "--enforce-eager": "",
-    }
-
-
-def test_parse_serving_command_sglang():
-    assert parse_serving_command(
-        "sglang", "python -m sglang.launch_server --model-path org/model --context-length 8192"
-    ) == {
-        "-m": "sglang.launch_server",
-        "--model-path": "org/model",
-        "--context-length": "8192",
-    }
-
-
 def test_parse_serving_command_empty():
     assert parse_serving_command("llama.cpp", "  ") == {}
-    assert parse_serving_command("vllm", "vllm serve org/model") == {}
 
 
 def test_model_ref_from_flags_llama_hf_pair():
@@ -259,7 +164,6 @@ def test_model_ref_from_flags_llama_local_model():
 
 def test_model_ref_from_flags_fallbacks():
     assert model_ref_from_flags("llama.cpp", {}, "org/model") == ("org/model", None)
-    assert model_ref_from_flags("vllm", {"--max-model-len": "8192"}, "org/model") == ("org/model", None)
 
 
 def test_roundtrip_rebuild_bench_command_matches_generated(tmp_path):
@@ -271,9 +175,9 @@ def test_roundtrip_rebuild_bench_command_matches_generated(tmp_path):
     workload = tmp_path / "p.jsonl"
     workload.write_text('{"prompt": "hello world"}\n')
     repo_id = "org/model"
-    for server_id in ("llama.cpp", "vllm", "sglang"):
+    for server_id in ("llama.cpp",):
         for cfg in generate_configs(server_id, {}, n=3, vram_gb=24.0):
-            gguf = "x.gguf" if server_id == "llama.cpp" else None
+            gguf = "x.gguf"
             serving = build_serving_command(server_id, repo_id, cfg["flags"], gguf_filename=gguf)
             original = build_bench_command(server_id, repo_id, normalized(cfg["flags"]),
                                            workload=str(workload), timeout_s=60, gguf_filename=gguf)

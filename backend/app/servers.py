@@ -9,18 +9,6 @@ SERVERS = {
         "bench_binaries": ["llama-bench"],
         "serving_binaries": ["llama-server"],
     },
-    "vllm": {
-        "display": "vLLM",
-        "module": "vllm",
-        "bench_binaries": [],
-        "serving_binaries": ["vllm"],
-    },
-    "sglang": {
-        "display": "sglang",
-        "module": "sglang",
-        "bench_binaries": [],
-        "serving_binaries": ["sglang"],
-    },
 }
 
 # README flag name -> canonical flag name per server
@@ -29,11 +17,6 @@ README_FLAG_MAP = {
         "-c": "--ctx-size", "-n": "--predict", "-t": "--threads", "-b": "--batch-size",
         "-ngl": "--n-gpu-layers", "-m": "-m",
     },
-    "vllm": {"--max-model-len": "--max-model-len", "--max-num-seqs": "--max-num-seqs",
-             "--gpu-memory-utilization": "--gpu-memory-utilization", "--enforce-eager": "--enforce-eager",
-             "--tensor-parallel-size": "--tensor-parallel-size"},
-    "sglang": {"--context-length": "--context-length", "--max-running-requests": "--max-running-requests",
-               "--mem-fraction-static": "--mem-fraction-static", "--tp-size": "--tp-size"},
 }
 
 
@@ -42,18 +25,13 @@ def _module_importable(module: str) -> bool:
 
 
 def resolve_bench_binary(server_id: str, bin_dir: str | None = None) -> str | None:
-    """Resolve the executable that runs a server's benchmark. Module-based servers
-    (vLLM, sglang) are ready only when their module is importable in the current
-    interpreter; the returned value is that interpreter, matching how the bench is
-    spawned. Binary servers resolve like llama.cpp."""
-    meta = SERVERS[server_id]
+    """Resolve the executable that runs a server's benchmark. llama.cpp resolves
+    the llama-bench binary from bin_dir or PATH."""
     if server_id == "llama.cpp" and bin_dir:
         candidate = Path(bin_dir) / "llama-bench"
         if candidate.is_file():
             return str(candidate)
-    if meta.get("module"):
-        return sys.executable if _module_importable(meta["module"]) else None
-    for b in meta["bench_binaries"]:
+    for b in SERVERS[server_id]["bench_binaries"]:
         found = shutil.which(b)
         if found:
             return found
@@ -253,17 +231,6 @@ _LLAMA_BENCH_FLAGS = {
     "-ub", "--ubatch-size", "-d", "--n-depth",
 }
 
-# `vllm bench throughput` accepts a subset of vLLM flags. Serving-only flags
-# extracted from a model card (e.g. --port, --host, --enable-auto-tool-choice,
-# --tool-call-parser) moved to the `serve` CLI and must not leak into the bench
-# invocation.
-_VLLM_BENCH_FLAGS = {
-    "--dtype", "--max-model-len", "--max-num-seqs", "--quantization",
-    "--enforce-eager", "--kv-cache-dtype", "--attention-backend",
-    "--tensor-parallel-size", "--gpu-memory-utilization", "--enable-chunked-prefill",
-    "--trust-remote-code",
-}
-
 
 def _llama_token_counts(workload: str) -> tuple[int, int]:
     prompt = 512
@@ -335,9 +302,6 @@ def model_ref_from_flags(server_id: str, flags: dict[str, str],
         if model:
             return model, None
         return fallback_repo, None
-    if server_id == "sglang":
-        ref = flags.get("--model-path") or fallback_repo
-        return ref, None
     return fallback_repo, None
 
 
@@ -364,22 +328,5 @@ def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
                 cmd += [bench_flag]
         prompt, gen = _llama_token_counts(workload)
         cmd += ["-p", str(prompt), "-n", str(gen), "-r", "2", "-o", "csv"]
-        return cmd
-    if server_id == "vllm":
-        cmd = [sys.executable, "-m", "vllm.entrypoints.cli.main", "bench", "throughput",
-               "--model", model_ref, "--input-len", "512", "--output-len", "128",
-               "--num-prompts", "20", "--trust-remote-code", "--output-json", "/dev/stdout"]
-        for flag, value in flags.items():
-            if flag not in _VLLM_BENCH_FLAGS:
-                continue
-            if value:
-                cmd += [flag, value]
-            elif flag.startswith("--"):
-                cmd += [flag]
-        return cmd
-    if server_id == "sglang":
-        cmd = [sys.executable, "-m", "sglang.bench_one_batch_server",
-               "--model-path", model_ref, "--input-len", "512", "--output-len", "128",
-               "--batch-size", (flags.get("--max-running-requests") or "16")]
         return cmd
     raise ValueError(f"unknown server {server_id}")
