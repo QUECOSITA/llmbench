@@ -17,12 +17,17 @@ class FakeWS {
   }
 }
 
-test("useDownloadProgress connects when active and collects events", () => {
+beforeEach(() => {
+  FakeWS.instances = [];
+});
+
+test("useDownloadProgress connects on mount and collects events", () => {
   const orig = globalThis.WebSocket;
   (globalThis as { WebSocket: unknown }).WebSocket = FakeWS;
   try {
-    const { result } = renderHook(() => useDownloadProgress(true));
-    const ws = FakeWS.instances[FakeWS.instances.length - 1];
+    const { result } = renderHook(() => useDownloadProgress());
+    expect(FakeWS.instances).toHaveLength(1);
+    const ws = FakeWS.instances[0];
     act(() => {
       ws.emit({ type: "download_log", server_id: "vllm", repo_id: "org/model", line: "Fetching" });
       ws.emit({ type: "download_done", server_id: "vllm", repo_id: "org/model", status: "downloaded" });
@@ -36,17 +41,18 @@ test("useDownloadProgress connects when active and collects events", () => {
   }
 });
 
-test("useDownloadProgress closes the socket when deactivated", () => {
+test("useDownloadProgress stays connected across renders and closes only on unmount", () => {
   const orig = globalThis.WebSocket;
   (globalThis as { WebSocket: unknown }).WebSocket = FakeWS;
   try {
-    const { rerender, unmount } = renderHook(({ active }) => useDownloadProgress(active), {
-      initialProps: { active: true },
-    });
-    const ws = FakeWS.instances[FakeWS.instances.length - 1];
-    rerender({ active: false });
-    expect(ws.closed).toBe(true);
+    const { rerender, unmount } = renderHook(() => useDownloadProgress());
+    expect(FakeWS.instances).toHaveLength(1);
+    const ws = FakeWS.instances[0];
+    rerender();
+    expect(FakeWS.instances).toHaveLength(1);
+    expect(ws.closed).toBe(false);
     unmount();
+    expect(ws.closed).toBe(true);
   } finally {
     (globalThis as { WebSocket: unknown }).WebSocket = orig;
   }

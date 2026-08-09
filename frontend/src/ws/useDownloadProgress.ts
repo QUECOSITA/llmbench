@@ -22,19 +22,18 @@ export interface DownloadEvent {
   accepted?: boolean;
 }
 
-export function useDownloadProgress(active: boolean) {
+export function useDownloadProgress() {
   const [events, setEvents] = useState<DownloadEvent[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!active) return;
     const ws = new WebSocket("ws://localhost:8000/api/ws");
     wsRef.current = ws;
     ws.onmessage = (msg) => {
       setEvents((prev) => [...prev, JSON.parse(msg.data) as DownloadEvent]);
     };
     return () => ws.close();
-  }, [active]);
+  }, []);
 
   return events;
 }
