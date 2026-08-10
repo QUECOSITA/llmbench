@@ -9,16 +9,6 @@ SERVERS = {
         "bench_binaries": ["llama-bench"],
         "serving_binaries": ["llama-server"],
     },
-    "vllm": {
-        "display": "vLLM",
-        "bench_binaries": ["python"],
-        "serving_binaries": ["vllm"],
-    },
-    "sglang": {
-        "display": "sglang",
-        "bench_binaries": ["python"],
-        "serving_binaries": ["sglang"],
-    },
 }
 
 # README flag name -> canonical flag name per server
@@ -27,21 +17,17 @@ README_FLAG_MAP = {
         "-c": "--ctx-size", "-n": "--predict", "-t": "--threads", "-b": "--batch-size",
         "-ngl": "--n-gpu-layers", "-m": "-m",
     },
-    "vllm": {"--max-model-len": "--max-model-len", "--max-num-seqs": "--max-num-seqs",
-             "--gpu-memory-utilization": "--gpu-memory-utilization", "--enforce-eager": "--enforce-eager",
-             "--tensor-parallel-size": "--tensor-parallel-size"},
-    "sglang": {"--context-length": "--context-length", "--max-running-requests": "--max-running-requests",
-               "--mem-fraction-static": "--mem-fraction-static", "--tp-size": "--tp-size"},
 }
 
 
 def resolve_bench_binary(server_id: str, bin_dir: str | None = None) -> str | None:
-    meta = SERVERS[server_id]
+    """Resolve the executable that runs a server's benchmark. llama.cpp resolves
+    the llama-bench binary from bin_dir or PATH."""
     if server_id == "llama.cpp" and bin_dir:
         candidate = Path(bin_dir) / "llama-bench"
         if candidate.is_file():
             return str(candidate)
-    for b in meta["bench_binaries"]:
+    for b in SERVERS[server_id]["bench_binaries"]:
         found = shutil.which(b)
         if found:
             return found
@@ -63,7 +49,7 @@ def detect_binaries(bin_dir: str | None = None) -> dict[str, bool]:
     return out
 
 
-_SPEED_BENCH_DEPS = ("requests", "datasets", "tqdm")
+_SPEED_Bench_DEPS = ("requests", "datasets", "tqdm")
 
 
 _SPEC_DECODING_FLAGS = {
@@ -119,10 +105,10 @@ def resolve_speed_bench_script(bin_dir: str | None = None,
 SPEED_BENCH_CLI_FLAGS = ("--url", "--model", "--bench", "--category", "--osl",
                          "--extra-inputs", "--concurrency", "--limit", "--timeout", "--output")
 
-SPEED_BENCH_BENCHES = ("qualitative", "throughput_1k", "throughput_2k",
+SPEED_BENCH_Benches = ("qualitative", "throughput_1k", "throughput_2k",
                        "throughput_8k", "throughput_16k", "throughput_32k")
 
-SPEED_BENCH_CATEGORIES = {
+SPEED_Bench_Categories = {
     "qualitative": ("coding", "humanities", "math", "qa", "rag", "reasoning",
                     "stem", "writing", "multilingual", "summarization", "roleplay"),
     "throughput_1k": ("high_entropy", "mixed", "low_entropy"),
@@ -159,9 +145,9 @@ def parse_speed_bench_flags(text: str) -> list[str]:
 
 def _speed_bench_categories(bench: str | None) -> set[str]:
     if bench:
-        return set(SPEED_BENCH_CATEGORIES.get(bench, ()))
+        return set(SPEED_Bench_Categories.get(bench, ()))
     union: set[str] = set()
-    for cats in SPEED_BENCH_CATEGORIES.values():
+    for cats in SPEED_Bench_Categories.values():
         union.update(cats)
     return union
 
@@ -181,8 +167,8 @@ def validate_speed_bench_flags(flags: list[str]) -> str | None:
         elif i + 1 < len(flags) and not flags[i + 1].startswith("-"):
             value = flags[i + 1]
             i += 1
-        if name not in SPEED_BENCH_CLI_FLAGS:
-            return f"unknown speed-bench flag '{name}'; allowed: " + ", ".join(SPEED_BENCH_CLI_FLAGS)
+        if name not in SPEED_Bench_CLI_FLAGS:
+            return f"unknown speed-bench flag '{name}'; allowed: " + ", ".join(SPEED_Bench_CLI_FLAGS)
         if name in ("--url", "--output"):
             return f"{name} is managed by the app; remove it from the speed-bench flags"
         if value is None:
@@ -190,8 +176,8 @@ def validate_speed_bench_flags(flags: list[str]) -> str | None:
         parsed.setdefault(name, []).append(value)
         i += 1
     for b in parsed.get("--bench", []):
-        if b not in SPEED_BENCH_BENCHES:
-            return f"unknown --bench '{b}'; available benches: " + ", ".join(SPEED_BENCH_BENCHES)
+        if b not in SPEED_Bench_Benches:
+            return f"unknown --bench '{b}'; available benches: " + ", ".join(SPEED_Bench_Benches)
     bench = parsed["--bench"][0] if parsed.get("--bench") else None
     cats = _speed_bench_categories(bench)
     for c in parsed.get("--category", []):
@@ -235,7 +221,7 @@ _LLAMA_HF_FLAGS = {"-hf", "-hfr", "--hf-repo", "-hff", "--hf-file", "-hft", "--h
 # llama-bench accepts a small subset of llama-server flags; anything else
 # extracted from a model card (e.g. --fit, --spec-type, --jinja, --no-mmap)
 # is server-only and must not leak into the bench invocation.
-_LLAMA_BENCH_FLAGS = {
+_LLAMA_Bench_FLAGS = {
     "--ctx-size", "--n-gpu-layers", "--batch-size", "--threads",
     "-fa", "--flash-attn", "-ctk", "--cache-type-k", "-ctv", "--cache-type-v",
     "-ub", "--ubatch-size", "-d", "--n-depth",
@@ -312,9 +298,6 @@ def model_ref_from_flags(server_id: str, flags: dict[str, str],
         if model:
             return model, None
         return fallback_repo, None
-    if server_id == "sglang":
-        ref = flags.get("--model-path") or fallback_repo
-        return ref, None
     return fallback_repo, None
 
 
@@ -332,7 +315,7 @@ def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
         for flag, value in flags.items():
             if flag in _LLAMA_HF_FLAGS or flag == "-m":
                 continue
-            if flag not in _LLAMA_BENCH_FLAGS:
+            if flag not in _LLAMA_Bench_FLAGS:
                 continue
             bench_flag = mapped.get(flag, flag)
             if value:
@@ -341,20 +324,5 @@ def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
                 cmd += [bench_flag]
         prompt, gen = _llama_token_counts(workload)
         cmd += ["-p", str(prompt), "-n", str(gen), "-r", "2", "-o", "csv"]
-        return cmd
-    if server_id == "vllm":
-        cmd = ["python", "-m", "vllm.benchmarks.benchmark_throughput",
-               "--model", model_ref, "--input-len", "512", "--output-len", "128",
-               "--num-prompts", "20", "--trust-remote-code", "--output-json", "/dev/stdout"]
-        for flag, value in flags.items():
-            if value:
-                cmd += [flag, value]
-            elif flag.startswith("--"):
-                cmd += [flag]
-        return cmd
-    if server_id == "sglang":
-        cmd = ["python", "-m", "sglang.bench_one_batch_server",
-               "--model-path", model_ref, "--input-len", "512", "--output-len", "128",
-               "--batch-size", (flags.get("--max-running-requests") or "16")]
         return cmd
     raise ValueError(f"unknown server {server_id}")
