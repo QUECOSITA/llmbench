@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="LLMBench_", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="LLMBENCH_", extra="ignore")
 
     data_dir: Path = Path.home() / ".llmbench"
     gguf_dir: Path = Path("gguf")
