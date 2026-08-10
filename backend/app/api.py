@@ -250,7 +250,7 @@ def _hf_snapshot_dir(settings: Settings, repo_id: str) -> Path:
     return sync_mod.snapshot_dir_for(settings, repo_id)
 
 
-def _resolve_download_path(s: AppState, repo_id: str,
+def _resolve_download_path(s: AppState, repo_id: str, server_id: str,
                            gguf_filename: str | None) -> tuple[str | None, str | None, int | None]:
     gguf_dir = s.settings.resolved_gguf_dir
     if gguf_filename and (gguf_dir / gguf_filename).exists():
