@@ -20,6 +20,10 @@ README_FLAG_MAP = {
 }
 
 
+def _module_importable(module: str) -> bool:
+    return importlib.util.find_spec(module) is not None
+
+
 def resolve_bench_binary(server_id: str, bin_dir: str | None = None) -> str | None:
     """Resolve the executable that runs a server's benchmark. llama.cpp resolves
     the llama-bench binary from bin_dir or PATH."""
@@ -49,7 +53,7 @@ def detect_binaries(bin_dir: str | None = None) -> dict[str, bool]:
     return out
 
 
-_SPEED_Bench_DEPS = ("requests", "datasets", "tqdm")
+_SPEED_BENCH_DEPS = ("requests", "datasets", "tqdm")
 
 
 _SPEC_DECODING_FLAGS = {
@@ -105,10 +109,10 @@ def resolve_speed_bench_script(bin_dir: str | None = None,
 SPEED_BENCH_CLI_FLAGS = ("--url", "--model", "--bench", "--category", "--osl",
                          "--extra-inputs", "--concurrency", "--limit", "--timeout", "--output")
 
-SPEED_BENCH_Benches = ("qualitative", "throughput_1k", "throughput_2k",
+SPEED_BENCH_BENCHES = ("qualitative", "throughput_1k", "throughput_2k",
                        "throughput_8k", "throughput_16k", "throughput_32k")
 
-SPEED_Bench_Categories = {
+SPEED_BENCH_CATEGORIES = {
     "qualitative": ("coding", "humanities", "math", "qa", "rag", "reasoning",
                     "stem", "writing", "multilingual", "summarization", "roleplay"),
     "throughput_1k": ("high_entropy", "mixed", "low_entropy"),
@@ -145,9 +149,9 @@ def parse_speed_bench_flags(text: str) -> list[str]:
 
 def _speed_bench_categories(bench: str | None) -> set[str]:
     if bench:
-        return set(SPEED_Bench_Categories.get(bench, ()))
+        return set(SPEED_BENCH_CATEGORIES.get(bench, ()))
     union: set[str] = set()
-    for cats in SPEED_Bench_Categories.values():
+    for cats in SPEED_BENCH_CATEGORIES.values():
         union.update(cats)
     return union
 
@@ -167,8 +171,8 @@ def validate_speed_bench_flags(flags: list[str]) -> str | None:
         elif i + 1 < len(flags) and not flags[i + 1].startswith("-"):
             value = flags[i + 1]
             i += 1
-        if name not in SPEED_Bench_CLI_FLAGS:
-            return f"unknown speed-bench flag '{name}'; allowed: " + ", ".join(SPEED_Bench_CLI_FLAGS)
+        if name not in SPEED_BENCH_CLI_FLAGS:
+            return f"unknown speed-bench flag '{name}'; allowed: " + ", ".join(SPEED_BENCH_CLI_FLAGS)
         if name in ("--url", "--output"):
             return f"{name} is managed by the app; remove it from the speed-bench flags"
         if value is None:
@@ -176,8 +180,8 @@ def validate_speed_bench_flags(flags: list[str]) -> str | None:
         parsed.setdefault(name, []).append(value)
         i += 1
     for b in parsed.get("--bench", []):
-        if b not in SPEED_Bench_Benches:
-            return f"unknown --bench '{b}'; available benches: " + ", ".join(SPEED_Bench_Benches)
+        if b not in SPEED_BENCH_BENCHES:
+            return f"unknown --bench '{b}'; available benches: " + ", ".join(SPEED_BENCH_BENCHES)
     bench = parsed["--bench"][0] if parsed.get("--bench") else None
     cats = _speed_bench_categories(bench)
     for c in parsed.get("--category", []):
@@ -221,7 +225,7 @@ _LLAMA_HF_FLAGS = {"-hf", "-hfr", "--hf-repo", "-hff", "--hf-file", "-hft", "--h
 # llama-bench accepts a small subset of llama-server flags; anything else
 # extracted from a model card (e.g. --fit, --spec-type, --jinja, --no-mmap)
 # is server-only and must not leak into the bench invocation.
-_LLAMA_Bench_FLAGS = {
+_LLAMA_BENCH_FLAGS = {
     "--ctx-size", "--n-gpu-layers", "--batch-size", "--threads",
     "-fa", "--flash-attn", "-ctk", "--cache-type-k", "-ctv", "--cache-type-v",
     "-ub", "--ubatch-size", "-d", "--n-depth",
@@ -315,7 +319,7 @@ def build_bench_command(server_id: str, model_ref: str, flags: dict[str, str],
         for flag, value in flags.items():
             if flag in _LLAMA_HF_FLAGS or flag == "-m":
                 continue
-            if flag not in _LLAMA_Bench_FLAGS:
+            if flag not in _LLAMA_BENCH_FLAGS:
                 continue
             bench_flag = mapped.get(flag, flag)
             if value:
