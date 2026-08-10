@@ -1,7 +1,5 @@
 KEY_FLAGS = {
     "llama.cpp": ["--ctx-size", "--n-gpu-layers", "--batch-size", "--spec-type", "--spec-draft-n-max"],
-    "vllm": ["--max-model-len", "--max-num-seqs", "--gpu-memory-utilization", "--enforce-eager"],
-    "sglang": ["--context-length", "--max-running-requests", "--mem-fraction-static", "--tp-size"],
 }
 
 VALUE_POOLS = {
@@ -12,34 +10,12 @@ VALUE_POOLS = {
         "--spec-type": ["draft-mtp", "none"],
         "--spec-draft-n-max": [2, 3],
     },
-    "vllm": {
-        "--max-model-len": [4096, 8192, 16384],
-        "--max-num-seqs": [16, 32, 64],
-        "--gpu-memory-utilization": [0.85, 0.9, 0.95],
-        "--enforce-eager": ["", "--enforce-eager"],
-    },
-    "sglang": {
-        "--context-length": [4096, 8192, 16384],
-        "--max-running-requests": [16, 32, 64],
-        "--mem-fraction-static": [0.85, 0.9],
-        "--tp-size": [1],
-    },
 }
 
 DEFAULTS = {
     "llama.cpp": {"--ctx-size": 4096, "--n-gpu-layers": 999, "--batch-size": 512,
                   "--spec-type": "draft-mtp", "--spec-draft-n-max": 2},
-    "vllm": {"--max-model-len": 8192, "--max-num-seqs": 32, "--gpu-memory-utilization": 0.9, "--enforce-eager": ""},
-    "sglang": {"--context-length": 8192, "--max-running-requests": 32, "--mem-fraction-static": 0.9, "--tp-size": 1},
 }
-
-
-def _gpu_util_for_vram(server_id: str, vram_gb: float) -> str:
-    if server_id == "vllm":
-        return str(round(min(0.95, max(0.5, 1.0 - 2.0 / vram_gb)), 2)) if vram_gb else "0.9"
-    if server_id == "sglang":
-        return str(round(min(0.9, max(0.5, 1.0 - 2.0 / vram_gb)), 2)) if vram_gb else "0.9"
-    return ""
 
 
 _SPEC_TYPE_ALIASES = {"mtp": "draft-mtp", "draft-mtp": "draft-mtp"}
@@ -51,10 +27,6 @@ def _baseline(server_id: str, readme_flags: dict[str, str], vram_gb: float) -> d
     flags: dict[str, str] = {}
     for key, default in DEFAULTS[server_id].items():
         flags[key] = str(default)
-    if server_id == "vllm":
-        flags["--gpu-memory-utilization"] = _gpu_util_for_vram("vllm", vram_gb)
-    if server_id == "sglang":
-        flags["--mem-fraction-static"] = _gpu_util_for_vram("sglang", vram_gb)
     for flag, value in readme_flags.items():
         if flag == "--spec-type":
             value = _SPEC_TYPE_ALIASES.get(value, value)
@@ -107,8 +79,4 @@ def build_serving_command(server_id: str, repo_id: str, flags: dict[str, str],
             flags = {k: v for k, v in flags.items() if k not in _LLAMA_MODEL_FLAGS}
         cmd += _flag_tokens(flags)
         return " ".join(cmd)
-    if server_id == "vllm":
-        return "vllm serve " + repo_id + " " + " ".join(_flag_tokens(flags))
-    if server_id == "sglang":
-        return "python -m sglang.launch_server --model-path " + repo_id + " " + " ".join(_flag_tokens(flags))
     raise ValueError(f"unknown server {server_id}")
