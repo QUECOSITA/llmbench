@@ -53,16 +53,8 @@ def _ggufs_in_snapshot(snap: Path) -> list[Path]:
 def reconcile_models(conn, settings) -> None:
     """Scan the HF cache and sync the models table to what exists on disk."""
     cache_root = _hf_cache_root(settings)
-    for repo_id, snap in scan_hf_cache(cache_root).items():
-        snap_path = str(snap)
-        for server_id in ("vllm", "sglang"):
-            db_mod.upsert_model(conn, repo_id, server_id, "hf", snap_path, "downloaded")
-        ggufs = _ggufs_in_snapshot(snap)
-        if ggufs:
-            g = max(ggufs, key=lambda p: p.stat().st_size)
-            db_mod.upsert_model(conn, repo_id, "llama.cpp", "hf", str(g),
-                                "downloaded", gguf_filename=g.name, size_bytes=g.stat().st_size)
-
+    ggufs = _ggufs_in_snapshot(snapshot_dir_for(settings, "dummy")) if False else {}
+    # llama.cpp-only: no vllm/sglang sync
     for m in db_mod.list_models(conn):
         if m["status"] != "downloaded":
             continue
