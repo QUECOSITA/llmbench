@@ -10,7 +10,7 @@ test("run_started initializes state and clears previous results", () => {
     ...INITIAL_STATE,
     running: true,
     runId: 1,
-    results: [{ server_id: "vllm", flag_conf: {}, prompt_processing_tps: 10, decode_tps: 5 }],
+    results: [{ server_id: "llama.cpp", flag_conf: {}, prompt_processing_tps: 10, decode_tps: 5 }],
   };
   const next = progressReducer(prev, ev("run_started", 2, { total: 3 }));
   expect(next.running).toBe(true);
@@ -57,7 +57,7 @@ test("run_sync replaces results and stops running", () => {
     status: "completed",
     total: 2,
     results: [
-      { server_id: "vllm", flag_conf: { "--max-model-len": "8192" }, prompt_processing_tps: 100.0, decode_tps: 42.0 },
+      { server_id: "llama.cpp", flag_conf: { "--max-model-len": "8192" }, prompt_processing_tps: 100.0, decode_tps: 42.0 },
     ],
   });
   expect(next.running).toBe(false);
@@ -221,4 +221,37 @@ test("config_start header numbering increments across configs", () => {
   });
   expect(first.lines).toEqual(["▸ config 1/2 — $ bench"]);
   expect(second.lines).toEqual(["▸ config 1/2 — $ bench", "▸ config 2/2 — $ bench"]);
+});
+
+test("run_watch seeds results and keeps running while a run is in progress", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 5, { total: 4 }));
+  const next = progressReducer(state, {
+    type: "run_watch",
+    run_id: 5,
+    status: "running",
+    total: 4,
+    results: [
+      { server_id: "llama.cpp", flag_conf: { "--max-model-len": "8192" }, prompt_processing_tps: 100.0, decode_tps: 42.0 },
+      { server_id: "llama.cpp", flag_conf: { "-c": "4096" }, prompt_processing_tps: 90.0, decode_tps: 38.0 },
+    ],
+  });
+  expect(next.running).toBe(true);
+  expect(next.runId).toBe(5);
+  expect(next.index).toBe(2);
+  expect(next.total).toBe(4);
+  expect(next.results).toHaveLength(2);
+  expect(next.results[1].decode_tps).toBe(38.0);
+});
+
+test("run_watch for a different run_id is ignored", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 5));
+  const next = progressReducer(state, {
+    type: "run_watch",
+    run_id: 99,
+    status: "running",
+    total: 1,
+    results: [{ server_id: "llama.cpp", flag_conf: {}, prompt_processing_tps: 10, decode_tps: 5 }],
+  });
+  expect(next.runId).toBe(5);
+  expect(next.results).toEqual([]);
 });

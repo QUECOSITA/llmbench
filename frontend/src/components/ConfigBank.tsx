@@ -14,11 +14,12 @@ interface Props {
   onNChange: (n: number) => void;
   onGenerate: (n: number) => void;
   configs: ConfigRow[];
+  canGenerate?: boolean;
   onEdit?: (index: number, command: string) => void;
   onEditFlags?: (index: number, flags: string) => void;
 }
 
-export function ConfigBank({ n, onNChange, onGenerate, configs, onEdit, onEditFlags }: Props) {
+export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = true, onEdit, onEditFlags }: Props) {
   return (
     <section className="panel">
       <span className="panel-cap">02 · CONFIG BANK · N = {n}</span>
@@ -32,7 +33,7 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, onEdit, onEditFl
           onChange={(e) => onNChange(Number(e.target.value))}
           style={{ width: 80 }}
         />
-        <button onClick={() => onGenerate(n)}>GENERATE</button>
+        <button onClick={() => onGenerate(n)} disabled={!canGenerate}>GENERATE</button>
       </div>
       {configs.map((cfg, i) => (
         <div className="config-row" key={i}>

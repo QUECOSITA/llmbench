@@ -13,11 +13,9 @@ interface Props {
 
 const SERVER_DISPLAY: Record<string, string> = {
   "llama.cpp": "llama.cpp",
-  vllm: "vLLM",
-  sglang: "sglang",
 };
 
-const SERVER_ORDER = ["llama.cpp", "vllm", "sglang"];
+const SERVER_ORDER = ["llama.cpp"];
 
 export function DownloadedSection({ models, onLoad, onRemove }: Props) {
   const byRepo = new Map<string, string[]>();
