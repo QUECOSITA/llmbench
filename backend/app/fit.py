@@ -14,8 +14,6 @@ _REF_PARAMS = 7_000_000_000
 
 _CTX_FLAGS = {
     "llama.cpp": "--ctx-size",
-    "vllm": "--max-model-len",
-    "sglang": "--context-length",
 }
 
 
