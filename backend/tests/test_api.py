@@ -59,7 +59,7 @@ def client(tmp_path):
 def test_servers_endpoint(client):
     r = client.get("/api/servers")
     assert r.status_code == 200
-    assert set(r.json()["readiness"]) == {"llama.cpp", "vllm", "sglang", "speed-bench"}
+    assert set(r.json()["readiness"]) == {"llama.cpp", "speed-bench"}
 
 
 def test_analyze_normalizes_and_reads_readme(client, httpx_mock):
@@ -68,12 +68,38 @@ def test_analyze_normalizes_and_reads_readme(client, httpx_mock):
         json=[{"path": "README.md", "type": "file", "size": 100}],
     )
     httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
-                            text="# M\n\n```\nvllm serve org/model --max-model-len 8192\n```")
+                            text="# M\n\n```\nllama-server -m model.gguf --ctx-size 8192 --n-gpu-layers 999\n```")
     r = client.post("/api/models/analyze", json={"input": "https://huggingface.co/org/model"})
     assert r.status_code == 200
     body = r.json()
     assert body["repo_id"] == "org/model"
-    assert body["detected_server"] == "vllm"
+    assert body["detected_server"] == "llama.cpp"
+    assert body["readme_flags"]["--ctx-size"] == "8192"
+
+
+def test_analyze_llama_readme_returns_per_server_flags(client, httpx_mock):
+    """A llama.cpp README must return per-server flags for the llama.cpp key
+    only, so the manual picker can generate configs for the server."""
+    readme = (
+        "# MTP model\n"
+        "```bash\nllama-server -m model.gguf -c 4096 --n-gpu-layers 999\n```\n"
+        "Use the GGUF below."
+    )
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.Q4_K_M.gguf", "type": "file", "size": 4_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text=readme)
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["detected_server"] == "llama.cpp"
+    assert set(body["readme_flags_by_server"].keys()) == {"llama.cpp"}
+    per = body["readme_flags_by_server"]
+    assert per["llama.cpp"]["-c"] == "4096"
+    assert per["llama.cpp"]["--n-gpu-layers"] == "999"
 
 
 def test_analyze_direct_file_link_uses_single_file_size(client, httpx_mock):
@@ -135,16 +161,16 @@ def test_analyze_includes_fit_verdict_and_hardware(client, httpx_mock):
 
 def test_generate_configs_endpoint(client):
     r = client.post("/api/configs/generate", json={
-        "repo_id": "org/model", "server_id": "vllm", "n": 3, "vram_gb": 24.0,
-        "readme_flags": {"--max-model-len": "8192"},
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 3, "vram_gb": 24.0,
+        "readme_flags": {"--ctx-size": "8192"},
     })
     assert r.status_code == 200
     configs = r.json()["configs"]
     assert len(configs) == 3
     for cfg in configs:
         assert isinstance(cfg["bench_command"], list)
-        assert cfg["bench_command"][0] == "python"
-        assert any("benchmark_throughput" in tok for tok in cfg["bench_command"])
+        assert cfg["bench_command"][0] == "llama-bench"
+        assert "--fit-ctx" in cfg["bench_command"]
 
 
 def test_generate_configs_llama_uses_gguf_path(client):
@@ -239,6 +265,11 @@ def test_start_run_rejects_duplicate(client, monkeypatch):
     assert r1.status_code in (200, 422)
     r2 = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
     assert r2.status_code == 409
+    assert r2.json()["detail"] == "A benchmark is already running"
+    active = r2.json()["context"]["active_run"]
+    assert active["repo_id"] == "org/model"
+    assert active["status"] in ("queued", "running")
+    assert "id" in active
     release.set()
 
 
@@ -255,8 +286,8 @@ def test_generate_missing_server_422(client):
 @pytest.mark.parametrize("n", [0, -1])
 def test_generate_configs_rejects_non_positive_n(client, n):
     r = client.post("/api/configs/generate", json={
-        "repo_id": "org/model", "server_id": "vllm", "n": n, "vram_gb": 24.0,
-        "readme_flags": {"--max-model-len": "8192"},
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": n, "vram_gb": 24.0,
+        "readme_flags": {"--ctx-size": "8192"},
     })
     assert r.status_code == 422
 
@@ -359,7 +390,7 @@ def test_download_missing_fields_422(client):
 
 def test_download_cli_missing_400_with_manual_command(client, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda *a, **k: None)
-    r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+    r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
     assert r.status_code == 400
     detail = r.json()["detail"]
     assert "HF CLI not found." in detail
@@ -456,7 +487,7 @@ class FakePruneProcess:
         return self._rc
 
 
-def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch):
+def test_download_llama_success_upserts_downloaded(client, tmp_path, monkeypatch):
     import app.api as api_mod
     events = []
 
@@ -475,14 +506,15 @@ def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch)
     monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
     monkeypatch.setattr("app.api._stream_download_output", fake_stream)
 
-    snapshot = tmp_path / "hf" / "models--org--model"
-    snapshot.mkdir(parents=True)
+    gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
+    gguf.parent.mkdir(parents=True)
+    gguf.write_bytes(b"x" * 2048)
 
-    r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+    r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
     assert r.status_code == 200 and r.json()["ok"] is True
 
     def row():
-        m = api_mod.db_mod.get_model(api_mod.state.conn, "org/model", "vllm")
+        m = api_mod.db_mod.get_model(api_mod.state.conn, "org/model", "llama.cpp")
         return m and m["status"]
 
     assert _poll(lambda: row() == "downloaded")
@@ -492,7 +524,7 @@ def test_download_vllm_success_upserts_downloaded(client, tmp_path, monkeypatch)
     assert any(e["type"] == "download_log" and e["line"] == "Fetching files..." for e in events)
     assert _poll(lambda: any(e["type"] == "download_done" for e in events))
     done = next(e for e in events if e["type"] == "download_done")
-    assert done["local_path"] == str(snapshot)
+    assert done["local_path"] == str(gguf)
     assert api_mod.state._download_active is False
 
 
@@ -539,7 +571,7 @@ def test_download_rejects_duplicate(client, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
     api_mod.state._download_active = True
     try:
-        r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+        r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
         assert r.status_code == 409
     finally:
         api_mod.state._download_active = False
@@ -548,16 +580,17 @@ def test_download_rejects_duplicate(client, monkeypatch):
 def test_download_command_llama_uses_specific_gguf_when_given():
     from app.api import _download_command, _prune_command
     assert _download_command("org/model", "llama.cpp", gguf_filename="model.Q4_K_M.gguf") == [
-        "hf", "download", "--format", "human", "org/model", "--include", "model.Q4_K_M.gguf",
+        "hf", "download", "--format", "human", "org/model",
+        "--include", "model.Q4_K_M.gguf", "--include", "README.md",
     ]
     assert _download_command("org/model", "llama.cpp") == [
-        "hf", "download", "--format", "human", "org/model", "--include", "*.gguf",
-    ]
-    assert _download_command("org/model", "vllm") == [
         "hf", "download", "--format", "human", "org/model",
+        "--include", "*.gguf", "--include", "README.md",
     ]
-    assert _download_command("org/model", "vllm", cache_dir="/tmp/hf") == [
-        "hf", "download", "--format", "human", "org/model", "--cache-dir", "/tmp/hf",
+    assert _download_command("org/model", "llama.cpp", cache_dir="/tmp/hf") == [
+        "hf", "download", "--format", "human", "org/model",
+        "--include", "*.gguf", "--include", "README.md",
+        "--cache-dir", "/tmp/hf",
     ]
     assert _prune_command() == ["hf", "cache", "prune", "--format", "human"]
     assert _prune_command(cache_dir="/tmp/hf") == [
@@ -650,14 +683,16 @@ def test_models_endpoint_reconciles_hf_cache(client, tmp_path):
                         hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
     snap = snapshot_dir_for(settings, "org/model") / "snapshots" / "main"
     snap.mkdir(parents=True)
-    (snap / "model.safetensors").write_bytes(b"x")
+    (snap / "model.Q4_K_M.gguf").write_bytes(b"x")
+    (snap / "README.md").write_text("# model\n\n```\nllama-server -m model.Q4_K_M.gguf\n```\n")
 
     r = client.get("/api/models")
     assert r.status_code == 200
-    models = {m["server_id"]: m for m in r.json()["models"]}
-    for sid in ("vllm", "sglang"):
-        assert models[sid]["repo_id"] == "org/model"
-        assert models[sid]["status"] == "downloaded"
+    models = r.json()["models"]
+    assert len(models) == 1
+    assert models[0]["server_id"] == "llama.cpp"
+    assert models[0]["repo_id"] == "org/model"
+    assert models[0]["status"] == "downloaded"
 
 
 def test_delete_model_removes_row_and_files(client, tmp_path, monkeypatch):
@@ -667,7 +702,7 @@ def test_delete_model_removes_row_and_files(client, tmp_path, monkeypatch):
                         hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
     snap = snapshot_dir_for(settings, "org/model")
     (snap / "snapshots" / "main").mkdir(parents=True)
-    (snap / "snapshots" / "main" / "model.safetensors").write_bytes(b"x")
+    (snap / "snapshots" / "main" / "model.Q4_K_M.gguf").write_bytes(b"x")
     monkeypatch.setattr("shutil.which", lambda *a, **k: None)
 
     assert client.get("/api/models").status_code == 200
@@ -687,7 +722,7 @@ def test_delete_model_invokes_hf_cache_rm(client, tmp_path, monkeypatch):
                         hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
     snap = snapshot_dir_for(settings, "org/model")
     (snap / "snapshots" / "main").mkdir(parents=True)
-    (snap / "snapshots" / "main" / "model.safetensors").write_bytes(b"x")
+    (snap / "snapshots" / "main" / "model.Q4_K_M.gguf").write_bytes(b"x")
 
     captured: dict = {}
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
@@ -722,7 +757,7 @@ def test_delete_model_hf_cache_rm_failure_returns_500(client, tmp_path, monkeypa
                         hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
     snap = snapshot_dir_for(settings, "org/model")
     (snap / "snapshots" / "main").mkdir(parents=True)
-    (snap / "snapshots" / "main" / "model.safetensors").write_bytes(b"x")
+    (snap / "snapshots" / "main" / "model.Q4_K_M.gguf").write_bytes(b"x")
 
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
 
@@ -747,7 +782,7 @@ def test_delete_model_hf_cache_rm_failure_returns_500(client, tmp_path, monkeypa
 
 def test_generate_configs_includes_per_config_fit(client):
     r = client.post("/api/configs/generate", json={
-        "repo_id": "org/model", "server_id": "vllm", "n": 2, "vram_gb": 24.0,
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 2, "vram_gb": 24.0,
         "weights_bytes": 10_000_000_000, "ram_gb": 64.0,
         "model_arch": {"layers": 32, "heads": 32, "hidden": 4096, "max_ctx": 8192},
         "readme_flags": {},
@@ -763,7 +798,7 @@ def test_generate_configs_includes_per_config_fit(client):
 
 def test_generate_configs_fit_is_none_without_weights(client):
     r = client.post("/api/configs/generate", json={
-        "repo_id": "org/model", "server_id": "vllm", "n": 2, "vram_gb": 24.0,
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 2, "vram_gb": 24.0,
         "readme_flags": {},
     })
     assert r.status_code == 200
@@ -797,7 +832,7 @@ def test_cancel_then_prune_prompt_y(client, monkeypatch):
     monkeypatch.setattr("app.api._stream_download_output", fake_stream)
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
 
-    r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+    r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
     assert r.status_code == 200
     assert _poll(lambda: any(e["type"] == "download_started" for e in events))
     assert _poll(lambda: api_mod.state._download_proc is not None)
@@ -845,7 +880,7 @@ def test_cancel_then_prune_prompt_n(client, monkeypatch):
     monkeypatch.setattr("app.api._stream_download_output", fake_stream)
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
 
-    client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+    client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
     assert _poll(lambda: any(e["type"] == "download_started" for e in events))
     client.post("/api/models/download/cancel")
 
@@ -885,7 +920,7 @@ def test_cancel_then_prune_nothing_to_prune(client, monkeypatch):
     monkeypatch.setattr("app.api._stream_download_output", fake_stream)
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
 
-    client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "vllm"})
+    client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
     assert _poll(lambda: any(e["type"] == "download_started" for e in events))
     client.post("/api/models/download/cancel")
 
@@ -949,6 +984,49 @@ def test_pause_run_streams_and_waits_for_continue(client, monkeypatch):
         assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
         assert any(e["type"] == "config_wait" for e in events)
         assert api_mod.state._continue_queue is None
+    finally:
+        api_mod.state._ws_clients.discard(ws)
+
+
+def test_failed_config_with_pause_does_not_wait_for_continue(client, monkeypatch):
+    """A failed config must not wedge the run at the pause gate: it should
+    auto-advance so _job_active clears and the next run is not blocked (409)."""
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    async def fake_create(*a, **k):
+        return FakeProcess(b"boom\n", rc=1)
+
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    class FakeWs:
+        pass
+
+    ws = FakeWs()
+    api_mod.state._ws_clients.add(ws)
+    try:
+        cfg = {
+            "server_id": "llama.cpp",
+            "flags": {"-c": "4096"},
+            "model_id": "org/model",
+            "serving_command": "llama-server -m x",
+            "bench_command": ["llama-bench", "-m", "x"],
+        }
+        r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg], "pause": True})
+        assert r.status_code == 200
+        run_id = r.json()["run_id"]
+
+        assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
+        assert not any(e["type"] == "config_wait" for e in events)
+        assert api_mod.state._continue_queue is None
+        assert api_mod.state._job_active is False
+
+        r2 = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+        assert r2.status_code == 200
     finally:
         api_mod.state._ws_clients.discard(ws)
 

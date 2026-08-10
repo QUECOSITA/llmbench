@@ -1,4 +1,4 @@
-from app.benchmark import parse_llama_bench_csv, parse_vllm_throughput, parse_sglang_bench
+from app.benchmark import parse_llama_bench_csv
 
 LLAMA_CSV = """\
 model,size,params,backend,test,t,n_threads,batch,ngl,ms,t/s
@@ -31,68 +31,6 @@ def test_parse_llama_bench_csv_v9992():
     r = parse_llama_bench_csv(LLAMA_CSV_V9992)
     assert r["prompt_processing_tps"] == 8678.31
     assert r["decode_tps"] == 944.62
-
-
-VLLM_OUT = """\
-{
-  "elapsed_time": 30.0,
-  "num_requests": 20,
-  "total_prompt_tokens": 10240,
-  "total_generation_tokens": 2560,
-  "request_throughput": 0.67,
-  "output_token_throughput": 85.3,
-  "total_token_throughput": 426.7,
-  "input_token_throughput": 341.3
-}
-"""
-
-
-def test_parse_vllm_throughput():
-    r = parse_vllm_throughput(VLLM_OUT)
-    assert r["prompt_processing_tps"] == 341.3
-    assert r["decode_tps"] == 85.3
-
-
-def test_parse_vllm_throughput_mixed_stdout():
-    r = parse_vllm_throughput("INFO: root: some log line\n" + VLLM_OUT)
-    assert r["prompt_processing_tps"] == 341.3
-    assert r["decode_tps"] == 85.3
-
-
-def test_parse_vllm_throughput_real_keys():
-    r = parse_vllm_throughput('{"tokens_per_second": 99.5, "requests_per_second": 2.1}')
-    assert r["decode_tps"] == 99.5
-    assert r["prompt_processing_tps"] is None
-
-
-def test_parse_vllm_throughput_no_json():
-    r = parse_vllm_throughput("bunch of non-json text")
-    assert r["prompt_processing_tps"] is None
-    assert r["decode_tps"] is None
-
-
-def test_parse_vllm_throughput_two_json_blocks():
-    r = parse_vllm_throughput('{"a":1} and {"tokens_per_second": 42.0}')
-    assert r["prompt_processing_tps"] is None
-    assert r["decode_tps"] == 42.0
-
-
-def test_parse_vllm_throughput_last_block_not_throughput():
-    r = parse_vllm_throughput('{"tokens_per_second": 42.0} and {"a":1}')
-    assert r["prompt_processing_tps"] is None
-    assert r["decode_tps"] is None
-
-
-SGLANG_OUT = """\
-prefill throughput: 1200.00 token/s
-decode throughput: 90.10 token/s
-"""
-
-
-def test_parse_sglang_bench():
-    r = parse_sglang_bench(SGLANG_OUT)
-    assert r["prompt_processing_tps"] == 1200.0
-    assert r["decode_tps"] == 90.1
 
 
 import asyncio
@@ -190,7 +128,7 @@ async def test_runner_merges_stderr_only_for_output_not_parse(monkeypatch):
         return FakeProc(b"bunch of non-json text", err=b"stderr noise")
 
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
-    runner = BenchmarkRunner(server_id="vllm", bench_command=["bench"], timeout_s=60)
+    runner = BenchmarkRunner(server_id="llama.cpp", bench_command=["bench"], timeout_s=60)
     result = await runner.run()
     assert result["status"] == "failed"
     assert "stderr noise" in result["output"]
@@ -411,3 +349,58 @@ async def test_speed_bench_runner_client_fails(monkeypatch, tmp_path):
         timeout_s=60, startup_timeout_s=5, output_dir=tmp_path)
     result = await runner.run()
     assert result["status"] == "failed"
+
+
+async def test_runner_spawns_with_wsl2_pin_memory_env(monkeypatch):
+    spawned_env = {}
+
+    async def fake_create(*a, **k):
+        spawned_env.update(k.get("env", {}) or {})
+        return FakeProc(FAKE_BENCH.encode())
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    runner = BenchmarkRunner(server_id="llama.cpp", bench_command=["llama-bench", "-m", "x"],
+                             timeout_s=60)
+    result = await runner.run()
+    assert result["status"] == "ok"
+    assert "PATH" in spawned_env
+
+
+async def test_speed_bench_runner_spawns_with_wsl2_pin_memory_env(monkeypatch, tmp_path):
+    spawned_envs = []
+    procs = []
+    spawn_count = {"n": 0}
+
+    def new_proc(out=b"", rc=0):
+        p = FakeProc(out, rc=rc)
+        procs.append(p)
+        return p
+
+    async def fake_create(*a, **k):
+        spawned_envs.append(k.get("env", {}) or {})
+        spawn_count["n"] += 1
+        if spawn_count["n"] == 1:
+            p = new_proc(out=b"")
+            p.returncode = None  # server still running until torn down
+            return p
+        return new_proc(out=b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+    async def fake_health(*a, **k):
+        return True
+
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+    out_path = tmp_path / "out.json"
+    out_path.write_text(SPEED_JSON)
+    monkeypatch.setattr(bench_mod, "tempfile", _FakeTempfile(out_path))
+
+    runner = SpeedBenchRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf"],
+        bench_command=["python", "speed_bench.py", "--url", "localhost:8080"],
+        timeout_s=60, startup_timeout_s=5, output_dir=tmp_path)
+    result = await runner.run()
+    assert result["status"] == "ok"
+    assert len(spawned_envs) == 2
+    for env in spawned_envs:
+        assert "PATH" in env
