@@ -21,7 +21,7 @@
 ## Safety Rules (non-negotiable)
 
 - DO NOT BREAK THE CODE! DON'T YOU DARE TO!
-- I DO NOT ACCEPT MISTakes THAT WERE ALREADY FIXED.
+- I DO NOT ACCEPT MISTAKES THAT WERE ALREADY FIXED.
 - ANY CHANGE MUST BE SAFE AND NON-DESTRUCTIVE. NEVER WIPE OR DOWNGRADE EXISTING USER DATA.
 - ALWAYS USE CI/CD: run the full local suite before finishing — backend `pytest`, frontend `tsc -b` + `vitest run`, Playwright `e2e`.
 - When told "go"/"continue"/"approved" (or any synonym), STILL proceed in SAFE MODE: unit tests → CI checks → then integrate.
