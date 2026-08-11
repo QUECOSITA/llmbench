@@ -2,6 +2,7 @@ import asyncio
 import csv
 import io
 import json
+import os
 import socket
 import tempfile
 from pathlib import Path
@@ -303,7 +304,10 @@ class SpeedBenchRunner:
                     "duration_s": 0.0,
                     "output": "speed-bench is not configured: missing server or client command"}
         port = _free_port()
-        output_path = tempfile.mktemp(prefix="speed-bench-", suffix=".json", dir=str(self.output_dir))
+        output_fh = tempfile.NamedTemporaryFile(prefix="speed-bench-", suffix=".json",
+                                                dir=str(self.output_dir), delete=False)
+        output_path = output_fh.name
+        output_fh.close()
         server_cmd = list(self.server_command) + ["--port", str(port), "--host", "127.0.0.1"]
         client_cmd = _substitute_speed_bench_command(self.bench_command, port, output_path)
 
@@ -390,3 +394,8 @@ class SpeedBenchRunner:
                 except (asyncio.CancelledError, Exception):
                     pass
             self._procs.clear()
+            try:
+                if os.path.getsize(output_path) == 0:
+                    os.unlink(output_path)
+            except OSError:
+                pass

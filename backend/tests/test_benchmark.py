@@ -251,12 +251,20 @@ def test_free_port_returns_int():
     assert isinstance(bench_mod._free_port(), int)
 
 
+class _FakeNamedTempFile:
+    def __init__(self, path):
+        self.name = str(path)
+
+    def close(self):
+        pass
+
+
 class _FakeTempfile:
     def __init__(self, path):
         self._path = str(path)
 
-    def mktemp(self, **kwargs):
-        return self._path
+    def NamedTemporaryFile(self, **kwargs):
+        return _FakeNamedTempFile(self._path)
 
 
 async def test_speed_bench_runner_ok(monkeypatch, tmp_path):
@@ -330,6 +338,7 @@ async def test_speed_bench_runner_server_not_ready(monkeypatch, tmp_path):
     result = await runner.run()
     assert result["status"] == "failed"
     assert "not become ready" in result["output"]
+    assert list(tmp_path.glob("speed-bench-*.json")) == []
 
 
 async def test_speed_bench_runner_client_fails(monkeypatch, tmp_path):
