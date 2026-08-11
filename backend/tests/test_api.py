@@ -324,6 +324,35 @@ def test_run_failure_marks_run_failed(client, monkeypatch):
     assert r2.status_code == 200
 
 
+def test_failed_result_marks_run_failed(client, monkeypatch):
+    async def fake_create(*a, **k):
+        return FakeProcess(b"not a csv")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    cfg = {
+        "server_id": "llama.cpp",
+        "flags": {"-c": "4096"},
+        "model_id": None,
+        "serving_command": "llama-server -m x",
+        "bench_command": ["llama-bench", "-m", "x"],
+    }
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    def status():
+        runs = {x["id"]: x for x in client.get("/api/benchmarks").json()["runs"]}
+        return runs[run_id]["status"]
+
+    assert _poll(lambda: status() != "running")
+    assert status() == "failed"
+
+    detail = client.get(f"/api/benchmarks/{run_id}").json()
+    assert detail["status"] == "failed"
+    assert detail["results"][0]["result_status"] == "failed"
+
+
 def test_full_run_completes_and_persists(client, monkeypatch):
     async def fake_create(*a, **k):
         return FakeProcess(FAKE_BENCH.encode())
@@ -1020,7 +1049,7 @@ def test_failed_config_with_pause_does_not_wait_for_continue(client, monkeypatch
         assert r.status_code == 200
         run_id = r.json()["run_id"]
 
-        assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
+        assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "failed")
         assert not any(e["type"] == "config_wait" for e in events)
         assert api_mod.state._continue_queue is None
         assert api_mod.state._job_active is False
