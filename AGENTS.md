@@ -11,6 +11,36 @@
 - When the conversation reaches 128k context, execute the `compact` skill.
 - After compaction completes, continue with the process you were doing before compacting.
 
+## Safe Developing Workflow
+
+1. **Start of the Day (Get the Latest Code)** — Before you write any code, grab the latest updates that your teammates might have uploaded.
+   - `git checkout main` — switch to your main codebase
+   - `git pull` — download and merge the newest changes to your computer
+2. **Making Changes (Work Safely on a Branch)** — Never write code directly on the main project line. Always create a separate workspace called a branch.
+   - `git checkout -b feature/my-new-task` — create and switch to a brand new branch
+3. **Checking Your Work (See What Changed)** — As you write code, see which files you modified and check for mistakes.
+   - `git status` — shows a list of files you changed or created
+   - `git diff` — shows the exact lines of code you added or deleted
+4. **Saving Your Work (The Daily Save Point)** — When your new code is working, save a snapshot of it.
+   - `git add .` — gathers all your changed files and gets them ready to save
+   - `git commit -m "Fix login button bug"` — saves the changes with a short note explaining what you did
+5. **Sharing Your Work (Send to GitHub)** — Finally, send your saved work from your computer up to the GitHub website.
+   - `git push origin feature/my-new-task` — uploads your branch to GitHub
+
+## Security Scanning (Merge Gate)
+
+This repository is actively scanned through the following settings/tools:
+- Security advisories — Enabled
+- Private vulnerability reporting — Enabled
+- Dependabot alerts — Enabled
+- Code scanning alerts — Enabled
+- Secret scanning alerts — Enabled
+
+Before any merge:
+- Wait at least 3 minutes for the security-tool scans to finish.
+- Always check for any existing alert.
+- If any alert is found, create a new plan using the `using-superpowers` skill to fix them.
+
 ## CI/CD
 
 - Any push to any branch or any pull request against the GitHub remote (`QUECOSITA/llmbench`) runs the CI workflow (`.github/workflows/ci.yml`).
