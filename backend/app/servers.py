@@ -201,7 +201,10 @@ def build_server_command(serving_command: str, bin_dir: str | None = None) -> li
     list: swap in the resolved binary and drop --port/--host (the runner injects
     its own). -p (--parallel) is left alone."""
     import shlex
-    tokens = shlex.split(serving_command)
+    try:
+        tokens = shlex.split(serving_command)
+    except ValueError as exc:
+        raise ValueError(f"invalid serving command: {exc}") from exc
     if not tokens:
         return []
     resolved = resolve_serving_binary("llama.cpp", bin_dir)
@@ -272,7 +275,10 @@ def parse_serving_command(server_id: str, command: str) -> dict[str, str]:
     flags parse to value "", and positional tokens (binary names, repo ids)
     are ignored. The result can be fed back into build_bench_command."""
     import shlex
-    tokens = shlex.split(command)
+    try:
+        tokens = shlex.split(command)
+    except ValueError as exc:
+        raise ValueError(f"invalid serving command: {exc}") from exc
     flags: dict[str, str] = {}
     i = 0
     while i < len(tokens):

@@ -370,3 +370,23 @@ def test_detect_binaries_speed_bench_deps_gate(monkeypatch, tmp_path):
     assert detect_binaries()["speed-bench"] is False
     monkeypatch.setattr("app.servers.speed_bench_deps_available", lambda: True)
     assert detect_binaries()["speed-bench"] is True
+
+
+def test_build_server_command_malformed_raises_clear_error():
+    try:
+        build_server_command("llama-server --reasoning-budget-message $'\n")
+    except ValueError as exc:
+        assert "invalid serving command" in str(exc)
+        assert "closing quotation" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_parse_serving_command_malformed_raises_clear_error():
+    try:
+        parse_serving_command("llama.cpp", "llama-server --reasoning-budget-message $'\n")
+    except ValueError as exc:
+        assert "invalid serving command" in str(exc)
+        assert "closing quotation" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
