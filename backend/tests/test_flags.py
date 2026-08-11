@@ -95,3 +95,25 @@ def test_llama_serving_command_strips_readme_m_when_hf_file_given():
     assert "-m" not in cmd.split()
     assert "--spec-type draft-mtp" in cmd
     assert "-c 4096" in cmd
+
+
+def test_build_serving_command_quotes_value_with_spaces():
+    import shlex
+
+    cmd = build_serving_command(
+        "llama.cpp", "org/model",
+        {"--reasoning-budget-message": "\n\nConsidering the limited time available.\n", "-c": "4096"},
+        gguf_filename="x.gguf")
+    tokens = shlex.split(cmd)
+    assert tokens[tokens.index("--reasoning-budget-message") + 1] == "\n\nConsidering the limited time available.\n"
+    assert tokens[tokens.index("-c") + 1] == "4096"
+
+
+def test_build_serving_command_roundtrips_special_values():
+    import shlex
+
+    flags = {"--reasoning-budget-message": "line one\nline 'two' \"three\" $five", "-c": "4096"}
+    cmd = build_serving_command("llama.cpp", "org/model", flags, gguf_filename="x.gguf")
+    tokens = shlex.split(cmd)
+    i = tokens.index("--reasoning-budget-message")
+    assert tokens[i + 1] == flags["--reasoning-budget-message"]

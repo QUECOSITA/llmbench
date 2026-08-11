@@ -1,3 +1,5 @@
+import shlex
+
 KEY_FLAGS = {
     "llama.cpp": ["--ctx-size", "--n-gpu-layers", "--batch-size", "--spec-type", "--spec-draft-n-max"],
 }
@@ -57,12 +59,21 @@ def generate_configs(server_id: str, readme_flags: dict[str, str], n: int, vram_
     return configs[:n]
 
 
+_SHELL_SPECIALS = " \t\n\"'\\$`"
+
+
+def _shell_arg(value: str) -> str:
+    if any(ch in value for ch in _SHELL_SPECIALS):
+        return shlex.quote(value)
+    return value
+
+
 def _flag_tokens(flags: dict[str, str]) -> list[str]:
     tokens: list[str] = []
     for flag, value in flags.items():
         tokens.append(flag)
         if value and value != flag:
-            tokens.append(value)
+            tokens.append(_shell_arg(value))
     return tokens
 
 
