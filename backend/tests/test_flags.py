@@ -117,3 +117,38 @@ def test_build_serving_command_roundtrips_special_values():
     tokens = shlex.split(cmd)
     i = tokens.index("--reasoning-budget-message")
     assert tokens[i + 1] == flags["--reasoning-budget-message"]
+
+
+def test_baseline_readme_short_alias_is_canonicalized():
+    cfg = generate_configs("llama.cpp", {"-c": "8192"}, 1, 24)[0]["flags"]
+    assert cfg["--ctx-size"] == "8192"
+    assert "-c" not in cfg
+
+
+def test_baseline_long_form_wins_over_short_alias():
+    cfg = generate_configs("llama.cpp", {"-c": "57344", "--ctx-size": "4096"}, 1, 24)[0]["flags"]
+    assert cfg["--ctx-size"] == "4096"
+    assert "-c" not in cfg
+
+
+def test_baseline_other_aliases_canonicalized():
+    cfg = generate_configs(
+        "llama.cpp", {"-ngl": "40", "-b": "2048", "-t": "8"}, 1, 24
+    )[0]["flags"]
+    assert cfg["--n-gpu-layers"] == "40"
+    assert cfg["--batch-size"] == "2048"
+    assert "--threads" in cfg
+    assert "-ngl" not in cfg
+    assert "-b" not in cfg
+    assert "-t" not in cfg
+
+
+def test_build_serving_command_strips_duplicate_alias():
+    cmd = build_serving_command(
+        "llama.cpp", "org/model",
+        {"--ctx-size": "4096", "-c": "8192"},
+        gguf_filename="x.gguf",
+    )
+    tokens = cmd.split()
+    assert "-c" not in tokens
+    assert "--ctx-size 4096" in cmd
