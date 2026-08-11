@@ -30,6 +30,10 @@ vi.mock("./ws/useDownloadProgress", () => ({
   useDownloadProgress: vi.fn().mockReturnValue([]),
 }));
 
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
 test("LOAD on a downloaded row fills MODEL INPUT and analyzes", async () => {
   const { api } = await import("./api/client");
   vi.mocked(api.listModels).mockResolvedValue({
