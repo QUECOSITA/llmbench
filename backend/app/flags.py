@@ -1,5 +1,7 @@
 import shlex
 
+from app.servers import README_FLAG_MAP
+
 KEY_FLAGS = {
     "llama.cpp": ["--ctx-size", "--n-gpu-layers", "--batch-size", "--spec-type", "--spec-draft-n-max"],
 }
@@ -29,11 +31,26 @@ def _baseline(server_id: str, readme_flags: dict[str, str], vram_gb: float) -> d
     flags: dict[str, str] = {}
     for key, default in DEFAULTS[server_id].items():
         flags[key] = str(default)
+    mapping = README_FLAG_MAP.get(server_id, {})
+    canon_from_readme: set[str] = set()
     for flag, value in readme_flags.items():
-        if flag == "--spec-type":
-            value = _SPEC_TYPE_ALIASES.get(value, value)
-        if flag in KEY_FLAGS[server_id] or flag not in DEFAULTS[server_id]:
-            flags[flag] = value
+        canon = mapping.get(flag, flag)
+        # Only canonical long-form README entries override the defaults directly.
+        if canon == flag:
+            if canon == "--spec-type":
+                value = _SPEC_TYPE_ALIASES.get(value, value)
+            if flag in KEY_FLAGS[server_id] or flag not in DEFAULTS[server_id]:
+                flags[canon] = value
+                canon_from_readme.add(canon)
+    for flag, value in readme_flags.items():
+        canon = mapping.get(flag, flag)
+        # Aliases (e.g. -c) map to their canonical long form; the long form
+        # wins if the README also provided it explicitly.
+        if canon != flag and canon not in canon_from_readme:
+            if canon == "--spec-type":
+                value = _SPEC_TYPE_ALIASES.get(value, value)
+            if flag in KEY_FLAGS[server_id] or flag not in DEFAULTS[server_id]:
+                flags[canon] = value
     return flags
 
 
