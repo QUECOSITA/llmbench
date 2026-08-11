@@ -1,6 +1,6 @@
 # Fix Duplicate Long/Short Serving Flags in Generated Configs
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Prevent generated serving commands from containing both a flag and its short alias (e.g. `--ctx-size 4096` **and** `-c 4096`) by canonicalizing README flag aliases.
 
@@ -26,7 +26,7 @@ Dependencies/imports: `flags.py` currently imports only `shlex`. It will need to
 - Modify: `backend/app/flags.py:1` (add import) and `:28-37` (`_baseline`)
 - Test: `backend/tests/test_flags.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `backend/tests/test_flags.py`:
 
@@ -55,12 +55,12 @@ def test_baseline_other_aliases_canonicalized():
     assert "-t" not in cfg
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_flags.py -v`
 Expected: new tests FAIL — `cfg["--ctx-size"]` present but `"-c" in cfg` is True (short alias not stripped).
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add import to `backend/app/flags.py:1`:
 
@@ -90,12 +90,12 @@ def _baseline(server_id: str, readme_flags: dict[str, str], vram_gb: float) -> d
     return flags
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_flags.py -v`
 Expected: all tests PASS, including the pre-existing `test_llama_spec_type_*` and `test_generate_configs_*` suites.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/flags.py backend/tests/test_flags.py
@@ -110,7 +110,7 @@ git commit -m "fix: canonicalize README flag aliases in generated configs"
 - Modify: `backend/app/flags.py:80-92` (`build_serving_command`)
 - Test: `backend/tests/test_flags.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `backend/tests/test_flags.py`:
 
@@ -126,12 +126,12 @@ def test_build_serving_command_strips_duplicate_alias():
     assert "--ctx-size 4096" in cmd
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_flags.py::test_build_serving_command_strips_duplicate_alias -v`
 Expected: FAIL — `-c` is present in the command.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add a module-level helper and use it in `build_serving_command` (first-wins, matching `servers._canonical_flags` semantics):
 
@@ -166,12 +166,12 @@ def build_serving_command(server_id: str, repo_id: str, flags: dict[str, str],
     raise ValueError(f"unknown server {server_id}")
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_flags.py -v`
 Expected: all PASS, including `test_build_serving_command_*` and `test_llama_serving_command_strips_readme_m_when_hf_file_given`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/flags.py backend/tests/test_flags.py
@@ -182,18 +182,18 @@ git commit -m "fix: dedupe canonical vs alias flags when building serving comman
 
 ### Task 3: Run full local suite (merge gate)
 
-- [ ] **Step 1: Backend tests**
+- [x] **Step 1: Backend tests**
 
 Run: `pytest` (from `backend/`)
 Expected: all pass.
 
-- [ ] **Step 2: Frontend typecheck + unit tests**
+- [x] **Step 2: Frontend typecheck + unit tests**
 
 Run: `npx tsc -b && npx vitest run` (from `frontend/`)
 Expected: pass. No frontend source changes expected (it only renders the returned `serving_command`); this confirms no regression.
 
-- [ ] **Step 3: Playwright e2e (if local env supports)**
+- [x] **Step 3: Playwright e2e (if local env supports)**
 
 Run via the repo's e2e setup. If not runnable locally, note that CI will cover it.
 
-- [ ] **Step 4: No commit** — this is verification only; continue per AGENTS.md safe-developing workflow (work on a branch, wait for security scans before merge).
+- [x] **Step 4: No commit** — this is verification only; continue per AGENTS.md safe-developing workflow (work on a branch, wait for security scans before merge).
