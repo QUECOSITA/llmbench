@@ -1451,3 +1451,21 @@ def test_start_run_malformed_serving_command_returns_422(client):
     })
     assert r.status_code == 422
     assert "invalid serving command" in r.json()["detail"]
+
+
+def test_unhandled_exception_500_has_cors_header(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl")
+    (tmp_path / "prompts.jsonl").write_text("x\n")
+    app = create_app(settings)
+
+    @app.get("/boom")
+    async def boom():
+        raise RuntimeError("kaboom")
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        r = c.get("/boom", headers={"Origin": "http://localhost:5173"})
+    assert r.status_code == 500
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
+    assert "kaboom" in r.json()["detail"]
