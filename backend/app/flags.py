@@ -94,6 +94,19 @@ def _flag_tokens(flags: dict[str, str]) -> list[str]:
     return tokens
 
 
+def _drop_duplicate_aliases(server_id: str, flags: dict[str, str]) -> dict[str, str]:
+    mapping = README_FLAG_MAP.get(server_id, {})
+    emitted: set[str] = set()
+    out: dict[str, str] = {}
+    for flag, value in flags.items():
+        canon = mapping.get(flag, flag)
+        if canon in emitted:
+            continue
+        out[flag] = value
+        emitted.add(canon)
+    return out
+
+
 def build_serving_command(server_id: str, repo_id: str, flags: dict[str, str],
                           gguf_filename: str | None = None,
                           gguf_path: str | None = None) -> str:
@@ -105,6 +118,7 @@ def build_serving_command(server_id: str, repo_id: str, flags: dict[str, str],
             cmd += ["-m", gguf_path]
         if gguf_filename or gguf_path:
             flags = {k: v for k, v in flags.items() if k not in _LLAMA_MODEL_FLAGS}
+        flags = _drop_duplicate_aliases(server_id, flags)
         cmd += _flag_tokens(flags)
         return " ".join(cmd)
     raise ValueError(f"unknown server {server_id}")

@@ -141,3 +141,14 @@ def test_baseline_other_aliases_canonicalized():
     assert "-ngl" not in cfg
     assert "-b" not in cfg
     assert "-t" not in cfg
+
+
+def test_build_serving_command_strips_duplicate_alias():
+    cmd = build_serving_command(
+        "llama.cpp", "org/model",
+        {"--ctx-size": "4096", "-c": "8192"},
+        gguf_filename="x.gguf",
+    )
+    tokens = cmd.split()
+    assert "-c" not in tokens
+    assert "--ctx-size 4096" in cmd
