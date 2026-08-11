@@ -199,6 +199,37 @@ def _decode_parts(parts: list[bytes]) -> str:
     return "\n".join(p.decode(errors="replace") for p in parts if p)
 
 
+_STARTUP_REPORT_S = 10.0
+
+
+async def _startup_watchdog(port: int, allowed_s: float, parts: list[bytes],
+                            on_output, report_every_s: float = _STARTUP_REPORT_S) -> None:
+    """While a server is starting, periodically surface that we are still
+    waiting. llama.cpp buffers its logs when stdout/stderr is not a TTY, so a
+    slow startup can otherwise be completely silent for minutes."""
+    loop = asyncio.get_event_loop()
+    start = loop.time()
+    next_report = start + report_every_s
+    while True:
+        await asyncio.sleep(0.1)
+        if on_output is None:
+            return
+        now = loop.time()
+        if now < next_report:
+            continue
+        next_report = now + report_every_s
+        elapsed = now - start
+        tail = _decode_parts(parts[-6:]).strip()
+        msg = (f"waiting for llama-server on port {port}: {elapsed:.0f}s elapsed "
+               f"(up to {allowed_s:.0f}s allowed) — server not ready yet")
+        if tail:
+            msg += f"\nlatest server output:\n{tail[-800:]}"
+        else:
+            msg += ("\nno server output yet — llama.cpp logs are likely buffered; "
+                    "the model may be downloading or the GPU may be busy")
+        await on_output("line", msg)
+
+
 async def _wait_health(port: int, timeout_s: float) -> bool:
     import httpx
     url = f"http://127.0.0.1:{port}/health"
@@ -288,7 +319,20 @@ class SpeedBenchRunner:
             self._procs.append(server_proc)
             server_pump = asyncio.create_task(self._pump(server_proc, parts, on_output))
 
-            ready = await _wait_health(port, self.startup_timeout_s)
+            watchdog = None
+            if on_output is not None:
+                watchdog = asyncio.create_task(
+                    _startup_watchdog(port, self.startup_timeout_s, parts, on_output,
+                                      report_every_s=_STARTUP_REPORT_S))
+            try:
+                ready = await _wait_health(port, self.startup_timeout_s)
+            finally:
+                if watchdog is not None:
+                    watchdog.cancel()
+                    try:
+                        await watchdog
+                    except (asyncio.CancelledError, Exception):
+                        pass
             if self._aborted.is_set():
                 return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,
                         "duration_s": asyncio.get_event_loop().time() - start,

@@ -324,6 +324,35 @@ def test_run_failure_marks_run_failed(client, monkeypatch):
     assert r2.status_code == 200
 
 
+def test_failed_result_marks_run_failed(client, monkeypatch):
+    async def fake_create(*a, **k):
+        return FakeProcess(b"not a csv")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    cfg = {
+        "server_id": "llama.cpp",
+        "flags": {"-c": "4096"},
+        "model_id": None,
+        "serving_command": "llama-server -m x",
+        "bench_command": ["llama-bench", "-m", "x"],
+    }
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    def status():
+        runs = {x["id"]: x for x in client.get("/api/benchmarks").json()["runs"]}
+        return runs[run_id]["status"]
+
+    assert _poll(lambda: status() != "running")
+    assert status() == "failed"
+
+    detail = client.get(f"/api/benchmarks/{run_id}").json()
+    assert detail["status"] == "failed"
+    assert detail["results"][0]["result_status"] == "failed"
+
+
 def test_full_run_completes_and_persists(client, monkeypatch):
     async def fake_create(*a, **k):
         return FakeProcess(FAKE_BENCH.encode())
@@ -1020,7 +1049,7 @@ def test_failed_config_with_pause_does_not_wait_for_continue(client, monkeypatch
         assert r.status_code == 200
         run_id = r.json()["run_id"]
 
-        assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
+        assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "failed")
         assert not any(e["type"] == "config_wait" for e in events)
         assert api_mod.state._continue_queue is None
         assert api_mod.state._job_active is False
@@ -1416,3 +1445,56 @@ def test_start_run_speed_bench_missing_deps_rejected(client, monkeypatch):
     })
     assert r.status_code == 422
     assert "speed-bench" in r.json()["detail"]
+
+
+def test_rebuild_bench_command_malformed_serving_command_sets_bench_error(tmp_path):
+    from app.api import _rebuild_bench_command, AppState
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl")
+    (tmp_path / "prompts.jsonl").write_text("x\n")
+    s = AppState(settings)
+    cfg = {
+        "server_id": "llama.cpp",
+        "serving_command": "llama-server -m /models/x.gguf --reasoning-budget-message $'\n",
+        "flags": {},
+        "bench_command": [],
+    }
+    _rebuild_bench_command(s, cfg, "org/model")
+    assert cfg["bench_command"] == []
+    assert "invalid serving command" in cfg["bench_error"]
+    assert "closing quotation" in cfg["bench_error"]
+
+
+def test_start_run_malformed_serving_command_returns_422(client):
+    config = {
+        "server_id": "llama.cpp",
+        "serving_command": "llama-server -m /models/x.gguf --reasoning-budget-message $'\n",
+        "flags": {},
+        "bench_command": [],
+    }
+    r = client.post("/api/benchmarks", json={
+        "repo_id": "org/model",
+        "configs": [config],
+        "pause": False,
+    })
+    assert r.status_code == 422
+    assert "invalid serving command" in r.json()["detail"]
+
+
+def test_unhandled_exception_500_has_cors_header(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl")
+    (tmp_path / "prompts.jsonl").write_text("x\n")
+    app = create_app(settings)
+
+    @app.get("/boom")
+    async def boom():
+        raise RuntimeError("kaboom")
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        r = c.get("/boom", headers={"Origin": "http://localhost:5173"})
+    assert r.status_code == 500
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
+    assert "kaboom" in r.json()["detail"]

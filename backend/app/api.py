@@ -551,7 +551,13 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
         return
     if cfg.get("bench_tool") == "speed-bench":
         bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
-        cfg["server_command"] = build_server_command(cfg.get("serving_command", ""), bin_dir)
+        try:
+            cfg["server_command"] = build_server_command(cfg.get("serving_command", ""), bin_dir)
+        except ValueError as exc:
+            cfg["server_command"] = []
+            cfg["bench_command"] = []
+            cfg["bench_error"] = f"invalid serving command: {exc}"
+            return
         script = resolve_speed_bench_script(bin_dir, configured=s.settings.speed_bench_script)
         if not (script and speed_bench_deps_available()):
             cfg["bench_command"] = []
@@ -568,7 +574,12 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
             script, flags, output=str(s.settings.data_dir / "speed-bench.json"))
         cfg.pop("bench_error", None)
         return
-    flags = parse_serving_command(cfg.get("server_id", ""), cfg.get("serving_command", ""))
+    try:
+        flags = parse_serving_command(cfg.get("server_id", ""), cfg.get("serving_command", ""))
+    except ValueError as exc:
+        cfg["bench_command"] = []
+        cfg["bench_error"] = f"invalid serving command: {exc}"
+        return
     if not flags:
         flags = cfg.get("flags") or {}
     if not flags:
@@ -669,6 +680,8 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict], pause: bool = 
                     if result["status"] == "aborted":
                         status = "aborted"
                         break
+                    if result["status"] == "failed":
+                        status = "failed"
                     if pause and result["status"] == "ok":
                         wait_queue: asyncio.Queue = asyncio.Queue()
                         s._continue_queue = wait_queue
