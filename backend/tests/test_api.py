@@ -1416,3 +1416,38 @@ def test_start_run_speed_bench_missing_deps_rejected(client, monkeypatch):
     })
     assert r.status_code == 422
     assert "speed-bench" in r.json()["detail"]
+
+
+def test_rebuild_bench_command_malformed_serving_command_sets_bench_error(tmp_path):
+    from app.api import _rebuild_bench_command, AppState
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl")
+    (tmp_path / "prompts.jsonl").write_text("x\n")
+    s = AppState(settings)
+    cfg = {
+        "server_id": "llama.cpp",
+        "serving_command": "llama-server -m /models/x.gguf --reasoning-budget-message $'\n",
+        "flags": {},
+        "bench_command": [],
+    }
+    _rebuild_bench_command(s, cfg, "org/model")
+    assert cfg["bench_command"] == []
+    assert "invalid serving command" in cfg["bench_error"]
+    assert "closing quotation" in cfg["bench_error"]
+
+
+def test_start_run_malformed_serving_command_returns_422(client):
+    config = {
+        "server_id": "llama.cpp",
+        "serving_command": "llama-server -m /models/x.gguf --reasoning-budget-message $'\n",
+        "flags": {},
+        "bench_command": [],
+    }
+    r = client.post("/api/benchmarks", json={
+        "repo_id": "org/model",
+        "configs": [config],
+        "pause": False,
+    })
+    assert r.status_code == 422
+    assert "invalid serving command" in r.json()["detail"]
