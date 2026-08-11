@@ -6,3 +6,4 @@ __pycache__/
 nohup.out
 show.sh
 .impeccable/
+tmp_sync/
