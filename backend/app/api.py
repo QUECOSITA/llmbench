@@ -680,8 +680,6 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict], pause: bool = 
                     if result["status"] == "aborted":
                         status = "aborted"
                         break
-                    if result["status"] == "failed":
-                        status = "failed"
                     if pause and result["status"] == "ok":
                         wait_queue: asyncio.Queue = asyncio.Queue()
                         s._continue_queue = wait_queue

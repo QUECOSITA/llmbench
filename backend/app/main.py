@@ -1,5 +1,3 @@
-import logging
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -27,20 +25,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=exc.status_code,
             content={"detail": exc.message, "context": exc.context},
-        )
-
-    @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception("Unhandled exception: %s", exc)
-        origin = request.headers.get("origin")
-        allow_origin = origin if origin in _ALLOWED_ORIGINS else _ALLOWED_ORIGINS[0]
-        return JSONResponse(
-            status_code=500,
-            content={
-                "detail": f"{type(exc).__name__}: {exc}",
-                "context": {"type": type(exc).__name__},
-            },
-            headers={"Access-Control-Allow-Origin": allow_origin},
         )
 
     init_state(settings)

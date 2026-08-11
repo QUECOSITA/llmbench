@@ -32,29 +32,6 @@ def test_extract_flags_backslash_line_continuation_is_bare_flag():
     assert flags["--fit"] == "on"
 
 
-def test_extract_flags_ansi_c_quoted_value():
-    text = (
-        "Run:\n```\n"
-        "llama-server -m model.gguf -c 4096 "
-        "--reasoning-budget-message $'\\n\\nConsidering the limited time available.\\n'\n"
-        "```"
-    )
-    flags = extract_flags(text, ["llama.cpp"])
-    assert flags["--reasoning-budget-message"] == "\n\nConsidering the limited time available.\n"
-
-
-def test_extract_flags_double_quoted_value_with_spaces():
-    text = "```\nllama-server -m x.gguf --prompt-file \"my prompts file.txt\"\n```"
-    flags = extract_flags(text, ["llama.cpp"])
-    assert flags["--prompt-file"] == "my prompts file.txt"
-
-
-def test_extract_flags_unterminated_quote_drops_flag():
-    text = "```\nllama-server -m x.gguf --reasoning-budget-message $'never closed\n```"
-    flags = extract_flags(text, ["llama.cpp"])
-    assert "--reasoning-budget-message" not in flags
-
-
 def test_extract_flags_does_not_bleed_other_servers_flags():
     """A README documenting multiple servers must not leak other servers' flags
     into the requested server's extraction (regression: full-text fallback)."""

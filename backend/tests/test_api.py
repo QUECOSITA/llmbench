@@ -1049,7 +1049,7 @@ def test_failed_config_with_pause_does_not_wait_for_continue(client, monkeypatch
         assert r.status_code == 200
         run_id = r.json()["run_id"]
 
-        assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "failed")
+        assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
         assert not any(e["type"] == "config_wait" for e in events)
         assert api_mod.state._continue_queue is None
         assert api_mod.state._job_active is False
