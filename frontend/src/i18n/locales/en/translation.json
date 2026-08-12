@@ -1,0 +1,101 @@
+{
+  "nav": { "results": "RESULTS" },
+  "panel": {
+    "modelInput": "01 · MODEL INPUT",
+    "run": "03 · RUN",
+    "resultsRanked": "05 · RESULTS — RANKED",
+    "downloaded": "DOWNLOADED",
+    "resultsAllRuns": "RESULTS · ALL RUNS"
+  },
+  "common": {
+    "analyze": "ANALYZE",
+    "generate": "GENERATE",
+    "runBenchmark": "RUN BENCHMARK",
+    "cancel": "CANCEL",
+    "download": "Download",
+    "load": "LOAD",
+    "remove": "REMOVE",
+    "clear": "CLEAR",
+    "clearHistory": "CLEAR HISTORY",
+    "no": "NO",
+    "error": "Error: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "no GPU",
+    "gbVram": "{{gb}}GB VRAM",
+    "gbRam": "{{gb}}GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · server {{server}} · {{count}} flags",
+    "serverManual": "manual",
+    "servingServer": "serving server",
+    "noServerProposed": "no serving server proposed by this repo's README — model not supported by llama.cpp",
+    "noServingCommand": "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli / llama-bench) — it may not be loadable by LLMBENCH.",
+    "noServingCommandWithGguf": "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli / llama-bench) — even though it ships a .gguf, it may not be loadable by LLMBENCH.",
+    "noServerForGenerate": "No serving server selected — pick one in MODEL INPUT to generate configs."
+  },
+  "config": {
+    "bankTitle": "02 · CONFIG BANK · N = {{n}}",
+    "speedBenchFlags": "SPEED-BENCH FLAGS",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, or (for bench {{bench}}): {{cats}}",
+    "limitLine": "--limit: optional int — max samples per category"
+  },
+  "run": {
+    "configProgress": "config {{index}}/{{total}}",
+    "pause": "PAUSE",
+    "pressEnter": "PRESS ENTER TO CONTINUE",
+    "continue": "CONTINUE",
+    "watching": "→ watching benchmark run #{{id}} in progress",
+    "statusError": "run {{status}}"
+  },
+  "download": {
+    "yesAnyway": "YES — DOWNLOAD ANYWAY",
+    "prunePrompt": "hf cache prune — Proceed? [y/N]",
+    "downloadedTo": "downloaded → {{path}}",
+    "pruned": "cache pruned — retry the download when ready",
+    "pruneSkipped": "prune skipped — retry the download when ready",
+    "error": "error: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "downloading",
+    "downloaded": "downloaded",
+    "cancelled": "cancelled",
+    "pruning": "pruning",
+    "pruned": "pruned"
+  },
+  "results": {
+    "program": "Program",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "STATUS",
+    "viewAll": "view all runs →",
+    "backToBench": "← back to bench",
+    "empty": "No benchmark runs yet.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} configs · {{status}}"
+  },
+  "fit": {
+    "gpu": "FITS VRAM — needs ~{{needed}} GB (weights + KV) of {{vram}} GB VRAM",
+    "ramOffload": "OFFLOADS TO RAM — needs ~{{needed}} GB, spills past {{vram}} GB VRAM into {{ram}} GB RAM",
+    "ram": "CPU ONLY — no GPU VRAM, needs ~{{needed}} GB of {{ram}} GB RAM",
+    "noFit": "NO FIT — needs ~{{needed}} GB vs {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "this model doesn't fit this machine's VRAM/RAM — it may not be loadable by LLMBENCH."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "Remove {{model}} from the HF cache?",
+    "clearHistory": "Clear all benchmark history? This removes every run and its raw speed-bench outputs. Downloaded models are kept."
+  },
+  "status": {
+    "running": "running",
+    "queued": "queued",
+    "completed": "completed",
+    "failed": "failed",
+    "cancelled": "cancelled",
+    "error": "error",
+    "ok": "ok"
+  }
+}

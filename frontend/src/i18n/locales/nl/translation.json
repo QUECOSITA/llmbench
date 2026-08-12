@@ -1,0 +1,101 @@
+{
+  "nav": { "results": "RESULTATEN" },
+  "panel": {
+    "modelInput": "01 · MODELINVOER",
+    "run": "03 · UITVOERING",
+    "resultsRanked": "05 · RESULTATEN — GERANGSDIKT",
+    "downloaded": "GEDOWNLOAD",
+    "resultsAllRuns": "RESULTATEN · ALLE UITVOERINGEN"
+  },
+  "common": {
+    "analyze": "ANALYSEREN",
+    "generate": "GENEREREN",
+    "runBenchmark": "BENCHMARK UITVOEREN",
+    "cancel": "ANNULEREN",
+    "download": "Downloaden",
+    "load": "LADEN",
+    "remove": "VERWIJDEREN",
+    "clear": "WISSEN",
+    "clearHistory": "GESCHIEDENIS WISSEN",
+    "no": "NEE",
+    "error": "Fout: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "geen GPU",
+    "gbVram": "{{gb}}GB VRAM",
+    "gbRam": "{{gb}}GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · server {{server}} · {{count}} flags",
+    "serverManual": "handmatig",
+    "servingServer": "serving-server",
+    "noServerProposed": "het README van deze repo stelt geen serving-server voor — model wordt niet ondersteund door llama.cpp",
+    "noServingCommand": "het README van deze repo documenteert geen llama.cpp-servingopdracht (llama-server / speed-bench / llama-cli / llama-bench) — het kan zijn dat LLMBENCH het niet kan laden.",
+    "noServingCommandWithGguf": "het README van deze repo documenteert geen llama.cpp-servingopdracht (llama-server / speed-bench / llama-cli / llama-bench) — ook al bevat het een .gguf, het kan zijn dat LLMBENCH het niet kan laden.",
+    "noServerForGenerate": "Geen serving-server geselecteerd — kies er een in MODELINVOER om configuraties te genereren."
+  },
+  "config": {
+    "bankTitle": "02 · CONFIGURATIEBANK · N = {{n}}",
+    "speedBenchFlags": "SPEED-BENCH-FLAGS",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, of (voor bench {{bench}}): {{cats}}",
+    "limitLine": "--limit: optionele int — max samples per categorie"
+  },
+  "run": {
+    "configProgress": "configuratie {{index}}/{{total}}",
+    "pause": "PAUZE",
+    "pressEnter": "DRUK OP ENTER OM DOOR TE GAAN",
+    "continue": "DOORGAAN",
+    "watching": "→ benchmarkuitvoering #{{id}} wordt gevolgd",
+    "statusError": "uitvoering {{status}}"
+  },
+  "download": {
+    "yesAnyway": "JA — TOCH DOWNLOADEN",
+    "prunePrompt": "hf cache prune — Doorgaan? [y/N]",
+    "downloadedTo": "gedownload → {{path}}",
+    "pruned": "cache opgeschoond — probeer de download opnieuw wanneer je klaar bent",
+    "pruneSkipped": "opschonen overgeslagen — probeer de download opnieuw wanneer je klaar bent",
+    "error": "fout: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "aan het downloaden",
+    "downloaded": "gedownload",
+    "cancelled": "geannuleerd",
+    "pruning": "aan het opschonen",
+    "pruned": "opgeschoond"
+  },
+  "results": {
+    "program": "Programma",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "STATUS",
+    "viewAll": "alle uitvoeringen bekijken →",
+    "backToBench": "← terug naar bench",
+    "empty": "Nog geen benchmarkuitvoeringen.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} configuraties · {{status}}"
+  },
+  "fit": {
+    "gpu": "PAST IN VRAM — heeft ~{{needed}} GB (gewichten + KV) nodig van {{vram}} GB VRAM",
+    "ramOffload": "OFFLOADS NAAR RAM — heeft ~{{needed}} GB nodig, loopt over van {{vram}} GB VRAM in {{ram}} GB RAM",
+    "ram": "ALLEEN CPU — geen GPU-VRAM, heeft ~{{needed}} GB nodig van {{ram}} GB RAM",
+    "noFit": "PAST NIET — heeft ~{{needed}} GB nodig tegenover {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "dit model past niet in de VRAM/RAM van deze machine — het kan zijn dat LLMBENCH het niet kan laden."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "{{model}} uit de HF-cache verwijderen?",
+    "clearHistory": "Alle benchmarkgeschiedenis wissen? Hiermee worden elke uitvoering en de ruwe speed-bench-outputs verwijderd. Gedownloade modellen blijven behouden."
+  },
+  "status": {
+    "running": "bezig",
+    "queued": "in wachtrij",
+    "completed": "voltooid",
+    "failed": "mislukt",
+    "cancelled": "geannuleerd",
+    "error": "fout",
+    "ok": "ok"
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "nav": { "results": "ERGEBNISSE" },
+  "panel": {
+    "modelInput": "01 · MODELLEINGABE",
+    "run": "03 · AUSFÜHRUNG",
+    "resultsRanked": "05 · ERGEBNISSE — RANGLISTE",
+    "downloaded": "HERUNTERGELADEN",
+    "resultsAllRuns": "ERGEBNISSE · ALLE AUSFÜHRUNGEN"
+  },
+  "common": {
+    "analyze": "ANALYSIEREN",
+    "generate": "GENERIEREN",
+    "runBenchmark": "BENCHMARK AUSFÜHREN",
+    "cancel": "ABBRECHEN",
+    "download": "Herunterladen",
+    "load": "LADEN",
+    "remove": "ENTFERNEN",
+    "clear": "LEEREN",
+    "clearHistory": "VERLAUF LEEREN",
+    "no": "NEIN",
+    "error": "Fehler: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "keine GPU",
+    "gbVram": "{{gb}}GB VRAM",
+    "gbRam": "{{gb}}GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · Server {{server}} · {{count}} Flags",
+    "serverManual": "manuell",
+    "servingServer": "Serving-Server",
+    "noServerProposed": "das README dieses Repos schlägt keinen Serving-Server vor — Modell wird von llama.cpp nicht unterstützt",
+    "noServingCommand": "das README dieses Repos dokumentiert keinen llama.cpp-Serving-Befehl (llama-server / speed-bench / llama-cli / llama-bench) — es kann sein, dass es nicht von LLMBENCH geladen werden kann.",
+    "noServingCommandWithGguf": "das README dieses Repos dokumentiert keinen llama.cpp-Serving-Befehl (llama-server / speed-bench / llama-cli / llama-bench) — auch wenn eine .gguf enthalten ist, kann es sein, dass es nicht von LLMBENCH geladen werden kann.",
+    "noServerForGenerate": "Kein Serving-Server ausgewählt — wählen Sie einen in MODELLEINGABE, um Konfigurationen zu generieren."
+  },
+  "config": {
+    "bankTitle": "02 · KONFIGURATIONSBANK · N = {{n}}",
+    "speedBenchFlags": "SPEED-BENCH-FLAGS",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, oder (für Bench {{bench}}): {{cats}}",
+    "limitLine": "--limit: optionaler int — max. Stichproben pro Kategorie"
+  },
+  "run": {
+    "configProgress": "Konfiguration {{index}}/{{total}}",
+    "pause": "PAUSE",
+    "pressEnter": "DRÜCKEN SIE EINGABETASTE, UM FORTZUSETZEN",
+    "continue": "FORTSETZEN",
+    "watching": "→ laufender Benchmark #{{id}} wird beobachtet",
+    "statusError": "Ausführung {{status}}"
+  },
+  "download": {
+    "yesAnyway": "JA — TROTZDEM HERUNTERLADEN",
+    "prunePrompt": "hf cache prune — Fortfahren? [y/N]",
+    "downloadedTo": "heruntergeladen → {{path}}",
+    "pruned": "Cache bereinigt — wiederholen Sie den Download, sobald Sie bereit sind",
+    "pruneSkipped": "Bereinigung übersprungen — wiederholen Sie den Download, sobald Sie bereit sind",
+    "error": "Fehler: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "wird heruntergeladen",
+    "downloaded": "heruntergeladen",
+    "cancelled": "abgebrochen",
+    "pruning": "wird bereinigt",
+    "pruned": "bereinigt"
+  },
+  "results": {
+    "program": "Programm",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "STATUS",
+    "viewAll": "alle Ausführungen anzeigen →",
+    "backToBench": "← zurück zum Bench",
+    "empty": "Noch keine Benchmark-Ausführungen.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} Konfigurationen · {{status}}"
+  },
+  "fit": {
+    "gpu": "PASST IN VRAM — benötigt ~{{needed}} GB (Gewichte + KV) von {{vram}} GB VRAM",
+    "ramOffload": "LAGERT IN RAM AUS — benötigt ~{{needed}} GB, überschreitet {{vram}} GB VRAM in {{ram}} GB RAM",
+    "ram": "NUR CPU — kein GPU-VRAM, benötigt ~{{needed}} GB von {{ram}} GB RAM",
+    "noFit": "PASST NICHT — benötigt ~{{needed}} GB gegenüber {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "dieses Modell passt nicht in den VRAM/RAM dieser Maschine — es kann sein, dass es nicht von LLMBENCH geladen werden kann."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "{{model}} aus dem HF-Cache entfernen?",
+    "clearHistory": "Den gesamten Benchmark-Verlauf löschen? Dadurch werden alle Ausführungen und ihre rohen speed-bench-Ausgaben entfernt. Heruntergeladene Modelle bleiben erhalten."
+  },
+  "status": {
+    "running": "läuft",
+    "queued": "wartet",
+    "completed": "abgeschlossen",
+    "failed": "fehlgeschlagen",
+    "cancelled": "abgebrochen",
+    "error": "Fehler",
+    "ok": "ok"
+  }
+}

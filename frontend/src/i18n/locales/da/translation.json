@@ -1,0 +1,101 @@
+{
+  "nav": { "results": "RESULTATER" },
+  "panel": {
+    "modelInput": "01 · MODELINDPUTNING",
+    "run": "03 · KØRSEL",
+    "resultsRanked": "05 · RESULTATER — RANGERET",
+    "downloaded": "DOWNLOADET",
+    "resultsAllRuns": "RESULTATER · ALLE KØRSLER"
+  },
+  "common": {
+    "analyze": "ANALYSÉR",
+    "generate": "GENERÉR",
+    "runBenchmark": "KØR BENCHMARK",
+    "cancel": "ANNULLÉR",
+    "download": "Download",
+    "load": "INDLOAD",
+    "remove": "FJERN",
+    "clear": "RYDD",
+    "clearHistory": "RYD HISTORIK",
+    "no": "NEJ",
+    "error": "Fejl: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "ingen GPU",
+    "gbVram": "{{gb}} GB VRAM",
+    "gbRam": "{{gb}} GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · server {{server}} · {{count}} flag",
+    "serverManual": "manuel",
+    "servingServer": "serveringsserver",
+    "noServerProposed": "dette repos README foreslår ingen serveringsserver — modellen understøttes ikke af llama.cpp",
+    "noServingCommand": "dette repos README dokumenterer ikke en llama.cpp-serveringskommando (llama-server / speed-bench / llama-cli / llama-bench) — det kan være, at LLMBENCH ikke kan indlæse den.",
+    "noServingCommandWithGguf": "dette repos README dokumenterer ikke en llama.cpp-serveringskommando (llama-server / speed-bench / llama-cli / llama-bench) — selvom den indeholder en .gguf, kan det være, at LLMBENCH ikke kan indlæse den.",
+    "noServerForGenerate": "Ingen serveringsserver valgt — vælg en i MODELINDPUTNING for at generere konfigurationer."
+  },
+  "config": {
+    "bankTitle": "02 · KONFIGURATIONSBANK · N = {{n}}",
+    "speedBenchFlags": "SPEED-BENCH-FLAGS",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, eller (for bench {{bench}}): {{cats}}",
+    "limitLine": "--limit: valgfrit heltal — maks. prøver pr. kategori"
+  },
+  "run": {
+    "configProgress": "konfiguration {{index}}/{{total}}",
+    "pause": "PAUSE",
+    "pressEnter": "TRYK PÅ ENTER FOR AT FORTSÆTTE",
+    "continue": "FORTSÆT",
+    "watching": "→ følger benchmarkkørsel #{{id}} i gang",
+    "statusError": "kørsel {{status}}"
+  },
+  "download": {
+    "yesAnyway": "JA — DOWNLOAD ALLIGEVEL",
+    "prunePrompt": "hf cache prune — Fortsætte? [y/N]",
+    "downloadedTo": "downloadet → {{path}}",
+    "pruned": "cache ryddet — prøv at downloade igen, når du er klar",
+    "pruneSkipped": "oprydning sprunget over — prøv at downloade igen, når du er klar",
+    "error": "fejl: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "downloader",
+    "downloaded": "downloadet",
+    "cancelled": "annulleret",
+    "pruning": "rydder",
+    "pruned": "ryddet"
+  },
+  "results": {
+    "program": "Program",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "STATUS",
+    "viewAll": "se alle kørsler →",
+    "backToBench": "← tilbage til bench",
+    "empty": "Ingen benchmarkkørsler endnu.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} konfigurationer · {{status}}"
+  },
+  "fit": {
+    "gpu": "PASSER I VRAM — kræver ~{{needed}} GB (vægte + KV) af {{vram}} GB VRAM",
+    "ramOffload": "OVERFØRES TIL RAM — kræver ~{{needed}} GB, flyder over fra {{vram}} GB VRAM til {{ram}} GB RAM",
+    "ram": "KUN CPU — ingen GPU-VRAM, kræver ~{{needed}} GB af {{ram}} GB RAM",
+    "noFit": "PASSER IKKE — kræver ~{{needed}} GB mod {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "denne model passer ikke i denne maskines VRAM/RAM — det kan være, at LLMBENCH ikke kan indlæse den."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "Fjerne {{model}} fra HF-cachen?",
+    "clearHistory": "Ryd al benchmarkhistorik? Dette fjerner hver kørsel og dens rå speed-bench-output. Downloadede modeller bevares."
+  },
+  "status": {
+    "running": "kører",
+    "queued": "i kø",
+    "completed": "fuldført",
+    "failed": "mislykkedes",
+    "cancelled": "annulleret",
+    "error": "fejl",
+    "ok": "ok"
+  }
+}
