@@ -92,3 +92,16 @@ def test_has_serving_command_ignores_bare_project_mention():
 
 def test_has_serving_command_false_when_absent():
     assert not has_serving_command("pip install transformers", "llama.cpp")
+
+
+def test_has_serving_command_is_case_insensitive():
+    assert has_serving_command("LLAMA-SERVER -m x.gguf", "llama.cpp")
+    assert has_serving_command("Llama-Bench -m x", "llama.cpp")
+
+
+def test_has_serving_command_unknown_server_is_false():
+    assert not has_serving_command("llama-server -m x.gguf", "vllm")
+
+
+def test_has_serving_command_does_not_fuzzy_match():
+    assert not has_serving_command("use llama-benchmark for evals", "llama.cpp")

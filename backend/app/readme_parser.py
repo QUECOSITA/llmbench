@@ -2,16 +2,21 @@ import re
 
 _SERVERS = ("llama.cpp",)
 
+# Commands common to both pattern sets (the core llama.cpp tools).
+_COMMON_COMMANDS = (r"\bllama-server\b", r"\bllama-cli\b", r"\bllama-bench\b")
+
+# Broader detection set: core llama.cpp commands plus the "llama.cpp" project-name
+# mention. Used for server detection + flag extraction. speed-bench is
+# intentionally not here so a bare speed-bench mention does not change
+# detect/extract behavior.
 _COMMAND_PATTERNS = {
-    "llama.cpp": [
-        r"\bllama-server\b", r"\bllama-cli\b", r"\bllama-bench\b", r"\bllama\.cpp\b",
-    ],
+    "llama.cpp": [*_COMMON_COMMANDS, r"\bllama\.cpp\b"],
 }
 
+# Strictly runnable llama.cpp commands (core tools + speed-bench), with no
+# project-name mention. Used by has_serving_command.
 _SERVING_COMMAND_PATTERNS = {
-    "llama.cpp": [
-        r"\bllama-server\b", r"\bllama-cli\b", r"\bllama-bench\b", r"\bspeed-bench\b",
-    ],
+    "llama.cpp": [*_COMMON_COMMANDS, r"\bspeed-bench\b"],
 }
 
 _FLAG_RE = re.compile(
@@ -103,7 +108,7 @@ def top_serving_program(scores: dict[str, int]) -> str | None:
 
 
 def has_serving_command(readme: str, server: str) -> bool:
-    """True when the README names a runnable llama.cpp serving/bench command.
+    """True when the README names a runnable llama.cpp command.
     A bare 'llama.cpp' project mention does not count as a serving command."""
     patterns = _SERVING_COMMAND_PATTERNS.get(server, ())
     return any(re.search(p, readme, re.IGNORECASE) for p in patterns)
