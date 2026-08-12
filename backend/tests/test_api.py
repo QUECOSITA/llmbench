@@ -102,6 +102,36 @@ def test_analyze_llama_readme_returns_per_server_flags(client, httpx_mock):
     assert per["llama.cpp"]["--n-gpu-layers"] == "999"
 
 
+def test_analyze_readme_has_serving_command_true(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n\n```\nllama-server -m model.gguf --ctx-size 8192\n```")
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["detected_server"] == "llama.cpp"
+    assert body["readme_has_serving_command"] is True
+
+
+def test_analyze_gguf_boost_without_serving_command_reports_false(client, httpx_mock):
+    """gguf boost still detects llama.cpp, but README has no serving command."""
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.gguf", "type": "file", "size": 4_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n\nUse the GGUF below.\n")
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["detected_server"] == "llama.cpp"
+    assert body["readme_has_serving_command"] is False
+
+
 def test_analyze_direct_file_link_uses_single_file_size(client, httpx_mock):
     httpx_mock.add_response(
         url="https://huggingface.co/api/models/org/model/tree/main?recursive=true",

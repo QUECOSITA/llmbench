@@ -6,7 +6,7 @@ function seedModel(server_id: string, repo_id: string, gguf_filename: string | n
 }
 seedModel("llama.cpp", "org/model", "model.gguf");
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -25,9 +25,21 @@ const server = createServer((req, res) => {
   } else if (req.url?.startsWith("/api/servers")) {
     Object.assign(body, { readiness: { "llama.cpp": true, "speed-bench": true }, hardware: { gpu_vram_gb: 24 } });
   } else if (req.url?.startsWith("/api/models/analyze")) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk);
+    let repoId = "org/model";
+    try {
+      const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      if (parsed.input) repoId = String(parsed.input).split("/resolve/")[0];
+    } catch {}
+    const hasCommand = repoId !== "org/noserve";
     Object.assign(body, {
-      repo_id: "org/model", detected_server: "llama.cpp",
-      readme_flags: { "--ctx-size": "8192" }, weights_bytes: 4e9,
+      repo_id: repoId,
+      detected_server: "llama.cpp",
+      readme_has_serving_command: hasCommand,
+      readme_flags: { "--ctx-size": "8192" },
+      weights_bytes: 4e9,
+      gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
       fit_verdict: { stage: "gpu", warning: false, needed_gb: 3.8 },
       model_arch: { layers: 32, heads: 32, hidden: 4096, max_ctx: 8192 },
       hardware: { gpu_vram_gb: 24, ram_total_gb: 64, gpu_name: "RTX 4090" },

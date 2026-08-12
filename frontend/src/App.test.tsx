@@ -688,3 +688,126 @@ test("only the README-detected server appears in the select and download row", a
   expect(screen.getByText("GENERATE")).not.toBeDisabled();
   expect(screen.getByText("RUN BENCHMARK")).toBeDisabled();
 });
+
+test("no serving command in README shows warning and hides Download until YES", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: false,
+    gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+    readme_flags: {},
+    downloaded: { "llama.cpp": false },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/may not be loadable by LLMBENCH/i);
+
+  expect(screen.getByText(/YES — DOWNLOAD ANYWAY/i)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument();
+});
+
+test("confirming unsupported download reveals the Download button", async () => {
+  const { api } = await import("./api/client");
+  const downloadModelSpy = vi.spyOn(api, "downloadModel").mockResolvedValue({ ok: true });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: false,
+    gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+    readme_flags: {},
+    downloaded: { "llama.cpp": false },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/may not be loadable by LLMBENCH/i);
+
+  fireEvent.click(screen.getByText(/YES — DOWNLOAD ANYWAY/i));
+  fireEvent.click(screen.getByRole("button", { name: "Download" }));
+  expect(downloadModelSpy).toHaveBeenCalledWith({
+    repo_id: "org/model",
+    server_id: "llama.cpp",
+    gguf_filename: "model.gguf",
+  });
+});
+
+test("declining unsupported download keeps Download hidden", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: false,
+    gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+    readme_flags: {},
+    downloaded: { "llama.cpp": false },
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/may not be loadable by LLMBENCH/i);
+
+  fireEvent.click(screen.getByRole("button", { name: "NO" }));
+  expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument();
+  expect(api.downloadModel).not.toHaveBeenCalled();
+});
+
+test("LOAD of a downloaded model with no serving command warns without a download prompt", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.listModels).mockResolvedValue({
+    models: [{ server_id: "llama.cpp", repo_id: "org/model", status: "downloaded" }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValue({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: false,
+    gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+    readme_flags: {},
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  await screen.findByText("llama.cpp");
+  fireEvent.click(screen.getByRole("button", { name: "LOAD" }));
+  await screen.findByText(/may not be loadable by LLMBENCH/i);
+
+  expect(screen.queryByText(/YES — DOWNLOAD ANYWAY/i)).not.toBeInTheDocument();
+  expect(screen.getByText("downloaded")).toBeInTheDocument();
+});
+
+test("LOAD of a model that does not fit shows the NO FIT warning", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.listModels).mockResolvedValue({
+    models: [{ server_id: "llama.cpp", repo_id: "org/model", status: "downloaded" }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValue({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: true,
+    readme_flags: {},
+    fit_verdict: { stage: "no_fit", warning: true, needed_gb: 40.5 },
+    hardware: { gpu_vram_gb: 8, ram_total_gb: 32, gpu_name: "RTX 4090" },
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  await screen.findByText("llama.cpp");
+  fireEvent.click(screen.getByRole("button", { name: "LOAD" }));
+  await screen.findByText(/doesn't fit this machine/i);
+});

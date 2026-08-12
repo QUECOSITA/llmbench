@@ -53,6 +53,7 @@ export interface ConfigFit {
 export interface Analysis {
   repo_id?: string;
   detected_server?: string | null;
+  readme_has_serving_command?: boolean;
   readme_flags?: Record<string, string>;
   readme_flags_by_server?: Record<string, Record<string, string>>;
   gguf_files?: Array<{ path: string; size: number }>;

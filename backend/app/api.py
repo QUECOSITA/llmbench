@@ -20,7 +20,8 @@ from app.fit import arch_from_config, config_fit, fit_verdict
 from app.flags import build_serving_command, generate_configs
 from app.hardware import detect_hardware
 from app.hf import HfClient, InvalidModelInput, normalize_input, parse_input
-from app.readme_parser import detect_serving_programs, extract_flags, top_serving_program
+from app.readme_parser import (detect_serving_programs, extract_flags,
+                               has_serving_command, top_serving_program)
 from app.servers import (build_bench_command, build_server_command, build_speed_bench_command,
                          detect_binaries, is_spec_decoding_model, model_ref_from_flags,
                          parse_serving_command, resolve_speed_bench_script,
@@ -223,6 +224,7 @@ async def analyze(payload: dict):
         "repo_id": repo_id,
         "detected_server": detected,
         "server_scores": scores,
+        "readme_has_serving_command": has_serving_command(readme, "llama.cpp"),
         "readme_flags": flags,
         "readme_flags_by_server": readme_flags_by_server,
         "gguf_files": gguf,
