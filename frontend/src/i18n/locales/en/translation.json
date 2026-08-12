@@ -64,6 +64,9 @@
     "pruning": "pruning",
     "pruned": "pruned"
   },
+  "downloaded": {
+    "empty": "no models downloaded"
+  },
   "results": {
     "program": "Program",
     "promptTps": "PROMPT t/s",

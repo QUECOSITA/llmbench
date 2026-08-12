@@ -64,6 +64,9 @@
     "pruning": "清理中",
     "pruned": "已清理"
   },
+  "downloaded": {
+    "empty": "尚未下载任何模型"
+  },
   "results": {
     "program": "程序",
     "promptTps": "PROMPT t/s",

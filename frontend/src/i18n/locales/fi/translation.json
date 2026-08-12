@@ -64,6 +64,9 @@
     "pruning": "tyhjennetään",
     "pruned": "tyhjennetty"
   },
+  "downloaded": {
+    "empty": "ei vielä ladattuja malleja"
+  },
   "results": {
     "program": "Ohjelma",
     "promptTps": "PROMPT t/s",

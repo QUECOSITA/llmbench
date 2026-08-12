@@ -64,6 +64,9 @@
     "pruning": "aan het opschonen",
     "pruned": "opgeschoond"
   },
+  "downloaded": {
+    "empty": "nog geen modellen gedownload"
+  },
   "results": {
     "program": "Programma",
     "promptTps": "PROMPT t/s",

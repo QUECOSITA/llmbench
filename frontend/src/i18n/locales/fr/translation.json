@@ -64,6 +64,9 @@
     "pruning": "nettoyage",
     "pruned": "nettoyé"
   },
+  "downloaded": {
+    "empty": "aucun modèle téléchargé"
+  },
   "results": {
     "program": "Programme",
     "promptTps": "PROMPT t/s",

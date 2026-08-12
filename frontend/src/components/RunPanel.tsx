@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { MetricsBanks } from "./MetricsBanks";
 
 interface Progress {
@@ -33,7 +34,8 @@ export function RunPanel({
   onPauseChange,
   onContinue,
 }: Props) {
-  const label = progress ? `config ${progress.index + 1}/${progress.total}` : "";
+  const { t } = useTranslation();
+  const label = progress ? t("run.configProgress", { index: progress.index + 1, total: progress.total }) : "";
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -55,10 +57,10 @@ export function RunPanel({
 
   return (
     <section className="panel">
-      <span className="panel-cap">03 · RUN</span>
+      <span className="panel-cap">{t("panel.run")}</span>
       <div className="row">
         <button onClick={onRun} disabled={running || !canRun}>
-          RUN BENCHMARK
+          {t("common.runBenchmark")}
         </button>
         <span style={{ color: "var(--anode)", fontSize: 12 }}>{label}</span>
         <label style={{ color: "var(--anode)", fontSize: 12 }}>
@@ -68,7 +70,7 @@ export function RunPanel({
             disabled={running}
             onChange={(e) => onPauseChange(e.target.checked)}
           />
-          PAUSE
+          {t("run.pause")}
         </label>
       </div>
       <MetricsBanks
@@ -86,10 +88,10 @@ export function RunPanel({
           {waiting && (
             <div className="dl-console-actions">
               <span style={{ color: "var(--accent)", fontSize: 12 }}>
-                PRESS ENTER TO CONTINUE
+                {t("run.pressEnter")}
               </span>
               <button className="btn-neutral" onClick={onContinue}>
-                CONTINUE ▸
+                {t("run.continue")} ▸
               </button>
             </div>
           )}

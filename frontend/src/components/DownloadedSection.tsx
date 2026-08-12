@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 export interface DownloadedModel {
   server_id: string;
   repo_id: string;
@@ -18,6 +20,7 @@ const SERVER_DISPLAY: Record<string, string> = {
 const SERVER_ORDER = ["llama.cpp"];
 
 export function DownloadedSection({ models, onLoad, onRemove }: Props) {
+  const { t } = useTranslation();
   const byRepo = new Map<string, string[]>();
   const ggufByRepo = new Map<string, string>();
   for (const m of models) {
@@ -31,8 +34,8 @@ export function DownloadedSection({ models, onLoad, onRemove }: Props) {
 
   return (
     <section className="panel">
-      <span className="panel-cap">DOWNLOADED</span>
-      {repos.length === 0 && <p className="downloaded-empty">no models downloaded</p>}
+      <span className="panel-cap">{t("panel.downloaded")}</span>
+      {repos.length === 0 && <p className="downloaded-empty">{t("downloaded.empty")}</p>}
       {repos.map((repo) => {
         const group = byRepo.get(repo)!;
         const servers = [
@@ -49,17 +52,17 @@ export function DownloadedSection({ models, onLoad, onRemove }: Props) {
             <span className="downloaded-model">{modelRef}</span>
             <span className="downloaded-actions">
               <button className="btn-neutral" onClick={() => onLoad(modelRef)}>
-                LOAD
+                {t("common.load")}
               </button>
               <button
                 className="btn-neutral"
                 onClick={() => {
-                  if (window.confirm(`Remove ${modelRef} from the HF cache?`)) {
+                  if (window.confirm(t("confirm.removeModel", { model: modelRef }))) {
                     onRemove(repo);
                   }
                 }}
               >
-                REMOVE
+                {t("common.remove")}
               </button>
             </span>
           </div>

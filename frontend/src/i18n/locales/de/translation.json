@@ -64,6 +64,9 @@
     "pruning": "wird bereinigt",
     "pruned": "bereinigt"
   },
+  "downloaded": {
+    "empty": "noch keine Modelle heruntergeladen"
+  },
   "results": {
     "program": "Programm",
     "promptTps": "PROMPT t/s",

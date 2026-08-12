@@ -64,6 +64,9 @@
     "pruning": "rydder",
     "pruned": "ryddet"
   },
+  "downloaded": {
+    "empty": "ingen modeller lastet ned ennå"
+  },
   "results": {
     "program": "Program",
     "promptTps": "PROMPT t/s",

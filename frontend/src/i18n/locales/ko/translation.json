@@ -64,6 +64,9 @@
     "pruning": "정리 중",
     "pruned": "정리됨"
   },
+  "downloaded": {
+    "empty": "아직 다운로드된 모델이 없습니다"
+  },
   "results": {
     "program": "프로그램",
     "promptTps": "PROMPT t/s",

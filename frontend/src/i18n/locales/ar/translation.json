@@ -64,6 +64,9 @@
     "pruning": "جارٍ التنظيف",
     "pruned": "تم التنظيف"
   },
+  "downloaded": {
+    "empty": "لا توجد نماذج تم تنزيلها بعد"
+  },
   "results": {
     "program": "البرنامج",
     "promptTps": "PROMPT t/s",

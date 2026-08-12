@@ -64,6 +64,9 @@
     "pruning": "整理中",
     "pruned": "整理済み"
   },
+  "downloaded": {
+    "empty": "まだダウンロードされたモデルがありません"
+  },
   "results": {
     "program": "プログラム",
     "promptTps": "PROMPT t/s",
