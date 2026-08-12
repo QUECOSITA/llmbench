@@ -123,7 +123,7 @@ SPEED_BENCH_CATEGORIES = {
 }
 
 
-def speed_bench_default_flags(osl: int = 4096) -> str:
+def speed_bench_default_flags(osl: int = 528) -> str:
     return f"--bench qualitative --category all --limit 1 --osl {osl}"
 
 

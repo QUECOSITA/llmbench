@@ -63,13 +63,13 @@ test("renders and edits a SPEED-BENCH FLAGS textarea for speed-bench configs", (
       flags: {},
       serving_command: "llama-server --spec-type draft-mtp",
       bench_tool: "speed-bench",
-      bench_flags: "--bench qualitative --category all --limit 1 --osl 4096",
+      bench_flags: "--bench qualitative --category all --limit 1 --osl 528",
     },
   ];
   render(
     <ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={configs} onEditFlags={onEditFlags} />,
   );
-  const textarea = screen.getByDisplayValue("--bench qualitative --category all --limit 1 --osl 4096");
+  const textarea = screen.getByDisplayValue("--bench qualitative --category all --limit 1 --osl 528");
   fireEvent.change(textarea, { target: { value: "--bench qualitative --category coding" } });
   expect(onEditFlags).toHaveBeenCalledWith(0, "--bench qualitative --category coding");
 });

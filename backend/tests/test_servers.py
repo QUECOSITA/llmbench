@@ -247,7 +247,7 @@ def test_resolve_speed_bench_script_missing(tmp_path):
 
 
 def test_speed_bench_default_flags():
-    assert speed_bench_default_flags() == "--bench qualitative --category all --limit 1 --osl 4096"
+    assert speed_bench_default_flags() == "--bench qualitative --category all --limit 1 --osl 528"
     assert speed_bench_default_flags(osl=256) == "--bench qualitative --category all --limit 1 --osl 256"
 
 

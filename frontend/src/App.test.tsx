@@ -591,7 +591,7 @@ test("run payload round-trips edited bench_flags", async () => {
   const startSpy = vi.spyOn(api, "startBenchmark").mockResolvedValue({ run_id: 1 });
   vi.mocked(api.generateConfigs).mockResolvedValue({
     configs: [
-      { flags: {}, serving_command: "llama-server --spec-type draft-mtp", bench_command: [], bench_tool: "speed-bench", bench_flags: "--bench qualitative --category all --limit 1 --osl 4096", fit: null },
+      { flags: {}, serving_command: "llama-server --spec-type draft-mtp", bench_command: [], bench_tool: "speed-bench", bench_flags: "--bench qualitative --category all --limit 1 --osl 528", fit: null },
     ],
   });
 
@@ -608,7 +608,7 @@ test("run payload round-trips edited bench_flags", async () => {
   fireEvent.click(screen.getByText(/generate/i));
   await screen.findByText(/llama-server --spec-type/i);
 
-  const textarea = screen.getByDisplayValue("--bench qualitative --category all --limit 1 --osl 4096");
+  const textarea = screen.getByDisplayValue("--bench qualitative --category all --limit 1 --osl 528");
   fireEvent.change(textarea, { target: { value: "--bench qualitative --category coding" } });
 
   fireEvent.click(screen.getByText(/run benchmark/i));
