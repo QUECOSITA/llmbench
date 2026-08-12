@@ -112,10 +112,11 @@ def test_analyze_readme_has_serving_command_true(client, httpx_mock):
     r = client.post("/api/models/analyze", json={"input": "org/model"})
     assert r.status_code == 200
     body = r.json()
+    assert body["detected_server"] == "llama.cpp"
     assert body["readme_has_serving_command"] is True
 
 
-def test_analyze_readme_without_serving_command_flag_false(client, httpx_mock):
+def test_analyze_gguf_boost_without_serving_command_reports_false(client, httpx_mock):
     """gguf boost still detects llama.cpp, but README has no serving command."""
     httpx_mock.add_response(
         url="https://huggingface.co/api/models/org/model/tree/main",
