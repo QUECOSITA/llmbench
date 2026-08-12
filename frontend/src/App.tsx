@@ -234,6 +234,32 @@ export function App() {
 
   const [progressState, dispatch] = useReducer(progressReducer, INITIAL_STATE);
 
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listRuns()
+      .then(({ runs }) => {
+        if (cancelled) return;
+        const latest = runs.find((r) => r.status !== "running" && r.status !== "queued");
+        if (!latest) return;
+        return api.getRun(latest.id).then((detail) => {
+          if (cancelled) return;
+          dispatch({ type: "run_started", run_id: latest.id, total: latest.requested_n ?? 0 });
+          dispatch({
+            type: "run_sync",
+            run_id: latest.id,
+            status: detail.status ?? latest.status,
+            total: detail.total ?? latest.requested_n ?? 0,
+            results: (detail.results ?? []).map(toResultRow),
+          });
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const pollTimerRef = useRef<number | null>(null);
   const pollRun = useCallback((runId: number) => {
     let stopped = false;
@@ -540,7 +566,18 @@ export function App() {
               {errorContext && <ErrorContextLine context={errorContext} />}
 
               <section className="panel">
-                <span className="panel-cap">05 · RESULTS — RANKED</span>
+                <div className="row">
+                  <span className="panel-cap" style={{ marginBottom: 0 }}>05 · RESULTS — RANKED</span>
+                  {progressState.results.length > 0 && (
+                    <button
+                      className="btn-neutral"
+                      onClick={() => dispatch({ type: "results_clear" })}
+                      disabled={progressState.running}
+                    >
+                      CLEAR
+                    </button>
+                  )}
+                </div>
                 <ResultsTable rows={progressState.results} />
                 <Link to="/results" className="results-link" style={{ fontSize: 12 }}>
                   view all runs →

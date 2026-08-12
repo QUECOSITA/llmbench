@@ -890,6 +890,81 @@ test("getSpeedBenchInfo returns benches and categories", async () => {
   expect(info.categories.qualitative).toContain("coding");
 });
 
+test("CLEAR empties the ranked results table", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.getRun).mockResolvedValue({
+    status: "completed",
+    total: 1,
+    results: [
+      {
+        config_id: 1,
+        server_id: "llama.cpp",
+        flag_conf: { "--max-model-len": "8192" },
+        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --ctx-size 8192",
+        prompt_processing_tps: 100.0,
+        decode_tps: 42.0,
+      },
+    ],
+  });
+  vi.mocked(api.generateConfigs).mockResolvedValue({
+    configs: [{ flags: { "--n-gpu": "1" }, serving_command: "python serve.py", bench_command: [], fit: null }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {}, downloaded: { "llama.cpp": true } });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+  fireEvent.click(screen.getByText(/generate/i));
+  await screen.findByText(/python serve/i);
+  fireEvent.click(screen.getByText(/run benchmark/i));
+
+  await waitFor(() => {
+    const table = document.querySelector(".results-table") as HTMLElement | null;
+    expect(table).not.toBeNull();
+    expect(within(table!).getByText("42.0")).toBeInTheDocument();
+  }, { timeout: 3000 });
+
+  fireEvent.click(screen.getByRole("button", { name: "CLEAR" }));
+
+  await waitFor(() => {
+    expect(screen.queryByRole("button", { name: "CLEAR" })).not.toBeInTheDocument();
+  });
+  const table = document.querySelector(".results-table") as HTMLElement | null;
+  expect(within(table!).queryByText("42.0")).not.toBeInTheDocument();
+});
+
+test("restores the latest completed run's results on load and shows CLEAR", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.listRuns).mockResolvedValue({
+    runs: [{ id: 3, repo_id: "org/model", requested_n: 1, created_at: "", status: "completed" }],
+  });
+  vi.mocked(api.getRun).mockResolvedValue({
+    status: "completed",
+    total: 1,
+    results: [{
+      config_id: 1,
+      server_id: "llama.cpp",
+      flag_conf: { "--max-model-len": "8192" },
+      serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --ctx-size 8192",
+      prompt_processing_tps: 100.0,
+      decode_tps: 42.0,
+    }],
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+
+  await waitFor(() => {
+    const table = document.querySelector(".results-table") as HTMLElement | null;
+    expect(table).not.toBeNull();
+    expect(within(table!).getByText("42.0")).toBeInTheDocument();
+  });
+  expect(screen.getByRole("button", { name: "CLEAR" })).toBeInTheDocument();
+});
+
 test("fetches speed-bench info on mount and passes it to the config bank", async () => {
   const { api } = await import("./api/client");
   render(
