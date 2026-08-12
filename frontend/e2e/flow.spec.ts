@@ -45,3 +45,14 @@ test("REMOVE confirms and removes the downloaded row", async ({ page }) => {
   await page.getByRole("button", { name: "REMOVE" }).click();
   await expect(page.getByText("org/model")).toHaveCount(0);
 });
+
+test("warns when README has no serving command and requires confirmation to download", async ({ page }) => {
+  await page.goto("/");
+  const input = page.getByPlaceholder(/model/i);
+  await input.fill("org/noserve");
+  await page.getByRole("button", { name: /analyze/i }).click();
+  await page.getByText(/may not be loadable by LLMBENCH/i).waitFor();
+  await page.getByText(/YES — DOWNLOAD ANYWAY/i).waitFor();
+  await page.getByRole("button", { name: /YES — DOWNLOAD ANYWAY/i }).click();
+  await page.getByRole("button", { name: "Download" }).waitFor();
+});
