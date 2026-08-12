@@ -119,6 +119,20 @@ test("run_started followed by late config_done (missed run_started) still works"
   expect(state3.results.length).toBe(1);
 });
 
+test("results_clear empties results and live metrics", () => {
+  let state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  state = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0 },
+  }));
+  expect(state.results).toHaveLength(1);
+  const next = progressReducer(state, { type: "results_clear" });
+  expect(next.results).toEqual([]);
+  expect(next.promptTps).toBeNull();
+  expect(next.decodeTps).toBeNull();
+  expect(next.runId).toBe(1);
+});
+
 test("run_started clears lines and waiting", () => {
   const prev = {
     ...INITIAL_STATE,
