@@ -183,3 +183,11 @@ def fail_stale_runs(conn):
     restarted process) as failed so they no longer appear as in-flight."""
     conn.execute("UPDATE runs SET status='failed' WHERE status IN ('running', 'queued')")
     conn.commit()
+
+
+def clear_history(conn):
+    """Delete all benchmark runs, configs, and results. Keeps models/servers."""
+    conn.execute("DELETE FROM results")
+    conn.execute("DELETE FROM configs")
+    conn.execute("DELETE FROM runs")
+    conn.commit()
