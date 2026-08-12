@@ -426,19 +426,25 @@ export function App() {
                 )}
                 {analysis?.repo_id && analysis.detected_server && (
                   <>
-                    {(!hasServingCommand && hasGguf) || noFit ? (
+                    {!hasServingCommand ? (
                       <div className="row" style={{ gap: 12, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
                         <p style={{ color: "var(--accent)", fontSize: 12, margin: 0 }}>
-                          {!hasServingCommand
+                          {hasGguf
                             ? "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli) — even though it ships a .gguf, it may not be loadable by LLMBENCH."
-                            : "this model doesn't fit this machine's VRAM/RAM — it may not be loadable by LLMBENCH."}
+                            : "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli) — it may not be loadable by LLMBENCH."}
                         </p>
-                        {!hasServingCommand && !alreadyDownloaded && !confirmUnsupportedDownload && (
+                        {hasGguf && !alreadyDownloaded && !confirmUnsupportedDownload && (
                           <>
                             <button onClick={() => setConfirmUnsupportedDownload(true)}>YES — DOWNLOAD ANYWAY</button>
                             <button onClick={() => setConfirmUnsupportedDownload(false)}>NO</button>
                           </>
                         )}
+                      </div>
+                    ) : noFit ? (
+                      <div className="row" style={{ gap: 12, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
+                        <p style={{ color: "var(--accent)", fontSize: 12, margin: 0 }}>
+                          this model doesn't fit this machine's VRAM/RAM — it may not be loadable by LLMBENCH.
+                        </p>
                       </div>
                     ) : null}
                     {(hasServingCommand || confirmUnsupportedDownload || alreadyDownloaded) && (
