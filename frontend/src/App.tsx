@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Link, Route, Routes } from "react-router-dom";
 import { api, FitVerdict, RunDetail } from "./api/client";
-import type { ApiErrorContext } from "./api/client";
+import type { ApiErrorContext, SpeedBenchInfo } from "./api/client";
 import { INITIAL_STATE, progressReducer, ResultRow, useBenchmarkProgress } from "./ws/useBenchmarkProgress";
 import { useDownloadProgress } from "./ws/useDownloadProgress";
 import { ConfigBank, ConfigRow } from "./components/ConfigBank";
@@ -117,6 +117,7 @@ export function App() {
   const [downloadKey, setDownloadKey] = useState<string | null>(null);
   const [confirmUnsupportedDownload, setConfirmUnsupportedDownload] = useState(false);
   const [dismissedUnsupported, setDismissedUnsupported] = useState(false);
+  const [speedBenchInfo, setSpeedBenchInfo] = useState<SpeedBenchInfo | null>(null);
   const downloadEvents = useDownloadProgress();
 
   useEffect(() => {
@@ -188,6 +189,7 @@ export function App() {
   useEffect(() => {
     api.getServers().then((d) => setHardware(d.hardware));
     api.listModels().then((d) => setDownloaded(d.models));
+    api.getSpeedBenchInfo().then(setSpeedBenchInfo).catch(() => {});
   }, []);
 
   const onAnalyze = useCallback(async (input: string) => {
@@ -505,6 +507,7 @@ export function App() {
                 onEditFlags={(i, flags) =>
                   setConfigs((prev) => prev.map((c, j) => (j === i ? { ...c, bench_flags: flags } : c)))
                 }
+                speedBenchInfo={speedBenchInfo}
               />
 
               <RunPanel

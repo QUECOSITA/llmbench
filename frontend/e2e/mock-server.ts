@@ -24,6 +24,18 @@ const server = createServer(async (req, res) => {
     Object.assign(body, { ok: true });
   } else if (req.url?.startsWith("/api/servers")) {
     Object.assign(body, { readiness: { "llama.cpp": true, "speed-bench": true }, hardware: { gpu_vram_gb: 24 } });
+  } else if (req.url?.startsWith("/api/speed-bench/info")) {
+    Object.assign(body, {
+      benches: ["qualitative", "throughput_1k", "throughput_2k", "throughput_8k", "throughput_16k", "throughput_32k"],
+      categories: {
+        qualitative: ["coding", "humanities", "math", "qa", "rag", "reasoning", "stem", "writing", "multilingual", "summarization", "roleplay"],
+        throughput_1k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_2k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_8k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_16k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_32k: ["high_entropy", "mixed", "low_entropy"],
+      },
+    });
   } else if (req.url?.startsWith("/api/models/analyze")) {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk);
