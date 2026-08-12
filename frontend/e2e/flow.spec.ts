@@ -30,7 +30,7 @@ test("download console renders with a CANCEL action", async ({ page }) => {
 
 test("LOAD fills the model input with the README-proposed downloaded model and analyzes it", async ({ page }) => {
   await page.goto("http://localhost:5173");
-  await expect(page.getByText("llama.cpp")).toBeVisible();
+  await expect(page.locator(".downloaded-server", { hasText: "llama.cpp" })).toBeVisible();
   await expect(page.getByText("org/model")).toBeVisible();
   await page.getByRole("button", { name: "LOAD" }).click();
   await expect(page.getByText(/server llama.cpp/i)).toBeVisible();
@@ -40,7 +40,7 @@ test("LOAD fills the model input with the README-proposed downloaded model and a
 test("REMOVE confirms and removes the downloaded row", async ({ page }) => {
   page.on("dialog", (dialog) => dialog.accept());
   await page.goto("http://localhost:5173");
-  await expect(page.getByText("llama.cpp")).toBeVisible();
+  await expect(page.locator(".downloaded-server", { hasText: "llama.cpp" })).toBeVisible();
   await expect(page.getByText("org/model")).toHaveCount(1);
   await page.getByRole("button", { name: "REMOVE" }).click();
   await expect(page.getByText("org/model")).toHaveCount(0);
