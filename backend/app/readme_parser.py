@@ -8,6 +8,12 @@ _COMMAND_PATTERNS = {
     ],
 }
 
+_SERVING_COMMAND_PATTERNS = {
+    "llama.cpp": [
+        r"\bllama-server\b", r"\bllama-cli\b", r"\bllama-bench\b", r"\bspeed-bench\b",
+    ],
+}
+
 _FLAG_RE = re.compile(
     r"(?<![A-Za-z0-9])(-{1,2}[a-z][\w-]*)"
     r"(?:\s*=\s*(\S+)|(?:\s+((?:-\d+\.?\d*|[^\s-][^\s]*))))?",
@@ -94,6 +100,13 @@ def top_serving_program(scores: dict[str, int]) -> str | None:
         return None
     winners = [s for s, v in scores.items() if v == best]
     return winners[0] if len(winners) == 1 else None
+
+
+def has_serving_command(readme: str, server: str) -> bool:
+    """True when the README names a runnable llama.cpp serving/bench command.
+    A bare 'llama.cpp' project mention does not count as a serving command."""
+    patterns = _SERVING_COMMAND_PATTERNS.get(server, ())
+    return any(re.search(p, readme, re.IGNORECASE) for p in patterns)
 
 
 def _is_negative_number(value: str) -> bool:

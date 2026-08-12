@@ -1,4 +1,9 @@
-from app.readme_parser import detect_serving_programs, extract_flags, top_serving_program
+from app.readme_parser import (
+    detect_serving_programs,
+    extract_flags,
+    has_serving_command,
+    top_serving_program,
+)
 
 
 def test_detect_llamacpp_by_gguf():
@@ -72,3 +77,18 @@ def test_extract_flags_does_not_bleed_other_servers_flags():
     assert "--tp-size" not in llama
     assert "--context-length" not in llama
     assert "--model-path" not in llama
+
+
+def test_has_serving_command_matches_command_tokens():
+    assert has_serving_command("Run: llama-server -m x.gguf", "llama.cpp")
+    assert has_serving_command("benchmark with speed-bench", "llama.cpp")
+    assert has_serving_command("llama-cli -m x", "llama.cpp")
+    assert has_serving_command("llama-bench -m x", "llama.cpp")
+
+
+def test_has_serving_command_ignores_bare_project_mention():
+    assert not has_serving_command("we recommend llama.cpp for inference", "llama.cpp")
+
+
+def test_has_serving_command_false_when_absent():
+    assert not has_serving_command("pip install transformers", "llama.cpp")
