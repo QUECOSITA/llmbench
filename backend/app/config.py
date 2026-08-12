@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     llama_cpp_bin_dir: Path | None = None
     speed_bench_script: Path | None = None
     speed_bench_timeout_s: int = 300
-    speed_bench_osl: int = 128
+    speed_bench_osl: int = 4096
 
     @model_validator(mode="after")
     def _resolve_gguf_dir(self) -> "Settings":

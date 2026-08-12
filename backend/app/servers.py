@@ -123,8 +123,8 @@ SPEED_BENCH_CATEGORIES = {
 }
 
 
-def speed_bench_default_flags(osl: int = 128) -> str:
-    return f"--bench throughput_1k --category all --limit 1 --osl {osl}"
+def speed_bench_default_flags(osl: int = 4096) -> str:
+    return f"--bench qualitative --category all --limit 1 --osl {osl}"
 
 
 def parse_speed_bench_flags(text: str) -> list[str]:

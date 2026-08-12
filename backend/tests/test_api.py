@@ -1225,14 +1225,14 @@ def test_generate_configs_llama_spec_readme_uses_speed_bench(tmp_path, monkeypat
     assert r.status_code == 200
     cfg = r.json()["configs"][0]
     assert cfg["bench_tool"] == "speed-bench"
-    assert cfg["bench_flags"] == "--bench throughput_1k --category all --limit 1 --osl 128"
+    assert cfg["bench_flags"] == "--bench qualitative --category all --limit 1 --osl 4096"
     cmd = cfg["bench_command"]
     assert cmd[0] == sys.executable
     assert cmd[1] == str(script)
     assert cmd[cmd.index("--limit") + 1] == "1"
     assert cmd[cmd.index("--category") + 1] == "all"
-    assert cmd[cmd.index("--bench") + 1] == "throughput_1k"
-    assert cmd[cmd.index("--osl") + 1] == "128"
+    assert cmd[cmd.index("--bench") + 1] == "qualitative"
+    assert cmd[cmd.index("--osl") + 1] == "4096"
     assert "draft-mtp" in cfg["serving_command"]
 
 
@@ -1258,7 +1258,7 @@ def test_generate_speed_bench_uses_configured_osl(tmp_path, monkeypatch):
         })
     assert r.status_code == 200
     cfg = r.json()["configs"][0]
-    assert cfg["bench_flags"] == "--bench throughput_1k --category all --limit 1 --osl 256"
+    assert cfg["bench_flags"] == "--bench qualitative --category all --limit 1 --osl 256"
     assert cfg["bench_command"][cfg["bench_command"].index("--osl") + 1] == "256"
 
 
@@ -1359,7 +1359,7 @@ def test_rebuild_bench_command_speed_bench_missing_flags_uses_default(tmp_path, 
         "bench_command": [],
     }
     _rebuild_bench_command(s, cfg, "org/model")
-    assert cfg["bench_command"][cfg["bench_command"].index("--bench") + 1] == "throughput_1k"
+    assert cfg["bench_command"][cfg["bench_command"].index("--bench") + 1] == "qualitative"
     assert "bench_error" not in cfg
 
 
