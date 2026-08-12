@@ -9,7 +9,9 @@
   --ok: #9bbf8f;
   --warn: #d9a04b;
   --radius: 4px;
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", monospace;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
+    "Noto Sans", "Noto Sans Arabic", "PingFang SC", "Hiragino Sans", "Meiryo",
+    "Malgun Gothic", "Noto Sans KR", "Noto Sans JP", "Noto Sans SC", sans-serif;
 }
 
 * { box-sizing: border-box; }
