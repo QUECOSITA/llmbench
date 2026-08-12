@@ -762,6 +762,8 @@ test("declining unsupported download keeps Download hidden", async () => {
   await screen.findByText(/may not be loadable by LLMBENCH/i);
 
   fireEvent.click(screen.getByRole("button", { name: "NO" }));
+  expect(screen.queryByRole("button", { name: /YES — DOWNLOAD ANYWAY/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "NO" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument();
   expect(api.downloadModel).not.toHaveBeenCalled();
 });

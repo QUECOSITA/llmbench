@@ -116,6 +116,7 @@ export function App() {
   const [downloads, setDownloads] = useState<DownloadState>({});
   const [downloadKey, setDownloadKey] = useState<string | null>(null);
   const [confirmUnsupportedDownload, setConfirmUnsupportedDownload] = useState(false);
+  const [dismissedUnsupported, setDismissedUnsupported] = useState(false);
   const downloadEvents = useDownloadProgress();
 
   useEffect(() => {
@@ -197,6 +198,7 @@ export function App() {
     setDownloads({});
     setDownloadKey(null);
     setConfirmUnsupportedDownload(false);
+    setDismissedUnsupported(false);
   }, []);
 
   const onLoad = useCallback(
@@ -433,10 +435,10 @@ export function App() {
                             ? "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli / llama-bench) — even though it ships a .gguf, it may not be loadable by LLMBENCH."
                             : "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli / llama-bench) — it may not be loadable by LLMBENCH."}
                         </p>
-                        {hasGguf && !alreadyDownloaded && !confirmUnsupportedDownload && (
+                        {hasGguf && !alreadyDownloaded && !confirmUnsupportedDownload && !dismissedUnsupported && (
                           <>
                             <button onClick={() => setConfirmUnsupportedDownload(true)}>YES — DOWNLOAD ANYWAY</button>
-                            <button onClick={() => setConfirmUnsupportedDownload(false)}>NO</button>
+                            <button onClick={() => setDismissedUnsupported(true)}>NO</button>
                           </>
                         )}
                       </div>
