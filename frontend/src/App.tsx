@@ -540,7 +540,18 @@ export function App() {
               {errorContext && <ErrorContextLine context={errorContext} />}
 
               <section className="panel">
-                <span className="panel-cap">05 · RESULTS — RANKED</span>
+                <div className="row">
+                  <span className="panel-cap" style={{ marginBottom: 0 }}>05 · RESULTS — RANKED</span>
+                  {progressState.results.length > 0 && (
+                    <button
+                      className="btn-neutral"
+                      onClick={() => dispatch({ type: "results_clear" })}
+                      disabled={progressState.running}
+                    >
+                      CLEAR
+                    </button>
+                  )}
+                </div>
                 <ResultsTable rows={progressState.results} />
                 <Link to="/results" className="results-link" style={{ fontSize: 12 }}>
                   view all runs →
