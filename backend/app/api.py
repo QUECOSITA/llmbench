@@ -26,7 +26,8 @@ from app.servers import (build_bench_command, build_server_command, build_speed_
                          detect_binaries, is_spec_decoding_model, model_ref_from_flags,
                          parse_serving_command, resolve_speed_bench_script,
                          speed_bench_deps_available, parse_speed_bench_flags,
-                         speed_bench_default_flags, validate_speed_bench_flags)
+                         speed_bench_default_flags, validate_speed_bench_flags,
+                         SPEED_BENCH_BENCHES, SPEED_BENCH_CATEGORIES)
 from app.spawn import spawn_env
 from app.tty_stream import TtyStream
 
@@ -185,6 +186,14 @@ async def servers():
     s = _require_state()
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
     return {"readiness": detect_binaries(bin_dir), "hardware": detect_hardware()}
+
+
+@router.get("/speed-bench/info")
+async def speed_bench_info():
+    return {
+        "benches": list(SPEED_BENCH_BENCHES),
+        "categories": {bench: list(cats) for bench, cats in SPEED_BENCH_CATEGORIES.items()},
+    }
 
 
 @router.post("/models/analyze")

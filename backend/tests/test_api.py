@@ -62,6 +62,19 @@ def test_servers_endpoint(client):
     assert set(r.json()["readiness"]) == {"llama.cpp", "speed-bench"}
 
 
+def test_speed_bench_info_endpoint(client):
+    from app.servers import SPEED_BENCH_BENCHES, SPEED_BENCH_CATEGORIES
+    r = client.get("/api/speed-bench/info")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["benches"] == list(SPEED_BENCH_BENCHES)
+    assert body["categories"] == {b: list(c) for b, c in SPEED_BENCH_CATEGORIES.items()}
+    assert "qualitative" in body["benches"]
+    assert "throughput_1k" in body["benches"]
+    assert "coding" in body["categories"]["qualitative"]
+    assert "high_entropy" in body["categories"]["throughput_1k"]
+
+
 def test_analyze_normalizes_and_reads_readme(client, httpx_mock):
     httpx_mock.add_response(
         url="https://huggingface.co/api/models/org/model/tree/main",
