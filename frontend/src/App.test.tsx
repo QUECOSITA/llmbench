@@ -937,6 +937,34 @@ test("CLEAR empties the ranked results table", async () => {
   expect(within(table!).queryByText("42.0")).not.toBeInTheDocument();
 });
 
+test("restores the latest completed run's results on load and shows CLEAR", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.listRuns).mockResolvedValue({
+    runs: [{ id: 3, repo_id: "org/model", requested_n: 1, created_at: "", status: "completed" }],
+  });
+  vi.mocked(api.getRun).mockResolvedValue({
+    status: "completed",
+    total: 1,
+    results: [{
+      config_id: 1,
+      server_id: "llama.cpp",
+      flag_conf: { "--max-model-len": "8192" },
+      serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --ctx-size 8192",
+      prompt_processing_tps: 100.0,
+      decode_tps: 42.0,
+    }],
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+
+  await waitFor(() => {
+    const table = document.querySelector(".results-table") as HTMLElement | null;
+    expect(table).not.toBeNull();
+    expect(within(table!).getByText("42.0")).toBeInTheDocument();
+  });
+  expect(screen.getByRole("button", { name: "CLEAR" })).toBeInTheDocument();
+});
+
 test("fetches speed-bench info on mount and passes it to the config bank", async () => {
   const { api } = await import("./api/client");
   render(

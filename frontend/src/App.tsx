@@ -234,6 +234,32 @@ export function App() {
 
   const [progressState, dispatch] = useReducer(progressReducer, INITIAL_STATE);
 
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listRuns()
+      .then(({ runs }) => {
+        if (cancelled) return;
+        const latest = runs.find((r) => r.status !== "running" && r.status !== "queued");
+        if (!latest) return;
+        return api.getRun(latest.id).then((detail) => {
+          if (cancelled) return;
+          dispatch({ type: "run_started", run_id: latest.id, total: latest.requested_n ?? 0 });
+          dispatch({
+            type: "run_sync",
+            run_id: latest.id,
+            status: detail.status ?? latest.status,
+            total: detail.total ?? latest.requested_n ?? 0,
+            results: (detail.results ?? []).map(toResultRow),
+          });
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const pollTimerRef = useRef<number | null>(null);
   const pollRun = useCallback((runId: number) => {
     let stopped = false;
