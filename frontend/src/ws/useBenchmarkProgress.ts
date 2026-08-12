@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 export interface ProgressEvent {
   type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "config_wait" | "results_clear";
-  run_id: number;
+  run_id?: number;
   index?: number;
   total?: number;
   config?: unknown;
@@ -51,7 +51,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
   if (event.type === "run_started") {
     return {
       running: true,
-      runId: event.run_id,
+      runId: event.run_id ?? null,
       index: 0,
       total: event.total ?? 0,
       promptTps: null,

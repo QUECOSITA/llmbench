@@ -907,7 +907,7 @@ test("CLEAR empties the ranked results table", async () => {
     ],
   });
   vi.mocked(api.generateConfigs).mockResolvedValue({
-    configs: [{ flags: { "--n-gpu": "1" }, serving_command: "python serve.py", bench_command: [] }],
+    configs: [{ flags: { "--n-gpu": "1" }, serving_command: "python serve.py", bench_command: [], fit: null }],
   });
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {}, downloaded: { "llama.cpp": true } });
