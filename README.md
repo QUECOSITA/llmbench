@@ -19,7 +19,7 @@ The tool reads the model's README to detect the intended serving program (llama.
 - NVIDIA GPU workstation; Python 3.11+, Node 20+.
 - HF CLI (`hf` / `huggingface-cli`) for downloads.
 - Serving binaries to benchmark: llama.cpp (`llama-bench`/`llama-server`). Availability is auto-detected and shown as readiness in the UI.
-- To benchmark speculative-decoding / MTP llama.cpp models, the llama.cpp source tree must include `tools/server/bench/speed-bench/speed_bench.py` (auto-discovered next to `llama-server`, or point `LLMBENCH_SPEED_BENCH_SCRIPT` at it) and its Python deps installed (`cd backend && pip install -e '.[speed-bench]'`). The speed-bench client always runs with `--limit 1 --category all --bench qualitative --osl 4096`.
+- To benchmark speculative-decoding / MTP llama.cpp models, the llama.cpp source tree must include `tools/server/bench/speed-bench/speed_bench.py` (auto-discovered next to `llama-server`, or point `LLMBENCH_SPEED_BENCH_SCRIPT` at it) and its Python deps installed (`cd backend && pip install -e '.[speed-bench]'`). The speed-bench client always runs with `--limit 1 --category all --bench qualitative --osl 528`.
 
 ## Run
 

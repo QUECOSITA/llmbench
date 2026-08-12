@@ -1238,14 +1238,14 @@ def test_generate_configs_llama_spec_readme_uses_speed_bench(tmp_path, monkeypat
     assert r.status_code == 200
     cfg = r.json()["configs"][0]
     assert cfg["bench_tool"] == "speed-bench"
-    assert cfg["bench_flags"] == "--bench qualitative --category all --limit 1 --osl 4096"
+    assert cfg["bench_flags"] == "--bench qualitative --category all --limit 1 --osl 528"
     cmd = cfg["bench_command"]
     assert cmd[0] == sys.executable
     assert cmd[1] == str(script)
     assert cmd[cmd.index("--limit") + 1] == "1"
     assert cmd[cmd.index("--category") + 1] == "all"
     assert cmd[cmd.index("--bench") + 1] == "qualitative"
-    assert cmd[cmd.index("--osl") + 1] == "4096"
+    assert cmd[cmd.index("--osl") + 1] == "528"
     assert "draft-mtp" in cfg["serving_command"]
 
 
