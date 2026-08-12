@@ -21,6 +21,7 @@ import "./styles/app.css";
 interface Analysis {
   repo_id?: string;
   detected_server?: string | null;
+  readme_has_serving_command?: boolean;
   readme_flags?: Record<string, string>;
   readme_flags_by_server?: Record<string, Record<string, string>>;
   gguf_files?: Array<{ path: string; size: number }>;
@@ -114,6 +115,7 @@ export function App() {
 
   const [downloads, setDownloads] = useState<DownloadState>({});
   const [downloadKey, setDownloadKey] = useState<string | null>(null);
+  const [confirmUnsupportedDownload, setConfirmUnsupportedDownload] = useState(false);
   const downloadEvents = useDownloadProgress();
 
   useEffect(() => {
@@ -194,6 +196,7 @@ export function App() {
     setConfigs([]);
     setDownloads({});
     setDownloadKey(null);
+    setConfirmUnsupportedDownload(false);
   }, []);
 
   const onLoad = useCallback(
@@ -366,6 +369,11 @@ export function App() {
     processedEventsRef.current = events.length;
   }, [events]);
 
+  const hasServingCommand = analysis?.readme_has_serving_command ?? true;
+  const hasGguf = (analysis?.gguf_files?.length ?? 0) > 0;
+  const noFit = analysis?.fit_verdict?.stage === "no_fit";
+  const alreadyDownloaded = Boolean(analysis?.downloaded?.["llama.cpp"]);
+
   return (
     <div className="instrument">
       <header className="instrument-header">
@@ -417,31 +425,50 @@ export function App() {
                   <FitStatusLine verdict={analysis.fit_verdict} hardware={analysis.hardware} />
                 )}
                 {analysis?.repo_id && analysis.detected_server && (
-                  <div className="row" style={{ gap: 12, marginTop: 8, flexWrap: "wrap" }}>
-                    {[analysis.detected_server].map((sid) => {
-                      const k = `${sid}::${analysis.repo_id}`;
-                      const dl = downloads[k];
-                      const already = analysis.downloaded?.[sid];
-                      const busy = dl && (dl.status === "downloading" || dl.status === "cancelled" || dl.status === "pruning");
-                      const done = dl?.status === "downloaded" || already;
-                      return (
-                        <span key={sid} style={{ fontSize: 12 }}>
-                          <b>{sid}:</b>{" "}
-                          {busy ? (
-                            <span style={{ color: "var(--anode)" }}>
-                              {dl.status === "downloading" ? "downloading" : "cancelled"}
+                  <>
+                    {(!hasServingCommand && hasGguf) || noFit ? (
+                      <div className="row" style={{ gap: 12, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
+                        <p style={{ color: "var(--accent)", fontSize: 12, margin: 0 }}>
+                          {!hasServingCommand
+                            ? "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli) — even though it ships a .gguf, it may not be loadable by LLMBENCH."
+                            : "this model doesn't fit this machine's VRAM/RAM — it may not be loadable by LLMBENCH."}
+                        </p>
+                        {!hasServingCommand && !alreadyDownloaded && !confirmUnsupportedDownload && (
+                          <>
+                            <button onClick={() => setConfirmUnsupportedDownload(true)}>YES — DOWNLOAD ANYWAY</button>
+                            <button onClick={() => setConfirmUnsupportedDownload(false)}>NO</button>
+                          </>
+                        )}
+                      </div>
+                    ) : null}
+                    {(hasServingCommand || confirmUnsupportedDownload || alreadyDownloaded) && (
+                      <div className="row" style={{ gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+                        {[analysis.detected_server].map((sid) => {
+                          const k = `${sid}::${analysis.repo_id}`;
+                          const dl = downloads[k];
+                          const already = analysis.downloaded?.[sid];
+                          const busy = dl && (dl.status === "downloading" || dl.status === "cancelled" || dl.status === "pruning");
+                          const done = dl?.status === "downloaded" || already;
+                          return (
+                            <span key={sid} style={{ fontSize: 12 }}>
+                              <b>{sid}:</b>{" "}
+                              {busy ? (
+                                <span style={{ color: "var(--anode)" }}>
+                                  {dl.status === "downloading" ? "downloading" : "cancelled"}
+                                </span>
+                              ) : dl?.status === "error" ? (
+                                <span style={{ color: "var(--accent)" }}>error: {dl.message}</span>
+                              ) : done ? (
+                                <span style={{ color: "var(--anode)" }}>downloaded</span>
+                              ) : (
+                                <button onClick={() => onDownload(sid)}>Download</button>
+                              )}
                             </span>
-                          ) : dl?.status === "error" ? (
-                            <span style={{ color: "var(--accent)" }}>error: {dl.message}</span>
-                          ) : done ? (
-                            <span style={{ color: "var(--anode)" }}>downloaded</span>
-                          ) : (
-                            <button onClick={() => onDownload(sid)}>Download</button>
-                          )}
-                        </span>
-                      );
-                    })}
-                  </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
                 {downloadKey && downloads[downloadKey] && (
                   <DownloadConsole
