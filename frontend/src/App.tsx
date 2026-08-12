@@ -430,8 +430,8 @@ export function App() {
                       <div className="row" style={{ gap: 12, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
                         <p style={{ color: "var(--accent)", fontSize: 12, margin: 0 }}>
                           {hasGguf
-                            ? "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli) — even though it ships a .gguf, it may not be loadable by LLMBENCH."
-                            : "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli) — it may not be loadable by LLMBENCH."}
+                            ? "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli / llama-bench) — even though it ships a .gguf, it may not be loadable by LLMBENCH."
+                            : "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli / llama-bench) — it may not be loadable by LLMBENCH."}
                         </p>
                         {hasGguf && !alreadyDownloaded && !confirmUnsupportedDownload && (
                           <>
