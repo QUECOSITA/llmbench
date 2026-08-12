@@ -5,6 +5,17 @@ import { App } from "./App";
 vi.mock("./api/client", () => ({
   api: {
     getServers: vi.fn().mockResolvedValue({ readiness: {}, hardware: {} }),
+    getSpeedBenchInfo: vi.fn().mockResolvedValue({
+      benches: ["qualitative", "throughput_1k", "throughput_2k", "throughput_8k", "throughput_16k", "throughput_32k"],
+      categories: {
+        qualitative: ["coding", "humanities", "math", "qa", "rag", "reasoning", "stem", "writing", "multilingual", "summarization", "roleplay"],
+        throughput_1k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_2k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_8k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_16k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_32k: ["high_entropy", "mixed", "low_entropy"],
+      },
+    }),
     listModels: vi.fn().mockResolvedValue({ models: [] }),
     listRuns: vi.fn().mockResolvedValue({ runs: [] }),
     analyze: vi.fn().mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {}, downloaded: { "llama.cpp": true } }),
@@ -870,4 +881,11 @@ test("LOAD of a model that does not fit shows the NO FIT warning", async () => {
   await screen.findByText("llama.cpp");
   fireEvent.click(screen.getByRole("button", { name: "LOAD" }));
   await screen.findByText(/doesn't fit this machine/i);
+});
+
+test("getSpeedBenchInfo returns benches and categories", async () => {
+  const { api } = await import("./api/client");
+  const info = await api.getSpeedBenchInfo();
+  expect(info.benches).toContain("qualitative");
+  expect(info.categories.qualitative).toContain("coding");
 });

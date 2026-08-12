@@ -50,6 +50,11 @@ export interface ConfigFit {
   weights_gb: number;
 }
 
+export interface SpeedBenchInfo {
+  benches: string[];
+  categories: Record<string, string[]>;
+}
+
 export interface Analysis {
   repo_id?: string;
   detected_server?: string | null;
@@ -128,6 +133,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   getServers: () => request<{ readiness: Record<string, boolean>; hardware: Record<string, unknown> }>("/servers"),
+  getSpeedBenchInfo: () => request<SpeedBenchInfo>("/speed-bench/info"),
   analyze: (input: string) =>
     request<Analysis>("/models/analyze", { method: "POST", body: JSON.stringify({ input }) }),
   generateConfigs: (body: {
