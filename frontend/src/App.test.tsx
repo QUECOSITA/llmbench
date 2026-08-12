@@ -741,7 +741,6 @@ test("confirming unsupported download reveals the Download button", async () => 
 
 test("declining unsupported download keeps Download hidden", async () => {
   const { api } = await import("./api/client");
-  vi.mocked(api.downloadModel).mockClear();
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValueOnce({
     repo_id: "org/model",
@@ -752,7 +751,11 @@ test("declining unsupported download keeps Download hidden", async () => {
     downloaded: { "llama.cpp": false },
   });
 
-  render(<MemoryRouter><App /></MemoryRouter>);
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
   const input = await screen.findByPlaceholderText(/model/i);
   fireEvent.change(input, { target: { value: "org/model" } });
   fireEvent.click(screen.getByText(/analyze/i));
