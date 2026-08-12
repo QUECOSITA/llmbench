@@ -17,7 +17,7 @@ test("full flow: analyze, generate, run, see ranked results", async ({ page }) =
 
 test("download console renders with a CANCEL action", async ({ page }) => {
   await page.goto("http://localhost:5173");
-  await page.getByPlaceholder(/huggingface/i).fill("org/model");
+  await page.getByPlaceholder(/huggingface/i).fill("org/dl");
   await page.getByRole("button", { name: /analyze/i }).click();
   await expect(page.getByText(/server llama.cpp/i)).toBeVisible();
 
