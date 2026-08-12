@@ -1,5 +1,20 @@
 import { test, expect } from "@playwright/test";
 
+test("language switcher changes the UI language and sets RTL for Arabic", async ({ page }) => {
+  await page.goto("http://localhost:5173");
+  const select = page.getByLabel("language");
+  await expect(select.locator("option").first()).toHaveText("Reset(English)");
+  await expect(page.getByRole("button", { name: "ANALYZE" })).toBeVisible();
+
+  await select.selectOption("de");
+  await expect(page.getByRole("button", { name: "ANALYSIEREN" })).toBeVisible();
+  await expect(select).toHaveValue("de");
+
+  await select.selectOption("ar");
+  await expect(page.getByRole("button", { name: "تحليل" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+});
+
 test("full flow: analyze, generate, run, see ranked results", async ({ page }) => {
   await page.goto("http://localhost:5173");
   await page.getByPlaceholder(/huggingface/i).fill("org/model");
