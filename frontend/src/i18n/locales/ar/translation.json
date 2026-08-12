@@ -1,0 +1,104 @@
+{
+  "nav": { "results": "النتائج" },
+  "panel": {
+    "modelInput": "01 · إدخال النموذج",
+    "run": "03 · التشغيل",
+    "resultsRanked": "05 · النتائج — مرتبة",
+    "downloaded": "تم التنزيل",
+    "resultsAllRuns": "النتائج · جميع التشغيلات"
+  },
+  "common": {
+    "analyze": "تحليل",
+    "generate": "إنشاء",
+    "runBenchmark": "تشغيل الاختبار",
+    "cancel": "إلغاء",
+    "download": "تنزيل",
+    "load": "تحميل",
+    "remove": "إزالة",
+    "clear": "مسح",
+    "clearHistory": "مسح السجل",
+    "no": "لا",
+    "error": "خطأ: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "بدون GPU",
+    "gbVram": "{{gb}} جيجابايت VRAM",
+    "gbRam": "{{gb}} جيجابايت RAM"
+  },
+  "model": {
+    "analysisSummary": "← {{repo}} · الخادم {{server}} · {{count}} من الأعلام",
+    "serverManual": "يدوي",
+    "servingServer": "خادم الخدمة",
+    "noServerProposed": "لا يقترح README هذا المستودع خادم خدمة — llama.cpp لا يدعم هذا النموذج",
+    "noServingCommand": "لا يوثق README هذا المستودع أمر خدمة llama.cpp (llama-server / speed-bench / llama-cli / llama-bench) — قد لا يكون قابلاً للتحميل بواسطة LLMBENCH.",
+    "noServingCommandWithGguf": "لا يوثق README هذا المستودع أمر خدمة llama.cpp (llama-server / speed-bench / llama-cli / llama-bench) — حتى مع وجود .gguf، قد لا يكون قابلاً للتحميل بواسطة LLMBENCH.",
+    "noServerForGenerate": "لم يتم اختيار خادم خدمة — اختر واحداً في إدخال النموذج لإنشاء التكوينات."
+  },
+  "config": {
+    "bankTitle": "02 · بنك التكوين · N = {{n}}",
+    "speedBenchFlags": "أعلام SPEED-BENCH",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all، أو (لاختبار {{bench}}): {{cats}}",
+    "limitLine": "--limit: عدد صحيح اختياري — الحد الأقصى للعينات لكل فئة"
+  },
+  "run": {
+    "configProgress": "التكوين {{index}}/{{total}}",
+    "pause": "إيقاف مؤقت",
+    "pressEnter": "اضغط ENTER للمتابعة",
+    "continue": "متابعة",
+    "watching": "← جارٍ متابعة تشغيل الاختبار رقم #{{id}}",
+    "statusError": "تشغيل {{status}}"
+  },
+  "download": {
+    "yesAnyway": "نعم — تنزيل على أي حال",
+    "prunePrompt": "hf cache prune — متابعة؟ [y/N]",
+    "downloadedTo": "تم التنزيل ← {{path}}",
+    "pruned": "تم تنظيف ذاكرة التخزين المؤقت — أعد محاولة التنزيل عندما تكون جاهزاً",
+    "pruneSkipped": "تم تخطي التنظيف — أعد محاولة التنزيل عندما تكون جاهزاً",
+    "error": "خطأ: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "جارٍ التنزيل",
+    "downloaded": "تم التنزيل",
+    "cancelled": "ملغي",
+    "pruning": "جارٍ التنظيف",
+    "pruned": "تم التنظيف"
+  },
+  "downloaded": {
+    "empty": "لا توجد نماذج تم تنزيلها بعد"
+  },
+  "results": {
+    "program": "البرنامج",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "الحالة",
+    "viewAll": "عرض جميع التشغيلات ←",
+    "backToBench": "→ العودة إلى الاختبار",
+    "empty": "لا توجد تشغيلات اختبار بعد.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} تكوينات · {{status}}"
+  },
+  "fit": {
+    "gpu": "يتسع في VRAM — يحتاج ~{{needed}} جيجابايت (أوزان + KV) من {{vram}} جيجابايت VRAM",
+    "ramOffload": "يُفرَّغ إلى RAM — يحتاج ~{{needed}} جيجابايت، يتجاوز {{vram}} جيجابايت VRAM إلى {{ram}} جيجابايت RAM",
+    "ram": "CPU فقط — لا توجد VRAM لوحدة معالجة الرسومات، يحتاج ~{{needed}} جيجابايت من {{ram}} جيجابايت RAM",
+    "noFit": "لا يتسع — يحتاج ~{{needed}} جيجابايت مقابل {{vram}} جيجابايت VRAM + {{ram}} جيجابايت RAM",
+    "noFitNotice": "هذا النموذج لا يتسع في VRAM/RAM لهذا الجهاز — قد لا يكون قابلاً للتحميل بواسطة LLMBENCH."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "إزالة {{model}} من ذاكرة التخزين المؤقت لـ HF؟",
+    "clearHistory": "مسح كل سجل الاختبارات؟ سيؤدي ذلك إلى إزالة كل تشغيل ومخرجاته الخام من speed-bench. سيتم الاحتفاظ بالنماذج التي تم تنزيلها."
+  },
+  "status": {
+    "running": "قيد التشغيل",
+    "queued": "في قائمة الانتظار",
+    "completed": "مكتمل",
+    "failed": "فشل",
+    "cancelled": "ملغي",
+    "error": "خطأ",
+    "ok": "جيد"
+  }
+}

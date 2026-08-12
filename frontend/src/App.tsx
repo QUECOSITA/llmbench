@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Link, Route, Routes } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import type { ParseKeys } from "i18next";
 import { api, FitVerdict, RunDetail } from "./api/client";
 import type { ApiErrorContext, SpeedBenchInfo } from "./api/client";
 import { INITIAL_STATE, progressReducer, ResultRow, useBenchmarkProgress } from "./ws/useBenchmarkProgress";
@@ -12,6 +14,8 @@ import { ModelInput } from "./components/ModelInput";
 import { ResultsTable } from "./components/ResultsTable";
 import { RunPanel } from "./components/RunPanel";
 import { Results } from "./pages/Results";
+import { LocaleSwitcher } from "./i18n/LocaleSwitcher";
+import { statusLabel } from "./i18n/status";
 import {
   downloadReducer,
   DownloadState,
@@ -39,30 +43,25 @@ function FitStatusLine({
   verdict: FitVerdict;
   hardware?: Analysis["hardware"];
 }) {
+  const { t } = useTranslation();
   const vram = hardware?.gpu_vram_gb ?? 0;
   const ram = hardware?.ram_total_gb ?? 0;
-  const map: Record<string, { text: string; color: string }> = {
-    gpu: {
-      text: `FITS VRAM — needs ~${verdict.needed_gb} GB (weights + KV) of ${vram} GB VRAM`,
-      color: "var(--ok)",
-    },
-    ram_offload: {
-      text: `OFFLOADS TO RAM — needs ~${verdict.needed_gb} GB, spills past ${vram} GB VRAM into ${ram} GB RAM`,
-      color: "var(--warn)",
-    },
-    ram: {
-      text: `CPU ONLY — no GPU VRAM, needs ~${verdict.needed_gb} GB of ${ram} GB RAM`,
-      color: "var(--anode)",
-    },
-    no_fit: {
-      text: `NO FIT — needs ~${verdict.needed_gb} GB vs ${vram} GB VRAM + ${ram} GB RAM`,
-      color: "var(--accent)",
-    },
+  const colorMap: Record<string, string> = {
+    gpu: "var(--ok)",
+    ram_offload: "var(--warn)",
+    ram: "var(--anode)",
+    no_fit: "var(--accent)",
   };
-  const entry = map[verdict.stage] ?? map.no_fit;
+  const fitKeyMap: Record<string, ParseKeys> = {
+    gpu: "fit.gpu",
+    ram_offload: "fit.ramOffload",
+    ram: "fit.ram",
+    no_fit: "fit.noFit",
+  };
+  const stage = fitKeyMap[verdict.stage] ? verdict.stage : "no_fit";
   return (
-    <p style={{ color: entry.color, fontSize: 12, margin: "4px 0 0" }}>
-      {entry.text}
+    <p style={{ color: colorMap[stage], fontSize: 12, margin: "4px 0 0" }}>
+      {t(fitKeyMap[stage], { needed: verdict.needed_gb, vram, ram })}
     </p>
   );
 }
@@ -98,6 +97,7 @@ function ErrorContextLine({ context }: { context: ApiErrorContext }) {
 }
 
 export function App() {
+  const { t } = useTranslation();
   const [hardware, setHardware] = useState<Record<string, unknown>>({});
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [server, setServer] = useState<string>("");
@@ -215,7 +215,7 @@ export function App() {
     if (!analysis?.repo_id) return;
     const effectiveServer = server || analysis.detected_server;
     if (!effectiveServer) {
-      setError("No serving server selected — pick one in MODEL INPUT to generate configs.");
+      setError(t("model.noServerForGenerate"));
       return;
     }
     const data = await api.generateConfigs({
@@ -283,7 +283,7 @@ export function App() {
         });
         setRunning(false);
         if (status && status !== "completed") {
-          setError(`run ${status}`);
+          setError(t("run.statusError", { status: statusLabel(status) }));
         }
       } catch {
         pollTimerRef.current = window.setTimeout(tick, 1000);
@@ -315,7 +315,7 @@ export function App() {
         setRunning(false);
         setWatchingRunId(null);
         if (status && status !== "completed") {
-          setError(`run ${status}`);
+          setError(t("run.statusError", { status: statusLabel(status) }));
         }
       } catch {
         pollTimerRef.current = window.setTimeout(tick, 1000);
@@ -417,7 +417,8 @@ export function App() {
           LLM&nbsp;BENCH
         </Link>
         <HardwareBar hardware={hardware} />
-        <Link to="/results" className="nav-link">RESULTS</Link>
+        <LocaleSwitcher />
+        <Link to="/results" className="nav-link">{t("nav.results")}</Link>
       </header>
 
       <Routes>
@@ -426,21 +427,23 @@ export function App() {
           element={
             <main>
               <section className="panel">
-                <span className="panel-cap">01 · MODEL INPUT</span>
+                <span className="panel-cap">{t("panel.modelInput")}</span>
                 <ModelInput value={modelInput} onChange={setModelInput} onAnalyze={onAnalyze} />
                 {analysis?.repo_id && (
                   <p style={{ color: "var(--anode)", fontSize: 12, marginBottom: 4 }}>
-                    → {analysis.repo_id} · server {server || analysis.detected_server || "manual"} ·{" "}
-                    {Object.keys(
-                      (server && analysis.readme_flags_by_server?.[server]) || analysis.readme_flags || {},
-                    ).length}{" "}
-                    flags
+                    {t("model.analysisSummary", {
+                      repo: analysis.repo_id,
+                      server: server || analysis.detected_server || t("model.serverManual"),
+                      count: Object.keys(
+                        (server && analysis.readme_flags_by_server?.[server]) || analysis.readme_flags || {},
+                      ).length,
+                    })}
                   </p>
                 )}
                 {analysis?.repo_id && analysis.detected_server && (
                   <div className="row" style={{ gap: 12, marginTop: 4, flexWrap: "wrap" }}>
                     <label style={{ color: "var(--anode)", fontSize: 12 }}>
-                      serving server
+                      {t("model.servingServer")}
                       <select
                         aria-label="serving server"
                         value={server || analysis.detected_server}
@@ -454,7 +457,7 @@ export function App() {
                 )}
                 {analysis?.repo_id && !analysis.detected_server && (
                   <p style={{ color: "var(--accent)", fontSize: 12, margin: "4px 0 0" }}>
-                    no serving server proposed by this repo's README — model not supported by llama.cpp
+                    {t("model.noServerProposed")}
                   </p>
                 )}
                 {analysis?.fit_verdict && (
@@ -466,20 +469,20 @@ export function App() {
                       <div className="row" style={{ gap: 12, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
                         <p style={{ color: "var(--accent)", fontSize: 12, margin: 0 }}>
                           {hasGguf
-                            ? "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli / llama-bench) — even though it ships a .gguf, it may not be loadable by LLMBENCH."
-                            : "this repo's README doesn't document a llama.cpp serving command (llama-server / speed-bench / llama-cli / llama-bench) — it may not be loadable by LLMBENCH."}
+                            ? t("model.noServingCommandWithGguf")
+                            : t("model.noServingCommand")}
                         </p>
                         {hasGguf && !alreadyDownloaded && !confirmUnsupportedDownload && !dismissedUnsupported && (
                           <>
-                            <button onClick={() => setConfirmUnsupportedDownload(true)}>YES — DOWNLOAD ANYWAY</button>
-                            <button onClick={() => setDismissedUnsupported(true)}>NO</button>
+                            <button onClick={() => setConfirmUnsupportedDownload(true)}>{t("download.yesAnyway")}</button>
+                            <button onClick={() => setDismissedUnsupported(true)}>{t("common.no")}</button>
                           </>
                         )}
                       </div>
                     ) : noFit ? (
                       <div className="row" style={{ gap: 12, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
                         <p style={{ color: "var(--accent)", fontSize: 12, margin: 0 }}>
-                          this model doesn't fit this machine's VRAM/RAM — it may not be loadable by LLMBENCH.
+                          {t("fit.noFitNotice")}
                         </p>
                       </div>
                     ) : null}
@@ -496,14 +499,14 @@ export function App() {
                               <b>{sid}:</b>{" "}
                               {busy ? (
                                 <span style={{ color: "var(--anode)" }}>
-                                  {dl.status === "downloading" ? "downloading" : "cancelled"}
+                                  {dl.status === "downloading" ? t("dlStatus.downloading") : t("dlStatus.cancelled")}
                                 </span>
                               ) : dl?.status === "error" ? (
-                                <span style={{ color: "var(--accent)" }}>error: {dl.message}</span>
+                                <span style={{ color: "var(--accent)" }}>{t("download.error", { message: dl.message })}</span>
                               ) : done ? (
-                                <span style={{ color: "var(--anode)" }}>downloaded</span>
+                                <span style={{ color: "var(--anode)" }}>{t("dlStatus.downloaded")}</span>
                               ) : (
-                                <button onClick={() => onDownload(sid)}>Download</button>
+                                <button onClick={() => onDownload(sid)}>{t("common.download")}</button>
                               )}
                             </span>
                           );
@@ -559,28 +562,28 @@ export function App() {
               />
               {watchingRunId !== null && (
                 <p style={{ color: "var(--anode)", fontSize: 12 }}>
-                  → watching benchmark run #{watchingRunId} in progress
+                  {t("run.watching", { id: watchingRunId })}
                 </p>
               )}
-              {error && <p style={{ color: "var(--accent)", fontSize: 12 }}>Error: {error}</p>}
+              {error && <p style={{ color: "var(--accent)", fontSize: 12 }}>{t("common.error", { message: error })}</p>}
               {errorContext && <ErrorContextLine context={errorContext} />}
 
               <section className="panel">
                 <div className="row">
-                  <span className="panel-cap" style={{ marginBottom: 0 }}>05 · RESULTS — RANKED</span>
+                  <span className="panel-cap" style={{ marginBottom: 0 }}>{t("panel.resultsRanked")}</span>
                   {progressState.results.length > 0 && (
                     <button
                       className="btn-neutral"
                       onClick={() => dispatch({ type: "results_clear" })}
                       disabled={progressState.running}
                     >
-                      CLEAR
+                      {t("common.clear")}
                     </button>
                   )}
                 </div>
                 <ResultsTable rows={progressState.results} />
                 <Link to="/results" className="results-link" style={{ fontSize: 12 }}>
-                  view all runs →
+                  {t("results.viewAll")}
                 </Link>
               </section>
 

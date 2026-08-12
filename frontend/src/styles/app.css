@@ -1,4 +1,15 @@
-.row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.instrument-header { flex-wrap: wrap; gap: 10px; }
+button { white-space: normal; overflow-wrap: anywhere; }
+
+:dir(rtl) .results-table th,
+:dir(rtl) .results-table td { text-align: right; }
+
+:lang(zh) .panel-cap, :lang(ja) .panel-cap, :lang(ko) .panel-cap, :lang(ar) .panel-cap,
+:lang(zh) .downloaded-server, :lang(ja) .downloaded-server, :lang(ko) .downloaded-server, :lang(ar) .downloaded-server {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
 .metrics { display: flex; gap: 12px; margin-top: 10px; }
 .bank {
   flex: 1; border: 1px solid var(--rule-bright); border-radius: var(--radius);

@@ -1,0 +1,104 @@
+{
+  "nav": { "results": "TULOKSET" },
+  "panel": {
+    "modelInput": "01 · MALLIN SYÖTTÖ",
+    "run": "03 · AJO",
+    "resultsRanked": "05 · TULOKSET — JÄRJESTETTY",
+    "downloaded": "LADATTU",
+    "resultsAllRuns": "TULOKSET · KAIKKI AJOT"
+  },
+  "common": {
+    "analyze": "ANALYSOI",
+    "generate": "LUO",
+    "runBenchmark": "SUORITA BENCHMARK",
+    "cancel": "PERUUTA",
+    "download": "Lataa",
+    "load": "LADAA",
+    "remove": "POISTA",
+    "clear": "TYYLENNÄ",
+    "clearHistory": "TYYLENNÄ HISTORIA",
+    "no": "EI",
+    "error": "Virhe: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "ei GPU:ta",
+    "gbVram": "{{gb}} GB VRAM",
+    "gbRam": "{{gb}} GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · palvelin {{server}} · {{count}} lippua",
+    "serverManual": "manuaalinen",
+    "servingServer": "tarjoilupalvelin",
+    "noServerProposed": "tämän repon README ei ehdota tarjoilupalvelinta — llama.cpp ei tue mallia",
+    "noServingCommand": "tämän repon README ei dokumentoi llama.cpp-tarjoilukomentoa (llama-server / speed-bench / llama-cli / llama-bench) — LLMBENCH ei ehkä pysty lataamaan sitä.",
+    "noServingCommandWithGguf": "tämän repon README ei dokumentoi llama.cpp-tarjoilukomentoa (llama-server / speed-bench / llama-cli / llama-bench) — vaikka se sisältää .gguf-tiedoston, LLMBENCH ei ehkä pysty lataamaan sitä.",
+    "noServerForGenerate": "Tarjoilupalvelinta ei ole valittu — valitse yksi kohdasta MALLIN SYÖTTÖ luodaksesi kokoonpanoja."
+  },
+  "config": {
+    "bankTitle": "02 · KOKOONPANOPANKKI · N = {{n}}",
+    "speedBenchFlags": "SPEED-BENCH-LIPUT",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, tai (bench {{bench}}): {{cats}}",
+    "limitLine": "--limit: valinnainen kokonaisluku — enintään näytteitä luokkaa kohden"
+  },
+  "run": {
+    "configProgress": "kokoonpano {{index}}/{{total}}",
+    "pause": "TAUOLLA",
+    "pressEnter": "PAINA ENTER JATKAAKSESI",
+    "continue": "JATKA",
+    "watching": "→ seurataan benchmark-ajoa #{{id}} käynnissä",
+    "statusError": "ajo {{status}}"
+  },
+  "download": {
+    "yesAnyway": "KYLLÄ — LATAA SITTIKIN",
+    "prunePrompt": "hf cache prune — Jatketaanko? [y/N]",
+    "downloadedTo": "ladattu → {{path}}",
+    "pruned": "välimuisti tyhjennetty — yritä latausta uudelleen kun olet valmis",
+    "pruneSkipped": "tyhjennys ohitettu — yritä latausta uudelleen kun olet valmis",
+    "error": "virhe: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "ladataan",
+    "downloaded": "ladattu",
+    "cancelled": "peruutettu",
+    "pruning": "tyhjennetään",
+    "pruned": "tyhjennetty"
+  },
+  "downloaded": {
+    "empty": "ei vielä ladattuja malleja"
+  },
+  "results": {
+    "program": "Ohjelma",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "TILA",
+    "viewAll": "näytä kaikki ajot →",
+    "backToBench": "← takaisin benchiin",
+    "empty": "Ei vielä benchmark-ajoja.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} kokoonpanoa · {{status}}"
+  },
+  "fit": {
+    "gpu": "MAHTUU VRAM:iin — tarvitsee ~{{needed}} GB (painot + KV) / {{vram}} GB VRAM",
+    "ramOffload": "SIIRTYY RAM:iin — tarvitsee ~{{needed}} GB, ylittää {{vram}} GB VRAM ja käyttää {{ram}} GB RAM",
+    "ram": "VAIN CPU — ei GPU-VRAM:ia, tarvitsee ~{{needed}} GB / {{ram}} GB RAM",
+    "noFit": "EI MAHDU — tarvitsee ~{{needed}} GB vs {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "tämä malli ei mahdu tämän koneen VRAM/RAM:iin — LLMBENCH ei ehkä pysty lataamaan sitä."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "Poista {{model}} HF-välimuistista?",
+    "clearHistory": "Tyhjennetäänkö koko benchmark-historia? Tämä poistaa jokaisen ajon ja sen raa'at speed-bench-tulosteet. Ladatut mallit säilytetään."
+  },
+  "status": {
+    "running": "käynnissä",
+    "queued": "jonossa",
+    "completed": "valmis",
+    "failed": "epäonnistui",
+    "cancelled": "peruutettu",
+    "error": "virhe",
+    "ok": "ok"
+  }
+}

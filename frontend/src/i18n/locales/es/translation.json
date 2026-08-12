@@ -1,0 +1,104 @@
+{
+  "nav": { "results": "RESULTADOS" },
+  "panel": {
+    "modelInput": "01 · ENTRADA DE MODELO",
+    "run": "03 · EJECUCIÓN",
+    "resultsRanked": "05 · RESULTADOS — CLASIFICADOS",
+    "downloaded": "DESCARGADOS",
+    "resultsAllRuns": "RESULTADOS · TODAS LAS EJECUCIONES"
+  },
+  "common": {
+    "analyze": "ANALIZAR",
+    "generate": "GENERAR",
+    "runBenchmark": "EJECUTAR BENCHMARK",
+    "cancel": "CANCELAR",
+    "download": "Descargar",
+    "load": "CARGAR",
+    "remove": "ELIMINAR",
+    "clear": "BORRAR",
+    "clearHistory": "BORRAR HISTORIAL",
+    "no": "NO",
+    "error": "Error: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "sin GPU",
+    "gbVram": "{{gb}} GB de VRAM",
+    "gbRam": "{{gb}} GB de RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · servidor {{server}} · {{count}} flags",
+    "serverManual": "manual",
+    "servingServer": "servidor de servicio",
+    "noServerProposed": "el README de este repo no propone un servidor de servicio — modelo no compatible con llama.cpp",
+    "noServingCommand": "el README de este repo no documenta un comando de servicio llama.cpp (llama-server / speed-bench / llama-cli / llama-bench) — puede que LLMBENCH no pueda cargarlo.",
+    "noServingCommandWithGguf": "el README de este repo no documenta un comando de servicio llama.cpp (llama-server / speed-bench / llama-cli / llama-bench) — aunque incluya un .gguf, puede que LLMBENCH no pueda cargarlo.",
+    "noServerForGenerate": "No se ha seleccionado ningún servidor de servicio: elija uno en ENTRADA DE MODELO para generar configuraciones."
+  },
+  "config": {
+    "bankTitle": "02 · BANCO DE CONFIGURACIÓN · N = {{n}}",
+    "speedBenchFlags": "FLAGS DE SPEED-BENCH",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, o (para el bench {{bench}}): {{cats}}",
+    "limitLine": "--limit: int opcional — muestras máx. por categoría"
+  },
+  "run": {
+    "configProgress": "configuración {{index}}/{{total}}",
+    "pause": "PAUSA",
+    "pressEnter": "PRESIONE ENTER PARA CONTINUAR",
+    "continue": "CONTINUAR",
+    "watching": "→ observando la ejecución del benchmark #{{id}} en curso",
+    "statusError": "ejecución {{status}}"
+  },
+  "download": {
+    "yesAnyway": "SÍ — DESCARGAR DE TODOS MODOS",
+    "prunePrompt": "hf cache prune — ¿Continuar? [y/N]",
+    "downloadedTo": "descargado → {{path}}",
+    "pruned": "caché limpiada — reintente la descarga cuando esté listo",
+    "pruneSkipped": "limpieza omitida — reintente la descarga cuando esté listo",
+    "error": "error: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "descargando",
+    "downloaded": "descargado",
+    "cancelled": "cancelado",
+    "pruning": "limpiando",
+    "pruned": "limpiado"
+  },
+  "downloaded": {
+    "empty": "ningún modelo descargado"
+  },
+  "results": {
+    "program": "Programa",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "ESTADO",
+    "viewAll": "ver todas las ejecuciones →",
+    "backToBench": "← volver al bench",
+    "empty": "Aún no hay ejecuciones de benchmark.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} configuraciones · {{status}}"
+  },
+  "fit": {
+    "gpu": "CABE EN VRAM — necesita ~{{needed}} GB (pesos + KV) de {{vram}} GB de VRAM",
+    "ramOffload": "DESCARGA A RAM — necesita ~{{needed}} GB, se desborda de {{vram}} GB de VRAM a {{ram}} GB de RAM",
+    "ram": "SOLO CPU — sin VRAM de GPU, necesita ~{{needed}} GB de {{ram}} GB de RAM",
+    "noFit": "NO CABE — necesita ~{{needed}} GB frente a {{vram}} GB de VRAM + {{ram}} GB de RAM",
+    "noFitNotice": "este modelo no cabe en la VRAM/RAM de esta máquina — puede que LLMBENCH no pueda cargarlo."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "¿Eliminar {{model}} de la caché de HF?",
+    "clearHistory": "¿Borrar todo el historial de benchmarks? Esto elimina cada ejecución y sus salidas de speed-bench en bruto. Los modelos descargados se conservan."
+  },
+  "status": {
+    "running": "en curso",
+    "queued": "en cola",
+    "completed": "completado",
+    "failed": "fallido",
+    "cancelled": "cancelado",
+    "error": "error",
+    "ok": "ok"
+  }
+}

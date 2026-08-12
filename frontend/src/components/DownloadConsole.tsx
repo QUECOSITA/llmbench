@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { DownloadStatus } from "../ws/downloadReducer";
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function DownloadConsole({ status, onCancel, onPruneAnswer }: Props) {
+  const { t } = useTranslation();
   const boxRef = useRef<HTMLDivElement>(null);
   const [answer, setAnswer] = useState("");
 
@@ -34,11 +36,11 @@ export function DownloadConsole({ status, onCancel, onPruneAnswer }: Props) {
       </div>
       <div className="dl-console-actions">
         {status.status === "downloading" && (
-          <button className="btn-neutral" onClick={onCancel}>CANCEL</button>
+          <button className="btn-neutral" onClick={onCancel}>{t("common.cancel")}</button>
         )}
         {status.waitingInput && (
           <span style={{ color: "var(--anode)", fontSize: 12 }}>
-            hf cache prune — Proceed? [y/N]
+            {t("download.prunePrompt")}
           </span>
         )}
         {status.waitingInput && (
@@ -59,18 +61,18 @@ export function DownloadConsole({ status, onCancel, onPruneAnswer }: Props) {
       </div>
       {status.status === "downloaded" && status.local_path && (
         <div style={{ color: "var(--ok)", fontSize: 12 }}>
-          downloaded → {status.local_path}
+          {t("download.downloadedTo", { path: status.local_path })}
         </div>
       )}
       {status.status === "pruned" && (
         <div style={{ color: "var(--anode)", fontSize: 12 }}>
           {status.pruneAccepted
-            ? "cache pruned — retry the download when ready"
-            : "prune skipped — retry the download when ready"}
+            ? t("download.pruned")
+            : t("download.pruneSkipped")}
         </div>
       )}
       {status.status === "error" && (
-        <div style={{ color: "var(--accent)", fontSize: 12 }}>error: {status.message}</div>
+        <div style={{ color: "var(--accent)", fontSize: 12 }}>{t("download.error", { message: status.message })}</div>
       )}
     </div>
   );

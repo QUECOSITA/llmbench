@@ -1,0 +1,104 @@
+{
+  "nav": { "results": "RESULTATER" },
+  "panel": {
+    "modelInput": "01 · MODELLINNDATA",
+    "run": "03 · KJØRING",
+    "resultsRanked": "05 · RESULTATER — RANGERT",
+    "downloaded": "NEDLASTET",
+    "resultsAllRuns": "RESULTATER · ALLE KJØRINGER"
+  },
+  "common": {
+    "analyze": "ANALYSER",
+    "generate": "GENERER",
+    "runBenchmark": "KJØR BENCHMARK",
+    "cancel": "AVBRYT",
+    "download": "Last ned",
+    "load": "LAST INN",
+    "remove": "FJERN",
+    "clear": "TØM",
+    "clearHistory": "TØM HISTORIKK",
+    "no": "NEI",
+    "error": "Feil: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "ingen GPU",
+    "gbVram": "{{gb}} GB VRAM",
+    "gbRam": "{{gb}} GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · server {{server}} · {{count}} flagg",
+    "serverManual": "manuell",
+    "servingServer": "serveringsserver",
+    "noServerProposed": "README-en til dette repoet foreslår ingen serveringsserver — modellen støttes ikke av llama.cpp",
+    "noServingCommand": "README-en til dette repoet dokumenterer ingen llama.cpp-serveringskommando (llama-server / speed-bench / llama-cli / llama-bench) — det kan hende LLMBENCH ikke kan laste den.",
+    "noServingCommandWithGguf": "README-en til dette repoet dokumenterer ingen llama.cpp-serveringskommando (llama-server / speed-bench / llama-cli / llama-bench) — selv om den inneholder en .gguf, kan det hende LLMBENCH ikke kan laste den.",
+    "noServerForGenerate": "Ingen serveringsserver valgt — velg en i MODELLINNDATA for å generere konfigurasjoner."
+  },
+  "config": {
+    "bankTitle": "02 · KONFIGURASJONSBANK · N = {{n}}",
+    "speedBenchFlags": "SPEED-BENCH-FLAGG",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, eller (for bench {{bench}}): {{cats}}",
+    "limitLine": "--limit: valgfritt heltall — maks prøver per kategori"
+  },
+  "run": {
+    "configProgress": "konfigurasjon {{index}}/{{total}}",
+    "pause": "PAUSE",
+    "pressEnter": "TRYKK ENTER FOR Å FORTSETTE",
+    "continue": "FORTSETT",
+    "watching": "→ følger benchmarkkjøring #{{id}} pågår",
+    "statusError": "kjøring {{status}}"
+  },
+  "download": {
+    "yesAnyway": "JA — LAST NED LIKEVEL",
+    "prunePrompt": "hf cache prune — Fortsette? [y/N]",
+    "downloadedTo": "lastet ned → {{path}}",
+    "pruned": "buffer ryddet — prøv å laste ned igjen når du er klar",
+    "pruneSkipped": "opprydding hoppet over — prøv å laste ned igjen når du er klar",
+    "error": "feil: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "laster ned",
+    "downloaded": "lastet ned",
+    "cancelled": "avbrutt",
+    "pruning": "rydder",
+    "pruned": "ryddet"
+  },
+  "downloaded": {
+    "empty": "ingen modeller lastet ned ennå"
+  },
+  "results": {
+    "program": "Program",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "STATUS",
+    "viewAll": "vis alle kjøringer →",
+    "backToBench": "← tilbake til bench",
+    "empty": "Ingen benchmarkkjøringer ennå.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} konfigurasjoner · {{status}}"
+  },
+  "fit": {
+    "gpu": "FÅR PLASS I VRAM — trenger ~{{needed}} GB (vekter + KV) av {{vram}} GB VRAM",
+    "ramOffload": "LASTES TIL RAM — trenger ~{{needed}} GB, renner over fra {{vram}} GB VRAM til {{ram}} GB RAM",
+    "ram": "BARE CPU — ingen GPU-VRAM, trenger ~{{needed}} GB av {{ram}} GB RAM",
+    "noFit": "FÅR IKKE PLASS — trenger ~{{needed}} GB mot {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "denne modellen får ikke plass i VRAM/RAM på denne maskinen — det kan hende LLMBENCH ikke kan laste den."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "Fjerne {{model}} fra HF-bufferen?",
+    "clearHistory": "Tømme all benchmarkhistorikk? Dette fjerner hver kjøring og dens rå speed-bench-utdata. Nedlastede modeller beholdes."
+  },
+  "status": {
+    "running": "pågår",
+    "queued": "i kø",
+    "completed": "fullført",
+    "failed": "mislyktes",
+    "cancelled": "avbrutt",
+    "error": "feil",
+    "ok": "ok"
+  }
+}

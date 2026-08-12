@@ -1,0 +1,104 @@
+{
+  "nav": { "results": "結果" },
+  "panel": {
+    "modelInput": "01 · モデル入力",
+    "run": "03 · 実行",
+    "resultsRanked": "05 · 結果 — ランキング",
+    "downloaded": "ダウンロード済み",
+    "resultsAllRuns": "結果 · 全実行"
+  },
+  "common": {
+    "analyze": "分析",
+    "generate": "生成",
+    "runBenchmark": "ベンチマークを実行",
+    "cancel": "キャンセル",
+    "download": "ダウンロード",
+    "load": "読み込む",
+    "remove": "削除",
+    "clear": "クリア",
+    "clearHistory": "履歴をクリア",
+    "no": "いいえ",
+    "error": "エラー：{{message}}"
+  },
+  "hardware": {
+    "noGpu": "GPU なし",
+    "gbVram": "{{gb}}GB の VRAM",
+    "gbRam": "{{gb}}GB の RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · サーバー {{server}} · フラグ {{count}} 個",
+    "serverManual": "手動",
+    "servingServer": "配信サーバー",
+    "noServerProposed": "このリポジトリの README に配信サーバーが提案されていません — llama.cpp はこのモデルをサポートしていません",
+    "noServingCommand": "このリポジトリの README に llama.cpp の配信コマンド（llama-server / speed-bench / llama-cli / llama-bench）が記載されていません — LLMBENCH で読み込めない可能性があります。",
+    "noServingCommandWithGguf": "このリポジトリの README に llama.cpp の配信コマンド（llama-server / speed-bench / llama-cli / llama-bench）が記載されていません — .gguf が同梱されていても、LLMBENCH で読み込めない可能性があります。",
+    "noServerForGenerate": "配信サーバーが選択されていません — 構成を生成するには MODEL INPUT で選択してください。"
+  },
+  "config": {
+    "bankTitle": "02 · 構成バンク · N = {{n}}",
+    "speedBenchFlags": "SPEED-BENCH フラグ",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all、または（{{bench}} ベンチの場合）: {{cats}}",
+    "limitLine": "--limit: 任意の整数 — カテゴリあたりの最大サンプル数"
+  },
+  "run": {
+    "configProgress": "構成 {{index}}/{{total}}",
+    "pause": "一時停止",
+    "pressEnter": "Enter キーで続行",
+    "continue": "続行",
+    "watching": "→ ベンチマーク実行 #{{id}} を監視中",
+    "statusError": "実行 {{status}}"
+  },
+  "download": {
+    "yesAnyway": "はい — ダウンロードする",
+    "prunePrompt": "hf cache prune — 続行しますか？ [y/N]",
+    "downloadedTo": "ダウンロード済み → {{path}}",
+    "pruned": "キャッシュを整理しました — 準備ができたらダウンロードを再試行してください",
+    "pruneSkipped": "整理をスキップしました — 準備ができたらダウンロードを再試行してください",
+    "error": "エラー：{{message}}"
+  },
+  "dlStatus": {
+    "downloading": "ダウンロード中",
+    "downloaded": "ダウンロード済み",
+    "cancelled": "キャンセル済み",
+    "pruning": "整理中",
+    "pruned": "整理済み"
+  },
+  "downloaded": {
+    "empty": "まだダウンロードされたモデルがありません"
+  },
+  "results": {
+    "program": "プログラム",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "ステータス",
+    "viewAll": "すべての実行を見る →",
+    "backToBench": "← ベンチに戻る",
+    "empty": "まだベンチマーク実行がありません。",
+    "runLine": "#{{id}} · {{repo}} · {{n}} 構成 · {{status}}"
+  },
+  "fit": {
+    "gpu": "VRAM に収まる — 必要約 {{needed}} GB（重み + KV）／ VRAM {{vram}} GB",
+    "ramOffload": "RAM にオフロード — 必要約 {{needed}} GB、{{vram}} GB の VRAM を超えて {{ram}} GB の RAM を使用",
+    "ram": "CPU のみ — GPU VRAM なし、必要約 {{needed}} GB ／ RAM {{ram}} GB",
+    "noFit": "収まらない — 必要約 {{needed}} GB に対し VRAM {{vram}} GB + RAM {{ram}} GB",
+    "noFitNotice": "このモデルはこのマシンの VRAM/RAM に収まりません — LLMBENCH で読み込めない可能性があります。"
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "HF キャッシュから {{model}} を削除しますか？",
+    "clearHistory": "ベンチマーク履歴をすべてクリアしますか？ これによりすべての実行とその生の speed-bench 出力が削除されます。ダウンロード済みのモデルは保持されます。"
+  },
+  "status": {
+    "running": "実行中",
+    "queued": "待機中",
+    "completed": "完了",
+    "failed": "失敗",
+    "cancelled": "キャンセル済み",
+    "error": "エラー",
+    "ok": "OK"
+  }
+}

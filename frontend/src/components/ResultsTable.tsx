@@ -1,3 +1,6 @@
+import { useTranslation } from "react-i18next";
+import { statusLabel } from "../i18n/status";
+
 export interface ResultRow {
   server_id: string;
   flag_conf: Record<string, string>;
@@ -9,6 +12,7 @@ export interface ResultRow {
 const failed = (s?: string | null) => Boolean(s) && s !== "ok";
 
 export function ResultsTable({ rows }: { rows: ResultRow[] }) {
+  const { t } = useTranslation();
   const sorted = [...rows].sort((a, b) => (b.decode_tps ?? -1) - (a.decode_tps ?? -1));
   const flagNames = [...new Set(sorted.flatMap((r) => Object.keys(r.flag_conf)))];
   return (
@@ -16,11 +20,11 @@ export function ResultsTable({ rows }: { rows: ResultRow[] }) {
       <thead>
         <tr>
           <th>#</th>
-          <th>Program</th>
+          <th>{t("results.program")}</th>
           {flagNames.map((f) => <th key={f}>{f}</th>)}
-          <th>PROMPT t/s</th>
-          <th>DECODE t/s</th>
-          <th>STATUS</th>
+          <th>{t("results.promptTps")}</th>
+          <th>{t("results.decodeTps")}</th>
+          <th>{t("results.status")}</th>
         </tr>
       </thead>
       <tbody>
@@ -32,7 +36,7 @@ export function ResultsTable({ rows }: { rows: ResultRow[] }) {
             <td>{r.prompt_processing_tps?.toFixed(1) ?? "—"}</td>
             <td className={i === 0 ? "digit-best" : ""}>{r.decode_tps?.toFixed(1) ?? "—"}</td>
             <td className={failed(r.result_status) ? "status-failed" : ""}>
-              {failed(r.result_status) ? r.result_status : ""}
+              {failed(r.result_status) ? statusLabel(r.result_status) : ""}
             </td>
           </tr>
         ))}

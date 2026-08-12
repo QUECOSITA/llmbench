@@ -1,0 +1,104 @@
+{
+  "nav": { "results": "结果" },
+  "panel": {
+    "modelInput": "01 · 模型输入",
+    "run": "03 · 运行",
+    "resultsRanked": "05 · 结果 — 排名",
+    "downloaded": "已下载",
+    "resultsAllRuns": "结果 · 全部运行"
+  },
+  "common": {
+    "analyze": "分析",
+    "generate": "生成",
+    "runBenchmark": "运行基准测试",
+    "cancel": "取消",
+    "download": "下载",
+    "load": "加载",
+    "remove": "移除",
+    "clear": "清空",
+    "clearHistory": "清空历史",
+    "no": "否",
+    "error": "错误：{{message}}"
+  },
+  "hardware": {
+    "noGpu": "无 GPU",
+    "gbVram": "{{gb}}GB 显存",
+    "gbRam": "{{gb}}GB 内存"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · 服务器 {{server}} · {{count}} 个参数",
+    "serverManual": "手动",
+    "servingServer": "服务服务器",
+    "noServerProposed": "此仓库的 README 未提供服务服务器 — llama.cpp 不支持该模型",
+    "noServingCommand": "此仓库的 README 未记录 llama.cpp 服务命令（llama-server / speed-bench / llama-cli / llama-bench）— 该模型可能无法被 LLMBENCH 加载。",
+    "noServingCommandWithGguf": "此仓库的 README 未记录 llama.cpp 服务命令（llama-server / speed-bench / llama-cli / llama-bench）— 即使附带 .gguf，也可能无法被 LLMBENCH 加载。",
+    "noServerForGenerate": "未选择服务服务器 — 请在模型输入中选择一个以生成配置。"
+  },
+  "config": {
+    "bankTitle": "02 · 配置库 · N = {{n}}",
+    "speedBenchFlags": "SPEED-BENCH 参数",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all，或（对于 {{bench}} 基准）: {{cats}}",
+    "limitLine": "--limit: 可选整数 — 每个类别的最大样本数"
+  },
+  "run": {
+    "configProgress": "配置 {{index}}/{{total}}",
+    "pause": "暂停",
+    "pressEnter": "按回车继续",
+    "continue": "继续",
+    "watching": "→ 正在观看基准测试运行 #{{id}} 的进度",
+    "statusError": "运行 {{status}}"
+  },
+  "download": {
+    "yesAnyway": "是 — 仍然下载",
+    "prunePrompt": "hf cache prune — 继续？[y/N]",
+    "downloadedTo": "已下载 → {{path}}",
+    "pruned": "缓存已清理 — 准备好后重试下载",
+    "pruneSkipped": "已跳过清理 — 准备好后重试下载",
+    "error": "错误：{{message}}"
+  },
+  "dlStatus": {
+    "downloading": "下载中",
+    "downloaded": "已下载",
+    "cancelled": "已取消",
+    "pruning": "清理中",
+    "pruned": "已清理"
+  },
+  "downloaded": {
+    "empty": "尚未下载任何模型"
+  },
+  "results": {
+    "program": "程序",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "状态",
+    "viewAll": "查看全部运行 →",
+    "backToBench": "← 返回基准",
+    "empty": "尚无基准测试运行。",
+    "runLine": "#{{id}} · {{repo}} · {{n}} 个配置 · {{status}}"
+  },
+  "fit": {
+    "gpu": "适配显存 — 需要约 {{needed}} GB（权重 + KV），显存 {{vram}} GB",
+    "ramOffload": "卸载至内存 — 需要约 {{needed}} GB，超出 {{vram}} GB 显存，使用 {{ram}} GB 内存",
+    "ram": "仅 CPU — 无 GPU 显存，需要约 {{needed}} GB，共 {{ram}} GB 内存",
+    "noFit": "无法适配 — 需要约 {{needed}} GB，而显存 {{vram}} GB + 内存 {{ram}} GB",
+    "noFitNotice": "该模型无法适配此机器的显存/内存 — 可能无法被 LLMBENCH 加载。"
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "从 HF 缓存中移除 {{model}}？",
+    "clearHistory": "清空全部基准测试历史？这将删除每次运行及其原始 speed-bench 输出。已下载的模型将保留。"
+  },
+  "status": {
+    "running": "运行中",
+    "queued": "排队中",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "error": "错误",
+    "ok": "正常"
+  }
+}

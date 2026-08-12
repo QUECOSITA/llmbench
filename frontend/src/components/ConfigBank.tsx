@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { ConfigFit, SpeedBenchInfo } from "../api/client";
 
 function benchFromFlags(text: string): string | null {
@@ -11,6 +12,7 @@ function benchFromFlags(text: string): string | null {
 }
 
 export function SpeedBenchFlagInfo({ flags, info }: { flags: string; info: SpeedBenchInfo }) {
+  const { t } = useTranslation();
   const bench = benchFromFlags(flags);
   const cats =
     bench && info.categories[bench]
@@ -18,9 +20,9 @@ export function SpeedBenchFlagInfo({ flags, info }: { flags: string; info: Speed
       : [...new Set(Object.values(info.categories).flat())];
   return (
     <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--anode)", lineHeight: 1.5 }}>
-      <div>--bench: {info.benches.join(" | ")}</div>
-      <div>--category: all, or (for bench {bench ?? "…"}): {cats.join(", ")}</div>
-      <div>--limit: optional int — max samples per category</div>
+      <div>{t("config.benchLine", { benches: info.benches.join(" | ") })}</div>
+      <div>{t("config.categoryLine", { bench: bench ?? "…", cats: cats.join(", ") })}</div>
+      <div>{t("config.limitLine")}</div>
     </div>
   );
 }
@@ -46,9 +48,10 @@ interface Props {
 }
 
 export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = true, onEdit, onEditFlags, speedBenchInfo }: Props) {
+  const { t } = useTranslation();
   return (
     <section className="panel">
-      <span className="panel-cap">02 · CONFIG BANK · N = {n}</span>
+      <span className="panel-cap">{t("config.bankTitle", { n })}</span>
       <div className="row">
         <label style={{ color: "var(--anode)", fontSize: 12 }}>N</label>
         <input
@@ -59,7 +62,7 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = tr
           onChange={(e) => onNChange(Number(e.target.value))}
           style={{ width: 80 }}
         />
-        <button onClick={() => onGenerate(n)} disabled={!canGenerate}>GENERATE</button>
+        <button onClick={() => onGenerate(n)} disabled={!canGenerate}>{t("common.generate")}</button>
       </div>
       {configs.map((cfg, i) => (
         <div className="config-row" key={i}>
@@ -74,7 +77,7 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = tr
             {cfg.bench_tool === "speed-bench" && (
               <>
                 <label style={{ color: "var(--anode)", fontSize: 11, letterSpacing: 1 }}>
-                  SPEED-BENCH FLAGS
+                  {t("config.speedBenchFlags")}
                 </label>
                 <textarea
                   value={cfg.bench_flags ?? ""}

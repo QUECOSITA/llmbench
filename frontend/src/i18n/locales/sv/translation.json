@@ -1,0 +1,104 @@
+{
+  "nav": { "results": "RESULTAT" },
+  "panel": {
+    "modelInput": "01 · MODELLINMATNING",
+    "run": "03 · KÖRNING",
+    "resultsRanked": "05 · RESULTAT — RANKADE",
+    "downloaded": "NEDLADDADE",
+    "resultsAllRuns": "RESULTAT · ALLA KÖRNINGAR"
+  },
+  "common": {
+    "analyze": "ANALYSERA",
+    "generate": "GENERERA",
+    "runBenchmark": "KÖR BENCHMARK",
+    "cancel": "AVBRYT",
+    "download": "Ladda ner",
+    "load": "LADDA",
+    "remove": "TA BORT",
+    "clear": "RENSA",
+    "clearHistory": "RENSA HISTORIK",
+    "no": "NEJ",
+    "error": "Fel: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "ingen GPU",
+    "gbVram": "{{gb}} GB VRAM",
+    "gbRam": "{{gb}} GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · server {{server}} · {{count}} flaggor",
+    "serverManual": "manuell",
+    "servingServer": "serveringsserver",
+    "noServerProposed": "repots README föreslår ingen serveringsserver — modellen stöds inte av llama.cpp",
+    "noServingCommand": "repots README dokumenterar inget llama.cpp-serveringskommando (llama-server / speed-bench / llama-cli / llama-bench) — det kan vara så att LLMBENCH inte kan läsa in den.",
+    "noServingCommandWithGguf": "repots README dokumenterar inget llama.cpp-serveringskommando (llama-server / speed-bench / llama-cli / llama-bench) — även om den innehåller en .gguf kan det vara så att LLMBENCH inte kan läsa in den.",
+    "noServerForGenerate": "Ingen serveringsserver vald — välj en i MODELLINMATNING för att generera konfigurationer."
+  },
+  "config": {
+    "bankTitle": "02 · KONFIGURATIONSBANK · N = {{n}}",
+    "speedBenchFlags": "SPEED-BENCH-FLAGGOR",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, eller (för bench {{bench}}): {{cats}}",
+    "limitLine": "--limit: valfritt heltal — max prover per kategori"
+  },
+  "run": {
+    "configProgress": "konfiguration {{index}}/{{total}}",
+    "pause": "PAUS",
+    "pressEnter": "TRYCK PÅ ENTER FÖR ATT FORTSÄTTA",
+    "continue": "FORTSÄTT",
+    "watching": "→ följer benchmarkkörning #{{id}} pågår",
+    "statusError": "körning {{status}}"
+  },
+  "download": {
+    "yesAnyway": "JA — LADDA NER ÄNDÅ",
+    "prunePrompt": "hf cache prune — Fortsätta? [y/N]",
+    "downloadedTo": "nedladdat → {{path}}",
+    "pruned": "cache rensad — försök ladda ner igen när du är redo",
+    "pruneSkipped": "rensning hoppades över — försök ladda ner igen när du är redo",
+    "error": "fel: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "laddar ner",
+    "downloaded": "nedladdat",
+    "cancelled": "avbruten",
+    "pruning": "rensar",
+    "pruned": "rensad"
+  },
+  "downloaded": {
+    "empty": "inga modeller nedladdade än"
+  },
+  "results": {
+    "program": "Program",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "STATUS",
+    "viewAll": "visa alla körningar →",
+    "backToBench": "← tillbaka till bench",
+    "empty": "Inga benchmarkkörningar ännu.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} konfigurationer · {{status}}"
+  },
+  "fit": {
+    "gpu": "RYMS I VRAM — behöver ~{{needed}} GB (vikter + KV) av {{vram}} GB VRAM",
+    "ramOffload": "LAGRAR TILL RAM — behöver ~{{needed}} GB, rinner över från {{vram}} GB VRAM till {{ram}} GB RAM",
+    "ram": "ENDAST CPU — ingen GPU-VRAM, behöver ~{{needed}} GB av {{ram}} GB RAM",
+    "noFit": "RYMS INTE — behöver ~{{needed}} GB mot {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "den här modellen ryms inte i den här maskinens VRAM/RAM — det kan vara så att LLMBENCH inte kan läsa in den."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "Ta bort {{model}} från HF-cachen?",
+    "clearHistory": "Rensa all benchmarkhistorik? Detta tar bort varje körning och dess råa speed-bench-utdata. Nedladdade modeller behålls."
+  },
+  "status": {
+    "running": "pågår",
+    "queued": "i kö",
+    "completed": "klar",
+    "failed": "misslyckades",
+    "cancelled": "avbruten",
+    "error": "fel",
+    "ok": "ok"
+  }
+}

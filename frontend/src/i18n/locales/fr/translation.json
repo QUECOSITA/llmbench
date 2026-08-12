@@ -1,0 +1,104 @@
+{
+  "nav": { "results": "RÉSULTATS" },
+  "panel": {
+    "modelInput": "01 · SAISIE DU MODÈLE",
+    "run": "03 · EXÉCUTION",
+    "resultsRanked": "05 · RÉSULTATS — CLASSÉS",
+    "downloaded": "TÉLÉCHARGÉS",
+    "resultsAllRuns": "RÉSULTATS · TOUTES LES EXÉCUTIONS"
+  },
+  "common": {
+    "analyze": "ANALYSER",
+    "generate": "GÉNÉRER",
+    "runBenchmark": "LANCER LE BENCHMARK",
+    "cancel": "ANNULER",
+    "download": "Télécharger",
+    "load": "CHARGER",
+    "remove": "SUPPRIMER",
+    "clear": "EFFACER",
+    "clearHistory": "EFFACER L'HISTORIQUE",
+    "no": "NON",
+    "error": "Erreur : {{message}}"
+  },
+  "hardware": {
+    "noGpu": "aucun GPU",
+    "gbVram": "{{gb}} Go de VRAM",
+    "gbRam": "{{gb}} Go de RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · serveur {{server}} · {{count}} drapeaux",
+    "serverManual": "manuel",
+    "servingServer": "serveur de diffusion",
+    "noServerProposed": "le README de ce dépôt ne propose aucun serveur de diffusion — modèle non pris en charge par llama.cpp",
+    "noServingCommand": "le README de ce dépôt ne documente pas de commande de diffusion llama.cpp (llama-server / speed-bench / llama-cli / llama-bench) — il se peut qu'il ne puisse pas être chargé par LLMBENCH.",
+    "noServingCommandWithGguf": "le README de ce dépôt ne documente pas de commande de diffusion llama.cpp (llama-server / speed-bench / llama-cli / llama-bench) — même s'il fournit un .gguf, il se peut qu'il ne puisse pas être chargé par LLMBENCH.",
+    "noServerForGenerate": "Aucun serveur de diffusion sélectionné — choisissez-en un dans SAISIE DU MODÈLE pour générer des configurations."
+  },
+  "config": {
+    "bankTitle": "02 · BANQUE DE CONFIGURATIONS · N = {{n}}",
+    "speedBenchFlags": "DRAPEAUX SPEED-BENCH",
+    "benchLine": "--bench : {{benches}}",
+    "categoryLine": "--category : all, ou (pour le bench {{bench}}) : {{cats}}",
+    "limitLine": "--limit : int facultatif — échantillons max par catégorie"
+  },
+  "run": {
+    "configProgress": "configuration {{index}}/{{total}}",
+    "pause": "PAUSE",
+    "pressEnter": "APPUYEZ SUR ENTRÉE POUR CONTINUER",
+    "continue": "CONTINUER",
+    "watching": "→ exécution du benchmark #{{id}} en cours",
+    "statusError": "exécution {{status}}"
+  },
+  "download": {
+    "yesAnyway": "OUI — TÉLÉCHARGER QUAND MÊME",
+    "prunePrompt": "hf cache prune — Continuer ? [y/N]",
+    "downloadedTo": "téléchargé → {{path}}",
+    "pruned": "cache nettoyé — réessayez le téléchargement quand vous êtes prêt",
+    "pruneSkipped": "nettoyage ignoré — réessayez le téléchargement quand vous êtes prêt",
+    "error": "erreur : {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "téléchargement",
+    "downloaded": "téléchargé",
+    "cancelled": "annulé",
+    "pruning": "nettoyage",
+    "pruned": "nettoyé"
+  },
+  "downloaded": {
+    "empty": "aucun modèle téléchargé"
+  },
+  "results": {
+    "program": "Programme",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "status": "STATUT",
+    "viewAll": "voir toutes les exécutions →",
+    "backToBench": "← retour au bench",
+    "empty": "Aucune exécution de benchmark pour l'instant.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} configurations · {{status}}"
+  },
+  "fit": {
+    "gpu": "TIENT DANS LA VRAM — nécessite ~{{needed}} Go (poids + KV) sur {{vram}} Go de VRAM",
+    "ramOffload": "DÉCHARGE EN RAM — nécessite ~{{needed}} Go, dépasse {{vram}} Go de VRAM dans {{ram}} Go de RAM",
+    "ram": "CPU SEUL — pas de VRAM GPU, nécessite ~{{needed}} Go sur {{ram}} Go de RAM",
+    "noFit": "NE TIENT PAS — nécessite ~{{needed}} Go contre {{vram}} Go de VRAM + {{ram}} Go de RAM",
+    "noFitNotice": "ce modèle ne tient pas dans la VRAM/RAM de cette machine — il se peut qu'il ne puisse pas être chargé par LLMBENCH."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s"
+  },
+  "confirm": {
+    "removeModel": "Supprimer {{model}} du cache HF ?",
+    "clearHistory": "Effacer tout l'historique des benchmarks ? Cela supprime chaque exécution et ses sorties speed-bench brutes. Les modèles téléchargés sont conservés."
+  },
+  "status": {
+    "running": "en cours",
+    "queued": "en file",
+    "completed": "terminé",
+    "failed": "échoué",
+    "cancelled": "annulé",
+    "error": "erreur",
+    "ok": "ok"
+  }
+}

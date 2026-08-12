@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 interface HardwareInfo {
   arch?: string;
   ram_total_gb?: number;
@@ -6,11 +8,12 @@ interface HardwareInfo {
 }
 
 export function HardwareBar({ hardware }: { hardware: HardwareInfo }) {
-  const gpu = hardware.gpu_name ?? "no GPU";
-  const vram = hardware.gpu_vram_gb ? `${hardware.gpu_vram_gb}GB VRAM` : "";
+  const { t } = useTranslation();
+  const gpu = hardware.gpu_name ?? t("hardware.noGpu");
+  const vram = hardware.gpu_vram_gb ? t("hardware.gbVram", { gb: hardware.gpu_vram_gb }) : "";
   return (
     <span className="hardware-line">
-      {gpu} · {vram} · {hardware.ram_total_gb ? `${hardware.ram_total_gb.toFixed(0)}GB RAM` : "—"} ·{" "}
+      {gpu} · {vram} · {hardware.ram_total_gb ? t("hardware.gbRam", { gb: hardware.ram_total_gb.toFixed(0) }) : "—"} ·{" "}
       {hardware.arch ?? "—"}
     </span>
   );

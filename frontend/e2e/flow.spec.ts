@@ -1,5 +1,20 @@
 import { test, expect } from "@playwright/test";
 
+test("language switcher changes the UI language and sets RTL for Arabic", async ({ page }) => {
+  await page.goto("http://localhost:5173");
+  const select = page.getByLabel("language");
+  await expect(select.locator("option").first()).toHaveText("Reset(English)");
+  await expect(page.getByRole("button", { name: "ANALYZE" })).toBeVisible();
+
+  await select.selectOption("de");
+  await expect(page.getByRole("button", { name: "ANALYSIEREN" })).toBeVisible();
+  await expect(select).toHaveValue("de");
+
+  await select.selectOption("ar");
+  await expect(page.getByRole("button", { name: "تحليل" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+});
+
 test("full flow: analyze, generate, run, see ranked results", async ({ page }) => {
   await page.goto("http://localhost:5173");
   await page.getByPlaceholder(/huggingface/i).fill("org/model");
@@ -30,7 +45,7 @@ test("download console renders with a CANCEL action", async ({ page }) => {
 
 test("LOAD fills the model input with the README-proposed downloaded model and analyzes it", async ({ page }) => {
   await page.goto("http://localhost:5173");
-  await expect(page.getByText("llama.cpp")).toBeVisible();
+  await expect(page.locator(".downloaded-server", { hasText: "llama.cpp" })).toBeVisible();
   await expect(page.getByText("org/model")).toBeVisible();
   await page.getByRole("button", { name: "LOAD" }).click();
   await expect(page.getByText(/server llama.cpp/i)).toBeVisible();
@@ -40,7 +55,7 @@ test("LOAD fills the model input with the README-proposed downloaded model and a
 test("REMOVE confirms and removes the downloaded row", async ({ page }) => {
   page.on("dialog", (dialog) => dialog.accept());
   await page.goto("http://localhost:5173");
-  await expect(page.getByText("llama.cpp")).toBeVisible();
+  await expect(page.locator(".downloaded-server", { hasText: "llama.cpp" })).toBeVisible();
   await expect(page.getByText("org/model")).toHaveCount(1);
   await page.getByRole("button", { name: "REMOVE" }).click();
   await expect(page.getByText("org/model")).toHaveCount(0);
