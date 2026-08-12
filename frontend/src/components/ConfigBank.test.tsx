@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { ConfigBank, ConfigRow } from "./ConfigBank";
+import type { SpeedBenchInfo } from "../api/client";
+import { ConfigBank, ConfigRow, SpeedBenchFlagInfo } from "./ConfigBank";
 
 test("renders editable config rows and calls onGenerate with N", () => {
   const onGenerate = vi.fn();
@@ -62,13 +63,13 @@ test("renders and edits a SPEED-BENCH FLAGS textarea for speed-bench configs", (
       flags: {},
       serving_command: "llama-server --spec-type draft-mtp",
       bench_tool: "speed-bench",
-      bench_flags: "--bench throughput_1k --category all --limit 1 --osl 128",
+      bench_flags: "--bench qualitative --category all --limit 1 --osl 4096",
     },
   ];
   render(
     <ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={configs} onEditFlags={onEditFlags} />,
   );
-  const textarea = screen.getByDisplayValue("--bench throughput_1k --category all --limit 1 --osl 128");
+  const textarea = screen.getByDisplayValue("--bench qualitative --category all --limit 1 --osl 4096");
   fireEvent.change(textarea, { target: { value: "--bench qualitative --category coding" } });
   expect(onEditFlags).toHaveBeenCalledWith(0, "--bench qualitative --category coding");
 });
@@ -77,4 +78,39 @@ test("does not render the flags textarea for non-speed-bench configs", () => {
   const configs: ConfigRow[] = [{ flags: {}, serving_command: "llama-server --hf-repo m --hf-file model.gguf", bench_tool: "llama-bench" }];
   render(<ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={configs} />);
   expect(screen.queryByDisplayValue(/--bench/)).not.toBeInTheDocument();
+});
+
+const INFO: SpeedBenchInfo = {
+  benches: ["qualitative", "throughput_1k", "throughput_2k", "throughput_8k", "throughput_16k", "throughput_32k"],
+  categories: {
+    qualitative: ["coding", "humanities", "math", "qa", "rag", "reasoning", "stem", "writing", "multilingual", "summarization", "roleplay"],
+    throughput_1k: ["high_entropy", "mixed", "low_entropy"],
+  },
+};
+
+test("renders the accepted benches and limit help", () => {
+  render(<SpeedBenchFlagInfo flags="--bench qualitative" info={INFO} />);
+  expect(screen.getByText(/--bench:/)).toHaveTextContent("qualitative | throughput_1k");
+  expect(screen.getByText(/--limit:/)).toHaveTextContent("max samples per category");
+});
+
+test("shows categories for the typed bench", () => {
+  render(<SpeedBenchFlagInfo flags="--bench qualitative --category all" info={INFO} />);
+  expect(screen.getByText(/--category:/)).toHaveTextContent("coding");
+  expect(screen.getByText(/--category:/)).toHaveTextContent("roleplay");
+});
+
+test("shows union of categories when bench is empty or unknown", () => {
+  const { rerender } = render(<SpeedBenchFlagInfo flags="--category all" info={INFO} />);
+  expect(screen.getByText(/--category:/)).toHaveTextContent("coding");
+  expect(screen.getByText(/--category:/)).toHaveTextContent("high_entropy");
+  rerender(<SpeedBenchFlagInfo flags="--bench bogus" info={INFO} />);
+  expect(screen.getByText(/--category:/)).toHaveTextContent("coding");
+  expect(screen.getByText(/--category:/)).toHaveTextContent("high_entropy");
+});
+
+test("supports --bench=value form", () => {
+  render(<SpeedBenchFlagInfo flags="--bench=throughput_1k" info={INFO} />);
+  expect(screen.getByText(/--category:/)).toHaveTextContent("high_entropy");
+  expect(screen.getByText(/--category:/)).toHaveTextContent("low_entropy");
 });

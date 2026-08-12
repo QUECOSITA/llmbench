@@ -5,6 +5,17 @@ import { App } from "./App";
 vi.mock("./api/client", () => ({
   api: {
     getServers: vi.fn().mockResolvedValue({ readiness: {}, hardware: {} }),
+    getSpeedBenchInfo: vi.fn().mockResolvedValue({
+      benches: ["qualitative", "throughput_1k", "throughput_2k", "throughput_8k", "throughput_16k", "throughput_32k"],
+      categories: {
+        qualitative: ["coding", "humanities", "math", "qa", "rag", "reasoning", "stem", "writing", "multilingual", "summarization", "roleplay"],
+        throughput_1k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_2k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_8k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_16k: ["high_entropy", "mixed", "low_entropy"],
+        throughput_32k: ["high_entropy", "mixed", "low_entropy"],
+      },
+    }),
     listModels: vi.fn().mockResolvedValue({ models: [] }),
     listRuns: vi.fn().mockResolvedValue({ runs: [] }),
     analyze: vi.fn().mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {}, downloaded: { "llama.cpp": true } }),
@@ -580,7 +591,7 @@ test("run payload round-trips edited bench_flags", async () => {
   const startSpy = vi.spyOn(api, "startBenchmark").mockResolvedValue({ run_id: 1 });
   vi.mocked(api.generateConfigs).mockResolvedValue({
     configs: [
-      { flags: {}, serving_command: "llama-server --spec-type draft-mtp", bench_command: [], bench_tool: "speed-bench", bench_flags: "--bench throughput_1k --category all --limit 1 --osl 128", fit: null },
+      { flags: {}, serving_command: "llama-server --spec-type draft-mtp", bench_command: [], bench_tool: "speed-bench", bench_flags: "--bench qualitative --category all --limit 1 --osl 4096", fit: null },
     ],
   });
 
@@ -597,7 +608,7 @@ test("run payload round-trips edited bench_flags", async () => {
   fireEvent.click(screen.getByText(/generate/i));
   await screen.findByText(/llama-server --spec-type/i);
 
-  const textarea = screen.getByDisplayValue("--bench throughput_1k --category all --limit 1 --osl 128");
+  const textarea = screen.getByDisplayValue("--bench qualitative --category all --limit 1 --osl 4096");
   fireEvent.change(textarea, { target: { value: "--bench qualitative --category coding" } });
 
   fireEvent.click(screen.getByText(/run benchmark/i));
@@ -870,4 +881,21 @@ test("LOAD of a model that does not fit shows the NO FIT warning", async () => {
   await screen.findByText("llama.cpp");
   fireEvent.click(screen.getByRole("button", { name: "LOAD" }));
   await screen.findByText(/doesn't fit this machine/i);
+});
+
+test("getSpeedBenchInfo returns benches and categories", async () => {
+  const { api } = await import("./api/client");
+  const info = await api.getSpeedBenchInfo();
+  expect(info.benches).toContain("qualitative");
+  expect(info.categories.qualitative).toContain("coding");
+});
+
+test("fetches speed-bench info on mount and passes it to the config bank", async () => {
+  const { api } = await import("./api/client");
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+  await waitFor(() => expect(api.getSpeedBenchInfo).toHaveBeenCalled());
 });

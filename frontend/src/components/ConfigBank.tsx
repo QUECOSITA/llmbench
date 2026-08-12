@@ -1,4 +1,29 @@
-import type { ConfigFit } from "../api/client";
+import type { ConfigFit, SpeedBenchInfo } from "../api/client";
+
+function benchFromFlags(text: string): string | null {
+  const m = text.match(/--bench=(\S+)/);
+  if (m) return m[1];
+  const tokens = text.split(/\s+/);
+  for (let i = 0; i < tokens.length - 1; i++) {
+    if (tokens[i] === "--bench") return tokens[i + 1];
+  }
+  return null;
+}
+
+export function SpeedBenchFlagInfo({ flags, info }: { flags: string; info: SpeedBenchInfo }) {
+  const bench = benchFromFlags(flags);
+  const cats =
+    bench && info.categories[bench]
+      ? info.categories[bench]
+      : [...new Set(Object.values(info.categories).flat())];
+  return (
+    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--anode)", lineHeight: 1.5 }}>
+      <div>--bench: {info.benches.join(" | ")}</div>
+      <div>--category: all, or (for bench {bench ?? "…"}): {cats.join(", ")}</div>
+      <div>--limit: optional int — max samples per category</div>
+    </div>
+  );
+}
 
 export interface ConfigRow {
   flags: Record<string, string>;
@@ -17,9 +42,10 @@ interface Props {
   canGenerate?: boolean;
   onEdit?: (index: number, command: string) => void;
   onEditFlags?: (index: number, flags: string) => void;
+  speedBenchInfo?: SpeedBenchInfo | null;
 }
 
-export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = true, onEdit, onEditFlags }: Props) {
+export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = true, onEdit, onEditFlags, speedBenchInfo }: Props) {
   return (
     <section className="panel">
       <span className="panel-cap">02 · CONFIG BANK · N = {n}</span>
@@ -56,6 +82,9 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = tr
                   rows={2}
                   style={{ fontFamily: "var(--font-mono)" }}
                 />
+                {speedBenchInfo && (
+                  <SpeedBenchFlagInfo flags={cfg.bench_flags ?? ""} info={speedBenchInfo} />
+                )}
               </>
             )}
           </div>

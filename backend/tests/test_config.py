@@ -26,7 +26,7 @@ def test_speed_bench_settings_defaults():
     s = Settings()
     assert s.speed_bench_script is None
     assert s.speed_bench_timeout_s == 300
-    assert s.speed_bench_osl == 128
+    assert s.speed_bench_osl == 4096
 
 
 def test_speed_bench_settings_env(monkeypatch):
