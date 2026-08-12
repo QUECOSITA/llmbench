@@ -61,3 +61,16 @@ test("ApiError falls back to raw text when body is not JSON", async () => {
   });
   await expect(api.getServers()).rejects.toThrow(/503: service unavailable/);
 });
+
+test("api.clearRuns deletes the benchmark history", async () => {
+  const fetchMock = vi.fn(
+    (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) } as Response),
+  );
+  globalThis.fetch = fetchMock;
+  const data = await api.clearRuns();
+  expect(data.ok).toBe(true);
+  const [url, init] = fetchMock.mock.calls[0];
+  expect(url).toBe("http://localhost:8000/api/benchmarks");
+  expect((init as RequestInit).method).toBe("DELETE");
+});

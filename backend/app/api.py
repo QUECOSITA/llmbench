@@ -756,6 +756,24 @@ async def run_detail(run_id: int):
     }
 
 
+@router.delete("/benchmarks")
+async def clear_history():
+    s = _require_state()
+    with s._state_lock:
+        if s._job_active:
+            active = db_mod.get_active_run(s.conn)
+            raise ApiError(
+                409, "A benchmark is already running",
+                context={"active_run": active or {"id": s._active_run_id}})
+    db_mod.clear_history(s.conn)
+    for p in s.settings.data_dir.glob("speed-bench-*.json"):
+        try:
+            p.unlink()
+        except OSError:
+            pass
+    return {"ok": True}
+
+
 @router.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     s = _require_state()

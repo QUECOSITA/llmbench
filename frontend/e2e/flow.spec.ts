@@ -57,3 +57,11 @@ test("warns when README has no serving command and requires confirmation to down
   await page.getByRole("button", { name: /YES — DOWNLOAD ANYWAY/i }).click();
   await page.getByRole("button", { name: "Download", exact: true }).waitFor();
 });
+
+test("CLEAR HISTORY empties the results list", async ({ page }) => {
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto("http://localhost:5173/results");
+  await expect(page.getByText(/#1 · org\/model/i)).toBeVisible();
+  await page.getByRole("button", { name: /clear history/i }).click();
+  await expect(page.getByText(/no benchmark runs yet/i)).toBeVisible();
+});

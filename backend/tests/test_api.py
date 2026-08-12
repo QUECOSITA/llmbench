@@ -1541,3 +1541,34 @@ def test_unhandled_exception_500_has_cors_header(tmp_path):
     assert r.status_code == 500
     assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
     assert "kaboom" in r.json()["detail"]
+
+
+def test_clear_history_endpoint_deletes_runs_and_artifacts(client, tmp_path):
+    import app.api as api_mod
+    from app import db as db_mod
+    run_id = db_mod.create_run(api_mod.state.conn, "org/model", 1)
+    db_mod.set_run_status(api_mod.state.conn, run_id, "completed")
+    (tmp_path / "speed-bench-abc123.json").write_text("{}")
+
+    assert len(client.get("/api/benchmarks").json()["runs"]) == 1
+    assert (tmp_path / "speed-bench-abc123.json").exists()
+    assert (tmp_path / "llmbench.db").exists()
+
+    r = client.delete("/api/benchmarks")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert client.get("/api/benchmarks").json()["runs"] == []
+    assert not (tmp_path / "speed-bench-abc123.json").exists()
+    assert (tmp_path / "llmbench.db").exists()
+
+
+def test_clear_history_409_when_job_active(client):
+    import app.api as api_mod
+    api_mod.state._job_active = True
+    try:
+        r = client.delete("/api/benchmarks")
+        assert r.status_code == 409
+        assert r.json()["detail"] == "A benchmark is already running"
+        assert r.json()["context"]["active_run"] is not None
+    finally:
+        api_mod.state._job_active = False

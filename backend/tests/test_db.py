@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from app.db import init_db, upsert_model, get_model, list_models, create_run, finish_run, save_result, list_runs, get_results_for_run, create_config, fail_stale_runs, get_run_status, set_run_status, get_active_run
+from app.db import init_db, upsert_model, get_model, list_models, create_run, finish_run, save_result, list_runs, get_results_for_run, create_config, fail_stale_runs, get_run_status, set_run_status, get_active_run, clear_history, list_configs
 
 
 def test_model_crud(tmp_path):
@@ -120,4 +120,24 @@ def test_get_active_run_none_when_nothing_inflight(tmp_path):
     run_id = create_run(conn, repo_id="org/model", requested_n=1)
     finish_run(conn, run_id, status="completed")
     assert get_active_run(conn) is None
+    conn.close()
+
+
+def test_clear_history_empties_runs_but_keeps_models(tmp_path):
+    conn = init_db(tmp_path / "test.db")
+    upsert_model(conn, repo_id="org/model", server_id="llama.cpp", format="hf", local_path="/x", status="downloaded")
+    run_id = create_run(conn, repo_id="org/model", requested_n=2)
+    finish_run(conn, run_id, status="completed")
+    cfg_id = create_config(conn, run_id=run_id, server_id="llama.cpp", model_id=1,
+                           flag_conf_json=[], serving_command="x", bench_command="y")
+    save_result(conn, config_id=cfg_id, prompt_processing_tps=1200.0, decode_tps=86.4,
+                duration_s=30.0, output_snippet="", status="ok")
+    assert len(list_runs(conn)) == 1
+    assert len(list_configs(conn, run_id)) == 1
+
+    clear_history(conn)
+
+    assert list_runs(conn) == []
+    assert list_configs(conn, run_id) == []
+    assert len(list_models(conn)) == 1
     conn.close()
