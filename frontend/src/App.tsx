@@ -375,6 +375,12 @@ export function App() {
   const hasGguf = (analysis?.gguf_files?.length ?? 0) > 0;
   const noFit = analysis?.fit_verdict?.stage === "no_fit";
   const alreadyDownloaded = Boolean(analysis?.downloaded?.["llama.cpp"]);
+  const effectiveServer = server || analysis?.detected_server;
+  const downloadKeyForModel = effectiveServer && analysis?.repo_id ? `${effectiveServer}::${analysis.repo_id}` : null;
+  const modelDownloaded = Boolean(
+    effectiveServer &&
+      (analysis?.downloaded?.[effectiveServer] || downloads[downloadKeyForModel ?? ""]?.status === "downloaded"),
+  );
 
   return (
     <div className="instrument">
@@ -491,7 +497,7 @@ export function App() {
                 n={n}
                 onNChange={setN}
                 onGenerate={onGenerate}
-                canGenerate={Boolean(server || analysis?.detected_server)}
+                canGenerate={modelDownloaded}
                 configs={configs}
                 onEdit={(i, cmd) =>
                   setConfigs((prev) => prev.map((c, j) => (j === i ? { ...c, serving_command: cmd } : c)))

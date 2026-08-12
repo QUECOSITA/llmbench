@@ -7,7 +7,7 @@ vi.mock("./api/client", () => ({
     getServers: vi.fn().mockResolvedValue({ readiness: {}, hardware: {} }),
     listModels: vi.fn().mockResolvedValue({ models: [] }),
     listRuns: vi.fn().mockResolvedValue({ runs: [] }),
-    analyze: vi.fn().mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {} }),
+    analyze: vi.fn().mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {}, downloaded: { "llama.cpp": true } }),
     generateConfigs: vi.fn().mockResolvedValue({
       configs: [{ flags: { "--n-gpu": "1" }, serving_command: "python serve.py", bench_command: [] }],
     }),
@@ -40,7 +40,7 @@ test("LOAD on a downloaded row fills MODEL INPUT and analyzes", async () => {
     models: [{ server_id: "llama.cpp", repo_id: "org/model", status: "downloaded" }],
   });
   const analyzeSpy = vi.spyOn(api, "analyze");
-  analyzeSpy.mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {} });
+  analyzeSpy.mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {}, downloaded: { "llama.cpp": true } });
 
   render(
     <MemoryRouter>
@@ -62,7 +62,7 @@ test("LOAD on a downloaded gguf row fills MODEL INPUT and analyzes the file-qual
     models: [{ server_id: "llama.cpp", repo_id: "org/model", status: "downloaded", gguf_filename: "model.gguf" }],
   });
   const analyzeSpy = vi.spyOn(api, "analyze");
-  analyzeSpy.mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {} });
+  analyzeSpy.mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {}, downloaded: { "llama.cpp": true } });
 
   render(
     <MemoryRouter>
@@ -360,7 +360,7 @@ test("fit line renders OFFLOADS TO RAM when verdict is ram_offload", async () =>
 test("download flow: click Download, shows downloading then downloaded and refreshes list", async () => {
   const { api } = await import("./api/client");
   const { useDownloadProgress } = await import("./ws/useDownloadProgress");
-  vi.mocked(api.analyze).mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {} });
+  vi.mocked(api.analyze).mockResolvedValueOnce({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {}, downloaded: { "llama.cpp": false } });
   vi.mocked(api.listModels).mockClear();
   const downloadModelSpy = vi.spyOn(api, "downloadModel");
   downloadModelSpy.mockClear();
@@ -435,7 +435,7 @@ test("download for direct file link passes the single gguf filename", async () =
 test("cancel flow: CANCEL shows prune prompt, answering y completes", async () => {
   const { api } = await import("./api/client");
   const { useDownloadProgress } = await import("./ws/useDownloadProgress");
-  vi.mocked(api.analyze).mockResolvedValue({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {} });
+  vi.mocked(api.analyze).mockResolvedValueOnce({ repo_id: "org/model", detected_server: "llama.cpp", readme_flags: {}, downloaded: { "llama.cpp": false } });
   const cancelSpy = vi.spyOn(api, "cancelDownload").mockResolvedValue({ ok: true });
   const pruneSpy = vi.spyOn(api, "answerPrune").mockResolvedValue({ ok: true });
   vi.mocked(useDownloadProgress).mockReturnValue([]);
@@ -685,7 +685,7 @@ test("only the README-detected server appears in the select and download row", a
   expect(select.value).toBe("llama.cpp");
   expect(select.querySelectorAll("option").length).toBe(1);
   expect(screen.getByText("llama.cpp:")).toBeInTheDocument();
-  expect(screen.getByText("GENERATE")).not.toBeDisabled();
+  expect(screen.getByText("GENERATE")).toBeDisabled();
   expect(screen.getByText("RUN BENCHMARK")).toBeDisabled();
 });
 
@@ -766,6 +766,64 @@ test("declining unsupported download keeps Download hidden", async () => {
   expect(screen.queryByRole("button", { name: "NO" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument();
   expect(api.downloadModel).not.toHaveBeenCalled();
+});
+
+test("GENERATE stays disabled until the model is downloaded, then enables after download", async () => {
+  const { api } = await import("./api/client");
+  const { useDownloadProgress } = await import("./ws/useDownloadProgress");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_flags: {},
+    downloaded: { "llama.cpp": false },
+  });
+
+  const view = render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  expect(screen.getByText("GENERATE")).toBeDisabled();
+
+  vi.mocked(useDownloadProgress).mockReturnValue([
+    { type: "download_done", server_id: "llama.cpp", repo_id: "org/model", status: "downloaded", local_path: "/x" },
+  ]);
+  view.rerender(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  await waitFor(() => expect(screen.getByText("GENERATE")).not.toBeDisabled());
+});
+
+test("GENERATE is enabled when the model is already downloaded at analyze time", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_flags: {},
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  expect(screen.getByText("GENERATE")).not.toBeDisabled();
 });
 
 test("LOAD of a downloaded model with no serving command warns without a download prompt", async () => {

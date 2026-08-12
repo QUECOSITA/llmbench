@@ -43,7 +43,7 @@ const server = createServer(async (req, res) => {
       fit_verdict: { stage: "gpu", warning: false, needed_gb: 3.8 },
       model_arch: { layers: 32, heads: 32, hidden: 4096, max_ctx: 8192 },
       hardware: { gpu_vram_gb: 24, ram_total_gb: 64, gpu_name: "RTX 4090" },
-      downloaded: { "llama.cpp": false },
+      downloaded: { "llama.cpp": repoId === "org/model" },
     });
   } else if (req.url?.startsWith("/api/models/download/cancel")) {
     Object.assign(body, { ok: true });
