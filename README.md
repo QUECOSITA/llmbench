@@ -41,7 +41,7 @@ Stop everything:
 
 This kills the `uvicorn` and `vite` processes and reminds you to `deactivate` the backend venv.
 
-**Windows:** use `up.bat` and `down.bat` instead of `up.sh`/`down.sh`. They run the same workflow via PowerShell (`scripts\up.ps1` / `scripts\down.ps1`): llama.cpp is resolved from `LLMBENCH_LLAMA_CPP_BIN_DIR`, PATH, or the standard locations; if it is missing, `up.bat` prompts for a path or points at the prebuilt [llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases). `down.bat` stops the uvicorn and vite processes.
+**Windows:** use `up.bat` and `down.bat` instead of `up.sh`/`down.sh`. They run the same workflow via PowerShell (`scripts\up.ps1` / `scripts\down.ps1`): llama.cpp is resolved from `LLMBENCH_LLAMA_CPP_BIN_DIR`, PATH, or the standard locations; if it is missing, `up.bat` offers a full source build into `%USERPROFILE%\llama.cpp` (git + cmake; CUDA build when an NVIDIA GPU is detected) or to point at an existing install / the prebuilt [llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases). `down.bat` stops the uvicorn and vite processes.
 
 To run manually:
 
