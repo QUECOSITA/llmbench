@@ -1,7 +1,7 @@
 # up.ps1 - Windows counterpart of up.sh.
-# Resolves llama.cpp (offers a full source build when missing), creates the
-# backend venv, installs deps, and starts uvicorn + the Vite dev server in the
-# background with hidden windows.
+# Resolves llama.cpp (offers a full source build when missing, including its build
+# requirements via winget), creates the backend venv, installs deps, and starts
+# uvicorn + the Vite dev server in the background with hidden windows.
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -76,6 +76,104 @@ function Read-CustomLocation {
     }
 }
 
+# True when an MSVC C++ toolchain (Visual Studio / Build Tools with the VC Tools
+# workload) is installed, detected via vswhere. cl.exe is only on PATH inside a
+# Developer Command Prompt, so it is not a reliable check.
+function Test-Msvc {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (-not (Test-Path $vswhere)) { return $false }
+    $install = & $vswhere -latest -products * `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -property installationPath 2>$null
+    return [bool]$install
+}
+
+# Re-read the Machine and User PATH entries so winget-installed tools (git,
+# cmake) are visible to the rest of this script without opening a new shell.
+function Refresh-Path {
+    $machine = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:PATH = (@($machine, $user) | Where-Object { $_ }) -join ';'
+}
+
+function Test-Winget {
+    return [bool](Get-Command winget -ErrorAction SilentlyContinue)
+}
+
+# Detect missing build requirements for the llama.cpp source build (git, cmake,
+# MSVC C++ toolchain) and offer to install them via winget. Mirrors the Linux
+# scripts/ensure-llama-cpp.sh _check_requirements flow. Aborts when the user
+# declines or a requirement is still missing after the install.
+function Install-MissingRequirements {
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    $cmake = Get-Command cmake -ErrorAction SilentlyContinue
+    $msvc = Test-Msvc
+
+    $missing = @()
+    if (-not $git) { $missing += 'git' }
+    if (-not $cmake) { $missing += 'cmake' }
+    if (-not $msvc) { $missing += 'MSVC Build Tools (C++)' }
+
+    Write-Host ''
+    Write-Host '  System check:'
+    if ($git) { Write-Host "    - git: $($git.Source)" } else { Write-Host '    - git: MISSING' }
+    if ($cmake) { Write-Host "    - cmake: $($cmake.Source)" } else { Write-Host '    - cmake: MISSING' }
+    if ($msvc) { Write-Host '    - C++ compiler (MSVC): found' } else { Write-Host '    - C++ compiler (MSVC): MISSING' }
+
+    if ($missing.Count -eq 0) { return }
+
+    Write-Host ''
+    Write-Host "  Missing build requirements: $($missing -join ', ')"
+    Write-Host '  These are needed to build llama.cpp from source.'
+
+    if (-not (Test-Winget)) {
+        Write-Host '  winget (Windows Package Manager) was not found; install the requirements manually and re-run up.bat:'
+        Write-Host '    git   - https://git-scm.com/download/win'
+        Write-Host '    cmake - https://cmake.org/download/'
+        Write-Host '    MSVC  - https://visualstudio.microsoft.com/visual-cpp-build-tools/ (install the "Desktop development with C++" workload)'
+        Abort-LlamaCpp
+    }
+
+    if (-not (Ask-YesNo 'Install them now via winget?')) {
+        Write-Host '  The build requirements must be installed before compiling.'
+        Abort-LlamaCpp
+    }
+
+    Refresh-Path
+
+    if (-not $git) {
+        Invoke-RunStep 'Installing git (winget)' {
+            winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements
+        }
+    }
+    if (-not $cmake) {
+        Invoke-RunStep 'Installing cmake (winget)' {
+            winget install --id Kitware.CMake -e --accept-source-agreements --accept-package-agreements
+        }
+    }
+    if (-not $msvc) {
+        Invoke-RunStep 'Installing MSVC Build Tools (winget)' {
+            winget install --id Microsoft.VisualStudio.2022.BuildTools -e --accept-source-agreements --accept-package-agreements `
+                --override '--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart'
+        }
+    }
+
+    Refresh-Path
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Host '  git is still not on PATH after install; open a new terminal and re-run up.bat.'
+        Abort-LlamaCpp
+    }
+    if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+        Write-Host '  cmake is still not on PATH after install; open a new terminal and re-run up.bat.'
+        Abort-LlamaCpp
+    }
+    if (-not (Test-Msvc)) {
+        Write-Host '  MSVC Build Tools are still not detected after install; re-run up.bat in a new terminal.'
+        Abort-LlamaCpp
+    }
+}
+
 # Full source build of llama.cpp into %USERPROFILE%\llama.cpp (mirrors the
 # Linux scripts/ensure-llama-cpp.sh _do_install). Sets LLMBENCH_LLAMA_CPP_BIN_DIR
 # and returns the bin dir on success; falls back to a custom location otherwise.
@@ -90,16 +188,7 @@ function Install-LlamaCpp {
     Write-Host "    source dir : $target"
     Write-Host "    binary dir : $binDir"
 
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        Write-Host '  git is required to build llama.cpp but was not found on PATH.'
-        Write-Host '  Install Git for Windows from https://git-scm.com/download/win and re-run up.bat.'
-        Abort-LlamaCpp
-    }
-    if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
-        Write-Host '  cmake is required to build llama.cpp but was not found on PATH.'
-        Write-Host '  Install CMake from https://cmake.org/download/ and re-run up.bat.'
-        Abort-LlamaCpp
-    }
+    Install-MissingRequirements
 
     $nvidia = Get-Command nvidia-smi -ErrorAction SilentlyContinue
     if ($nvidia) {
@@ -108,7 +197,25 @@ function Install-LlamaCpp {
             $buildType = 'cuda'
             Write-Host ''
             Write-Host "  NVIDIA GPU detected: $gpuLine"
-            Write-Host '  note: the CUDA build needs the CUDA Toolkit (nvcc) and a recent NVIDIA driver.'
+            $nvcc = Get-Command nvcc -ErrorAction SilentlyContinue
+            if ($nvcc) {
+                Write-Host "  CUDA Toolkit found: $($nvcc.Source)"
+            } else {
+                Write-Host '  note: the CUDA build needs the CUDA Toolkit (nvcc) and a recent NVIDIA driver.'
+                if (Test-Winget) {
+                    if (Ask-YesNo 'Install the CUDA Toolkit now via winget (Nvidia.CUDA)?') {
+                        Invoke-RunStep 'Installing CUDA Toolkit (winget)' {
+                            winget install --id Nvidia.CUDA -e --accept-source-agreements --accept-package-agreements
+                        }
+                    } else {
+                        Write-Host '  Continuing without the CUDA Toolkit; cmake will attempt to find one.'
+                        Write-Host '  If the CUDA build fails, install it from https://developer.nvidia.com/cuda-downloads and re-run up.bat.'
+                    }
+                } else {
+                    Write-Host '  Install the CUDA Toolkit from https://developer.nvidia.com/cuda-downloads and re-run up.bat'
+                    Write-Host '  if the build fails to find it.'
+                }
+            }
         }
     }
     if ($buildType -eq 'cpu') {

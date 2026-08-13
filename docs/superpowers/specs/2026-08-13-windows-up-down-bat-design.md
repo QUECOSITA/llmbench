@@ -55,15 +55,19 @@ exist there. Resolution order:
    - stdin redirected → print message + prebuilt release URL, `exit 1`.
    - else interactive menu: `(1) already installed elsewhere, (2) install it now,
      (q) cancel`.
-     - `1` → `Read-Host` loop for a full path (accepts `q`/`c`/`cancel` to abort,
-       leading `~` expands to `%USERPROFILE%`); invalid dir offers `(r) try another
-       path, (i) install now, (q) cancel`.
+      - `1` → `Read-Host` loop for a full path (accepts `q`/`c`/`cancel` to abort,
+        leading `~` expands to `%USERPROFILE%`); invalid dir offers `(r) try another
+        path, (i) install now, (q) cancel`.
      - `2` → full source build into `%USERPROFILE%\llama.cpp` (git clone/pull, then
        `cmake -B <build> -S <target> -DCMAKE_BUILD_TYPE=Release` plus
        `-DGGML_CUDA=ON` when `nvidia-smi` detects an NVIDIA GPU, then
-       `cmake --build <build> --config Release`); requires `git` + `cmake` on PATH
-       (clear message + abort otherwise), each command wrapped in a retry/cancel
-       prompt and gated by a `Proceed with the install? [y/n/q]` approval.
+       `cmake --build <build> --config Release`); missing build requirements (git,
+       cmake, MSVC C++ toolchain via `vswhere`) are detected and offered for install
+       via `winget` (gated by `y/n/q`; manual-install URLs + abort when winget is
+       absent or the user declines), and a detected NVIDIA GPU with no CUDA toolkit
+       prompts to install `Nvidia.CUDA` via winget. Each command is wrapped in a
+       retry/cancel prompt and gated by a `Proceed with the install? [y/n/q]`
+       approval.
    - found → `$env:LLMBENCH_LLAMA_CPP_BIN_DIR = $dir` (inherited by child processes).
 
 ## Startup flow (`up.ps1`)

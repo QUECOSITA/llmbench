@@ -7,6 +7,15 @@ now offers a **full source build** (`(2) install it now`) mirroring the Linux
 `scripts/ensure-llama-cpp.sh`, instead of only prompting for a path / pointing at the
 prebuilt releases. `scripts/up.ps1` is the source of truth.
 
+**Implementation delta 2 (from verification):** `up.ps1` now also offers to install the
+**build requirements** when they are missing, mirroring the Linux
+`_check_requirements` flow: `Install-MissingRequirements` detects git, cmake, and an
+MSVC C++ toolchain (via `vswhere`) and offers `winget install` (`Git.Git`,
+`Kitware.CMake`, `Microsoft.VisualStudio.2022.BuildTools` with the VCTools workload)
+gated by `y/n/q`; a detected NVIDIA GPU with no CUDA toolkit prompts to install
+`Nvidia.CUDA` via winget. Aborts with the manual-install URLs when winget is absent or
+the user declines.
+
 **Goal:** Provide Windows equivalents of the Linux `up.sh`/`down.sh` workflow via thin `.bat` launchers + PowerShell scripts: resolve llama.cpp (source build offered when missing) → venv + deps → start uvicorn (8000) and Vite (5173) in the background → `down.bat` stops both.
 
 **Architecture:** `up.bat`/`down.bat` call `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\up.ps1` / `scripts\down.ps1`. Mirrors `up.sh` sourcing `scripts/ensure-llama-cpp.sh`. No backend/frontend code changes.
