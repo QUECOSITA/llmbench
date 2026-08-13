@@ -4,6 +4,10 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 nohup.out
+backend/uvicorn.log
+backend/uvicorn.log.err
+frontend/vite.log
+frontend/vite.log.err
 show.sh
 .impeccable/
 .superpowers/
