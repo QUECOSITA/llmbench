@@ -65,13 +65,15 @@ install_commands()`; no backend change needed.
 
 ## New file: `scripts/ensure-llama-cpp.sh` — flow
 
-1. **TTY guard** — if not a TTY, print "llama.cpp not found and up.sh is not
-   interactive" and `_abort`.
-2. **Explicit override** — if `LLMBENCH_LLAMA_CPP_BIN_DIR` is set and valid, use it;
-   if set but invalid, warn and continue detection.
-3. **PATH** — if both binaries resolve via `command -v`, done.
-4. **Standard dirs** — scan per-OS list; first valid dir wins → export + return.
-5. **Interactive menu** (cancellable; `q`/`c`/`cancel`/empty abort):
+1. **Resolve without prompting first** (works even when non-interactive):
+   - **Explicit override** — if `LLMBENCH_LLAMA_CPP_BIN_DIR` is set and valid, use it;
+     if set but invalid, warn and continue detection.
+   - **PATH** — if both binaries resolve via `command -v`, done.
+   - **Standard dirs** — scan per-OS list; first valid dir wins → export + return.
+2. **TTY guard** — reached only when llama.cpp is missing and a prompt would be
+   needed; if stdin/stdout are not a TTY, print "llama.cpp not found and up.sh is
+   not interactive" and `_abort`.
+3. **Interactive menu** (cancellable; `q`/`c`/`cancel`/empty abort):
    - **(1) Already installed elsewhere** → prompt for dir path (leading `~` expanded)
      → verify → export + return; invalid → inform + offer retry / install / cancel.
    - **(2) Install now** → system check → optional `sudo apt-get` install of missing

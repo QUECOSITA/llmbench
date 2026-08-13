@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Implementation deltas (from verification):** (1) the TTY guard was moved to just
+before the interactive menu — resolution via override/PATH/standard dirs now
+succeeds even when non-interactive; (2) `_standard_bin_dirs` emits one directory
+per line (not space-separated) so the scan loop splits them correctly. The
+script at `scripts/ensure-llama-cpp.sh` is the source of truth.
+
 **Goal:** Make `up.sh` resolve llama.cpp (`llama-bench` + `llama-server`) before starting the app — from `LLMBENCH_LLAMA_CPP_BIN_DIR`, PATH, or OS-standard dirs — and, when missing, run an interactive, fully-cancellable flow that points at an existing install or triggers a fresh source build. Cancelling at any prompt aborts `up.sh`.
 
 **Architecture:** A new sourced script `scripts/ensure-llama-cpp.sh` does detection + interactive install and `export`s `LLMBENCH_LLAMA_CPP_BIN_DIR` back into `up.sh` (sourcing is required so the export propagates to the spawned backend/frontend). `up.sh` just sources it as its first action. No backend/frontend code changes.
