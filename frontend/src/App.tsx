@@ -108,7 +108,6 @@ export function App() {
   const [errorContext, setErrorContext] = useState<ApiErrorContext | null>(null);
   const [watchingRunId, setWatchingRunId] = useState<number | null>(null);
   const [modelInput, setModelInput] = useState("");
-  const [pause, setPause] = useState(true);
   const [downloaded, setDownloaded] = useState<
     Array<{ server_id: string; repo_id: string; status: string; gguf_filename?: string | null }>
   >([]);
@@ -234,32 +233,6 @@ export function App() {
 
   const [progressState, dispatch] = useReducer(progressReducer, INITIAL_STATE);
 
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .listRuns()
-      .then(({ runs }) => {
-        if (cancelled) return;
-        const latest = runs.find((r) => r.status !== "running" && r.status !== "queued");
-        if (!latest) return;
-        return api.getRun(latest.id).then((detail) => {
-          if (cancelled) return;
-          dispatch({ type: "run_started", run_id: latest.id, total: latest.requested_n ?? 0 });
-          dispatch({
-            type: "run_sync",
-            run_id: latest.id,
-            status: detail.status ?? latest.status,
-            total: detail.total ?? latest.requested_n ?? 0,
-            results: (detail.results ?? []).map(toResultRow),
-          });
-        });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const pollTimerRef = useRef<number | null>(null);
   const pollRun = useCallback((runId: number) => {
     let stopped = false;
@@ -324,6 +297,40 @@ export function App() {
     pollTimerRef.current = window.setTimeout(tick, 1000);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listRuns()
+      .then(({ runs }) => {
+        if (cancelled) return;
+        const active = runs.find((r) => r.status === "running" || r.status === "queued");
+        if (active) {
+          setWatchingRunId(active.id);
+          dispatch({ type: "run_started", run_id: active.id, total: active.requested_n ?? 0 });
+          if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
+          watchRun(active.id);
+          return;
+        }
+        const latest = runs.find((r) => r.status !== "running" && r.status !== "queued");
+        if (!latest) return;
+        return api.getRun(latest.id).then((detail) => {
+          if (cancelled) return;
+          dispatch({ type: "run_started", run_id: latest.id, total: latest.requested_n ?? 0 });
+          dispatch({
+            type: "run_sync",
+            run_id: latest.id,
+            status: detail.status ?? latest.status,
+            total: detail.total ?? latest.requested_n ?? 0,
+            results: (detail.results ?? []).map(toResultRow),
+          });
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [watchRun]);
+
   useEffect(() => () => {
     if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
   }, []);
@@ -338,7 +345,6 @@ export function App() {
     try {
       const { run_id } = await api.startBenchmark({
         repo_id: analysis.repo_id,
-        pause,
         configs: configs.map((c) => ({
           server_id: effectiveServer,
           flags: c.flags,
@@ -371,18 +377,7 @@ export function App() {
         setErrorContext(apiErr.context);
       }
     }
-  }, [analysis, configs, pause, pollRun, server, watchRun]);
-
-  const onContinue = useCallback(async () => {
-    if (progressState.runId === null) return;
-    try {
-      await api.continueRun(progressState.runId);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.startsWith("409")) return;
-      setError(message);
-    }
-  }, [progressState.runId]);
+  }, [analysis, configs, pollRun, server, watchRun]);
 
   const events = useBenchmarkProgress();
 
@@ -555,10 +550,6 @@ export function App() {
                 }
                 lines={progressState.lines}
                 currentCommand={progressState.currentCommand}
-                waiting={progressState.waiting}
-                pause={pause}
-                onPauseChange={setPause}
-                onContinue={onContinue}
               />
               {watchingRunId !== null && (
                 <p style={{ color: "var(--anode)", fontSize: 12 }}>
