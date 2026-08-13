@@ -133,16 +133,15 @@ test("results_clear empties results and live metrics", () => {
   expect(next.runId).toBe(1);
 });
 
-test("run_started clears lines and waiting", () => {
+test("run_started clears lines and currentCommand", () => {
   const prev = {
     ...INITIAL_STATE,
     lines: ["old line"],
-    waiting: true,
+    waiting: false,
     currentCommand: "old cmd",
   };
   const next = progressReducer(prev, ev("run_started", 1, { total: 2 }));
   expect(next.lines).toEqual([]);
-  expect(next.waiting).toBe(false);
   expect(next.currentCommand).toBe("");
 });
 
@@ -188,41 +187,12 @@ test("config_done appends a result line", () => {
   expect(next.lines[next.lines.length - 1]).toContain("100.0");
 });
 
-test("config_wait sets waiting and run_done clears it", () => {
-  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
-  const waiting = progressReducer(state, { type: "config_wait", run_id: 1, index: 0 });
-  expect(waiting.waiting).toBe(true);
-  const done = progressReducer(waiting, ev("run_done", 1));
-  expect(done.waiting).toBe(false);
-});
-
 test("bench_log for a different run_id is ignored", () => {
   const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
   const next = progressReducer(state, {
     type: "bench_log", run_id: 99, index: 0, kind: "line", text: "stray",
   });
   expect(next.lines).toEqual([]);
-});
-
-test("config_start clears waiting from a previous config wait", () => {
-  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 2 }));
-  const waiting = progressReducer(state, { type: "config_wait", run_id: 1, index: 0 });
-  expect(waiting.waiting).toBe(true);
-  const next = progressReducer(waiting, {
-    type: "config_start",
-    run_id: 1,
-    index: 1,
-    total: 2,
-    config: { bench_command: ["llama-bench"] },
-  });
-  expect(next.waiting).toBe(false);
-});
-
-test("run_sync clears waiting", () => {
-  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
-  const waiting = progressReducer(state, { type: "config_wait", run_id: 1, index: 0 });
-  const done = progressReducer(waiting, ev("run_sync", 1, { results: [] }));
-  expect(done.waiting).toBe(false);
 });
 
 test("config_start header numbering increments across configs", () => {
