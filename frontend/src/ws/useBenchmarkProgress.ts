@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 export interface ProgressEvent {
-  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "config_wait" | "results_clear";
+  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "results_clear";
   run_id?: number;
   index?: number;
   total?: number;
@@ -31,7 +31,6 @@ export interface ProgressState {
   results: ResultRow[];
   lines: string[];
   currentCommand: string;
-  waiting: boolean;
 }
 
 export const INITIAL_STATE: ProgressState = {
@@ -44,7 +43,6 @@ export const INITIAL_STATE: ProgressState = {
   results: [],
   lines: [],
   currentCommand: "",
-  waiting: false,
 };
 
 export function progressReducer(state: ProgressState, event: ProgressEvent): ProgressState {
@@ -59,7 +57,6 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       results: [],
       lines: [],
       currentCommand: "",
-      waiting: false,
     };
   }
 
@@ -76,7 +73,6 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       index: event.index ?? state.index,
       total: event.total ?? state.total,
       currentCommand: command,
-      waiting: false,
       lines: [...state.lines, header],
     };
   }
@@ -88,10 +84,6 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
         ? [...state.lines.slice(0, -1), text]
         : [...state.lines, text];
     return { ...state, lines };
-  }
-
-  if (event.type === "config_wait" && event.run_id === state.runId) {
-    return { ...state, waiting: true };
   }
 
   if (event.type === "config_done" && event.run_id === state.runId) {
@@ -121,7 +113,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
   }
 
   if (event.type === "run_done" && event.run_id === state.runId) {
-    return { ...state, running: false, waiting: false };
+    return { ...state, running: false };
   }
 
   if (event.type === "run_watch" && event.run_id === state.runId) {
@@ -136,7 +128,6 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       promptTps: last?.prompt_processing_tps ?? null,
       decodeTps: last?.decode_tps ?? null,
       results,
-      waiting: false,
     };
   }
 
@@ -153,7 +144,6 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       results,
       lines: state.lines,
       currentCommand: state.currentCommand,
-      waiting: false,
     };
   }
 

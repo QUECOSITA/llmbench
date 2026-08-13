@@ -49,8 +49,6 @@ class ApiError(Exception):
 
 KNOWN_SERVERS = ("llama.cpp",)
 
-AUTO_ADVANCE_GRACE_S = 3.0
-
 
 def _download_command(repo_id: str, server_id: str, gguf_filename: str | None = None,
                       cache_dir: str | None = None) -> list[str]:
@@ -149,7 +147,6 @@ class AppState:
         self._download_cancelled = False
         self._prune_proc: asyncio.subprocess.Process | None = None
         self._prune_answer: asyncio.Queue[str] | None = None
-        self._continue_queue: asyncio.Queue | None = None
         self._active_run_id: int | None = None
 
 
@@ -624,29 +621,14 @@ async def start_run(payload: dict):
                            context={"config_index": configs.index(cfg),
                                     "server_id": cfg.get("server_id"),
                                     "bench_tool": cfg.get("bench_tool")})
-    pause = bool(payload.get("pause", True))
     run_id = db_mod.create_run(s.conn, repo_id, len(configs))
     with s._state_lock:
         s._job_active = True
-    asyncio.create_task(_run_job(s, run_id, configs, pause=pause))
+    asyncio.create_task(_run_job(s, run_id, configs))
     return {"run_id": run_id}
 
 
-@router.post("/benchmarks/continue")
-async def continue_run(payload: dict):
-    s = _require_state()
-    if s._continue_queue is None or s._active_run_id is None:
-        raise ApiError(409, "No benchmark is waiting for input",
-                       context={"active_run_id": s._active_run_id})
-    if payload.get("run_id") != s._active_run_id:
-        raise ApiError(409, "Run is not waiting for input",
-                       context={"active_run_id": s._active_run_id})
-    await s._continue_queue.put("continue")
-    return {"ok": True}
-
-
-async def _run_job(s: AppState, run_id: int, configs: list[dict], pause: bool = True):
-    s._continue_queue = None
+async def _run_job(s: AppState, run_id: int, configs: list[dict]):
     s._active_run_id = run_id
     try:
         async with s.lock:
@@ -693,12 +675,6 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict], pause: bool = 
                         break
                     if result["status"] == "failed":
                         status = "failed"
-                    if pause and result["status"] == "ok":
-                        wait_queue: asyncio.Queue = asyncio.Queue()
-                        s._continue_queue = wait_queue
-                        await broadcast(s, {"type": "config_wait", "run_id": run_id, "index": i})
-                        await _await_continue(s, wait_queue)
-                        s._continue_queue = None
                 db_mod.set_run_status(s.conn, run_id, status)
                 await broadcast(s, {"type": "run_done", "run_id": run_id, "status": status})
             except Exception:
@@ -707,27 +683,9 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict], pause: bool = 
                 await broadcast(s, {"type": "run_done", "run_id": run_id, "status": "failed"})
     finally:
         s.runner = None
-        s._continue_queue = None
         s._active_run_id = None
         with s._state_lock:
             s._job_active = False
-
-
-async def _await_continue(s: AppState, queue: asyncio.Queue | None) -> None:
-    if queue is None:
-        return
-    empty_for = 0.0
-    while True:
-        if not queue.empty():
-            queue.get_nowait()
-            return
-        if len(s._ws_clients) == 0:
-            empty_for += 0.2
-            if empty_for >= AUTO_ADVANCE_GRACE_S:
-                return
-        else:
-            empty_for = 0.0
-        await asyncio.sleep(0.2)
 
 
 def _coerce_model_id(raw) -> int | None:
