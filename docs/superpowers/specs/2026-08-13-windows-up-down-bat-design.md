@@ -24,10 +24,13 @@ run dev`, port 5173) in the background → on `down.bat`, stop both processes.
   PowerShell is native on Windows 10/11 and is far more readable/maintainable for the
   resolver, background processes, and process killing. Mirrors how `up.sh` sources
   `scripts/ensure-llama-cpp.sh`.
-- **llama.cpp resolution:** *simplified resolver* (user-selected option) — check
-  `LLMBENCH_LLAMA_CPP_BIN_DIR`, then PATH, then standard dirs, then interactive custom
-  path. **No source build on Windows.** When missing, point the user at the ggml-org
-  prebuilt releases instead of auto-building.
+- **llama.cpp resolution:** *simplified resolver with optional source build* — check
+  `LLMBENCH_LLAMA_CPP_BIN_DIR`, then PATH, then standard dirs, then interactive menu
+  offering a custom path or a full source build. When missing, the interactive flow
+  offers **(1) already installed elsewhere** (custom path) or **(2) install it now**
+  (git + cmake build into `%USERPROFILE%\llama.cpp`, CUDA build when an NVIDIA GPU is
+  detected). Non-interactive runs point the user at the ggml-org prebuilt releases
+  instead of building.
 - **Background processes:** `Start-Process` with hidden windows and logs to
   `backend\uvicorn.log` (+ `.err`) and `frontend\vite.log` (+ `.err`), matching the
   nohup-style detached behavior of `up.sh`.
@@ -36,8 +39,7 @@ run dev`, port 5173) in the background → on `down.bat`, stop both processes.
 - **Process kill:** `down.bat` matches processes by command line (`uvicorn` /
   `vite`) via `Get-CimInstance Win32_Process` — the `pkill -f` equivalent. No blanket
   `taskkill /IM node.exe`.
-- **Out of scope:** `show.sh` (`fg %2` is bash job control, no Windows equivalent)
-  and auto source-build of llama.cpp on Windows.
+- **Out of scope:** `show.sh` (`fg %2` is bash job control, no Windows equivalent).
 
 ## llama.cpp resolution flow (`up.ps1`)
 
@@ -51,8 +53,17 @@ exist there. Resolution order:
    first valid wins → export.
 4. Missing:
    - stdin redirected → print message + prebuilt release URL, `exit 1`.
-   - else interactive `Read-Host` loop: full path (accepts `q`/`c`/`cancel` to abort,
-     leading `~` expands to `%USERPROFILE%`); invalid dir re-prompts.
+   - else interactive menu: `(1) already installed elsewhere, (2) install it now,
+     (q) cancel`.
+     - `1` → `Read-Host` loop for a full path (accepts `q`/`c`/`cancel` to abort,
+       leading `~` expands to `%USERPROFILE%`); invalid dir offers `(r) try another
+       path, (i) install now, (q) cancel`.
+     - `2` → full source build into `%USERPROFILE%\llama.cpp` (git clone/pull, then
+       `cmake -B <build> -S <target> -DCMAKE_BUILD_TYPE=Release` plus
+       `-DGGML_CUDA=ON` when `nvidia-smi` detects an NVIDIA GPU, then
+       `cmake --build <build> --config Release`); requires `git` + `cmake` on PATH
+       (clear message + abort otherwise), each command wrapped in a retry/cancel
+       prompt and gated by a `Proceed with the install? [y/n/q]` approval.
    - found → `$env:LLMBENCH_LLAMA_CPP_BIN_DIR = $dir` (inherited by child processes).
 
 ## Startup flow (`up.ps1`)
@@ -94,8 +105,8 @@ exist there. Resolution order:
 
 - No PowerShell on the Linux dev box (`pwsh`/`powershell` not available), so no local
   syntax/execution check; verification is careful review plus a manual Windows
-  checklist (first run with missing llama.cpp → prompt + release URL; run with
-  llama.cpp present; verify logs; `down.bat` stops both processes, ports 8000/5173
-  free).
+  checklist (first run with missing llama.cpp → menu offering install/path + release
+  URL; run with llama.cpp present; verify logs; `down.bat` stops both processes, ports
+  8000/5173 free).
 - Full local suite (backend `pytest`, frontend `tsc -b` + `vitest run`, Playwright
   `e2e`) must stay green — none of the touched files are part of it.

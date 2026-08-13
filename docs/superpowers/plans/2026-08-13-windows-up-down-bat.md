@@ -2,7 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Provide Windows equivalents of the Linux `up.sh`/`down.sh` workflow via thin `.bat` launchers + PowerShell scripts: resolve llama.cpp (simplified, no source build) → venv + deps → start uvicorn (8000) and Vite (5173) in the background → `down.bat` stops both.
+**Implementation delta (from verification):** the missing-llama.cpp branch of `up.ps1`
+now offers a **full source build** (`(2) install it now`) mirroring the Linux
+`scripts/ensure-llama-cpp.sh`, instead of only prompting for a path / pointing at the
+prebuilt releases. `scripts/up.ps1` is the source of truth.
+
+**Goal:** Provide Windows equivalents of the Linux `up.sh`/`down.sh` workflow via thin `.bat` launchers + PowerShell scripts: resolve llama.cpp (source build offered when missing) → venv + deps → start uvicorn (8000) and Vite (5173) in the background → `down.bat` stops both.
 
 **Architecture:** `up.bat`/`down.bat` call `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\up.ps1` / `scripts\down.ps1`. Mirrors `up.sh` sourcing `scripts/ensure-llama-cpp.sh`. No backend/frontend code changes.
 
