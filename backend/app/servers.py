@@ -24,13 +24,18 @@ def _module_importable(module: str) -> bool:
     return importlib.util.find_spec(module) is not None
 
 
+def _binary_candidates(name: str) -> list[str]:
+    return [name, f"{name}.exe"]
+
+
 def resolve_bench_binary(server_id: str, bin_dir: str | None = None) -> str | None:
     """Resolve the executable that runs a server's benchmark. llama.cpp resolves
     the llama-bench binary from bin_dir or PATH."""
     if server_id == "llama.cpp" and bin_dir:
-        candidate = Path(bin_dir) / "llama-bench"
-        if candidate.is_file():
-            return str(candidate)
+        for cand in _binary_candidates("llama-bench"):
+            candidate = Path(bin_dir) / cand
+            if candidate.is_file():
+                return str(candidate)
     for b in SERVERS[server_id]["bench_binaries"]:
         found = shutil.which(b)
         if found:
@@ -76,9 +81,10 @@ def is_spec_decoding_model(repo_id: str, gguf_filename: str | None = None,
 def resolve_serving_binary(server_id: str, bin_dir: str | None = None) -> str | None:
     meta = SERVERS[server_id]
     if server_id == "llama.cpp" and bin_dir:
-        candidate = Path(bin_dir) / "llama-server"
-        if candidate.is_file():
-            return str(candidate)
+        for cand in _binary_candidates("llama-server"):
+            candidate = Path(bin_dir) / cand
+            if candidate.is_file():
+                return str(candidate)
     for b in meta["serving_binaries"]:
         found = shutil.which(b)
         if found:

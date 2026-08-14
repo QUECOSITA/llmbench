@@ -221,6 +221,18 @@ def test_resolve_serving_binary_uses_bin_dir(tmp_path):
     assert resolve_serving_binary("llama.cpp", bin_dir=str(tmp_path)) == str(fake)
 
 
+def test_resolve_bench_binary_windows_exe(tmp_path):
+    from app.servers import resolve_bench_binary
+    (tmp_path / "llama-bench.exe").write_bytes(b"x")
+    assert resolve_bench_binary("llama.cpp", str(tmp_path)) == str(tmp_path / "llama-bench.exe")
+
+
+def test_resolve_serving_binary_windows_exe(tmp_path):
+    from app.servers import resolve_serving_binary
+    (tmp_path / "llama-server.exe").write_bytes(b"x")
+    assert resolve_serving_binary("llama.cpp", str(tmp_path)) == str(tmp_path / "llama-server.exe")
+
+
 def test_resolve_speed_bench_script_configured_wins(tmp_path):
     configured = tmp_path / "speed_bench.py"
     configured.write_text("x")
