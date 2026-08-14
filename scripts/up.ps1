@@ -1,7 +1,7 @@
 # up.ps1 - Windows counterpart of up.sh.
-# Resolves llama.cpp (offers a full source build when missing), creates the
-# backend venv, installs deps, and starts uvicorn + the Vite dev server in the
-# background with hidden windows.
+# Resolves an existing llama.cpp install (installing llama.cpp is the user's
+# responsibility), creates the backend venv, installs deps, and starts uvicorn +
+# the Vite dev server in the background with hidden windows.
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -18,38 +18,16 @@ function Test-BinDir([string]$dir) {
 function Abort-LlamaCpp {
     Write-Host ''
     Write-Host '  llama.cpp (llama-bench + llama-server) is required for benchmarks.'
+    Write-Host '  Installing llama.cpp is your responsibility (this app does not install it).'
+    Write-Host '  Download a prebuilt Windows build from: https://github.com/ggml-org/llama.cpp/releases'
+    Write-Host '  Then point up.bat at it (LLMBENCH_LLAMA_CPP_BIN_DIR, PATH, or the path prompt).'
     Write-Host '  Startup aborted.'
     exit 1
 }
 
-# Returns $true for yes, $false for no; aborts on cancel.
-function Ask-YesNo([string]$prompt) {
-    while ($true) {
-        $reply = Read-Host "  $prompt [y/n/q]"
-        switch -Regex ($reply.Trim().ToLower()) {
-            '^(y|yes)$' { return $true }
-            '^(n|no|)$' { return $false }
-            '^(q|quit|c|cancel)$' { Abort-LlamaCpp }
-            default { Write-Host '  Please answer y (yes), n (no), or q (cancel).' }
-        }
-    }
-}
-
-# Run a command, offering retry or cancel if it fails.
-function Invoke-RunStep([string]$desc, [scriptblock]$action) {
-    while ($true) {
-        Write-Host "  $desc..."
-        & $action
-        if ($LASTEXITCODE -eq 0) { return }
-        Write-Host "  Command failed: $desc"
-        if (Ask-YesNo 'Retry?') { continue }
-        Abort-LlamaCpp
-    }
-}
-
 # Interactive loop for a directory containing llama-bench.exe/llama-server.exe.
 # Aborts on q/c/cancel; ~ expands to %USERPROFILE%; invalid dirs offer
-# (r) another path, (i) install now, (q) cancel.
+# (r) another path, (q) cancel.
 function Read-CustomLocation {
     :outer while ($true) {
         $input = Read-Host '  Full path to the directory containing llama-bench.exe and llama-server.exe (q to cancel)'
@@ -65,99 +43,14 @@ function Read-CustomLocation {
         }
         Write-Host "  No llama-bench.exe/llama-server.exe executables found in: $expanded"
         while ($true) {
-            $next = Read-Host '  What next? (r) try another path, (i) install now, (q) cancel'
+            $next = Read-Host '  What next? (r) try another path, (q) cancel'
             switch -Regex ($next.Trim().ToLower()) {
                 '^(r|retry)$' { break outer }
-                '^(i|install)$' { return Install-LlamaCpp }
                 '^(q|quit|c|cancel|)$' { Abort-LlamaCpp }
-                default { Write-Host '  Please choose r, i, or q.' }
+                default { Write-Host '  Please choose r or q.' }
             }
         }
     }
-}
-
-# Full source build of llama.cpp into %USERPROFILE%\llama.cpp (mirrors the
-# Linux scripts/ensure-llama-cpp.sh _do_install). Sets LLMBENCH_LLAMA_CPP_BIN_DIR
-# and returns the bin dir on success; falls back to a custom location otherwise.
-function Install-LlamaCpp {
-    $target = Join-Path $env:USERPROFILE 'llama.cpp'
-    $buildDir = Join-Path $target 'build'
-    $binDir = Join-Path $buildDir 'bin'
-    $buildType = 'cpu'
-
-    Write-Host ''
-    Write-Host '  Preparing a llama.cpp source build.'
-    Write-Host "    source dir : $target"
-    Write-Host "    binary dir : $binDir"
-
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        Write-Host '  git is required to build llama.cpp but was not found on PATH.'
-        Write-Host '  Install Git for Windows from https://git-scm.com/download/win and re-run up.bat.'
-        Abort-LlamaCpp
-    }
-    if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
-        Write-Host '  cmake is required to build llama.cpp but was not found on PATH.'
-        Write-Host '  Install CMake from https://cmake.org/download/ and re-run up.bat.'
-        Abort-LlamaCpp
-    }
-
-    $nvidia = Get-Command nvidia-smi -ErrorAction SilentlyContinue
-    if ($nvidia) {
-        $gpuLine = (& nvidia-smi --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1)
-        if ($LASTEXITCODE -eq 0 -and $gpuLine) {
-            $buildType = 'cuda'
-            Write-Host ''
-            Write-Host "  NVIDIA GPU detected: $gpuLine"
-            Write-Host '  note: the CUDA build needs the CUDA Toolkit (nvcc) and a recent NVIDIA driver.'
-        }
-    }
-    if ($buildType -eq 'cpu') {
-        Write-Host ''
-        Write-Host '  No NVIDIA GPU detected - building the CPU-only build.'
-    }
-
-    Write-Host ''
-    Write-Host '  Install plan:'
-    Write-Host "    target dir : $target"
-    Write-Host "    build type : $($buildType.ToUpper())"
-    Write-Host '    commands   :'
-    if (-not (Test-Path $target)) {
-        Write-Host '      git clone --depth 1 https://github.com/ggml-org/llama.cpp <target>'
-    }
-    $cudaFlag = if ($buildType -eq 'cuda') { ' -DGGML_CUDA=ON' } else { '' }
-    Write-Host "      cmake -B <build> -S <target> -DCMAKE_BUILD_TYPE=Release$cudaFlag"
-    Write-Host '      cmake --build <build> --config Release'
-
-    if (-not (Ask-YesNo 'Proceed with the install?')) { Abort-LlamaCpp }
-
-    if (-not (Test-Path $target)) {
-        Invoke-RunStep 'Cloning llama.cpp' { git clone --depth 1 https://github.com/ggml-org/llama.cpp $target }
-    } elseif (Test-Path (Join-Path $target '.git')) {
-        Write-Host ''
-        Write-Host '  Updating existing llama.cpp checkout...'
-        git -C $target pull --ff-only
-        if ($LASTEXITCODE -ne 0) { Write-Host '  git pull failed; continuing with the existing source.' }
-    } else {
-        Write-Host ''
-        Write-Host "  warning: $target exists but is not a git checkout; building from it as-is."
-    }
-
-    $cmakeArgs = @('-B', $buildDir, '-S', $target, '-DCMAKE_BUILD_TYPE=Release')
-    if ($buildType -eq 'cuda') { $cmakeArgs += '-DGGML_CUDA=ON' }
-    Invoke-RunStep 'Configuring build (cmake)' { cmake @cmakeArgs }
-    Invoke-RunStep 'Building llama.cpp (cmake --build)' { cmake --build $buildDir --config Release }
-
-    if (Test-BinDir $binDir) {
-        $env:LLMBENCH_LLAMA_CPP_BIN_DIR = $binDir
-        Write-Host ''
-        Write-Host "  llama.cpp installed and verified at $binDir"
-        return $binDir
-    }
-
-    Write-Host ''
-    Write-Host "  The build finished but llama-bench.exe/llama-server.exe were not found in: $binDir"
-    Write-Host '  This can happen if the binaries were placed elsewhere.'
-    return Read-CustomLocation
 }
 
 function Resolve-LlamaCpp {
@@ -197,12 +90,11 @@ function Resolve-LlamaCpp {
     }
 
     while (-not $binDir) {
-        $reply = Read-Host '  How do you want to provide llama.cpp? (1) already installed elsewhere, (2) install it now, (q) cancel'
+        $reply = Read-Host '  How do you want to provide llama.cpp? (1) already installed elsewhere, (q) cancel'
         switch -Regex ($reply.Trim().ToLower()) {
             '^(1)$' { $binDir = Read-CustomLocation }
-            '^(2)$' { $binDir = Install-LlamaCpp }
             '^(q|quit|c|cancel|)$' { Abort-LlamaCpp }
-            default { Write-Host '  Please choose 1, 2, or q (cancel).' }
+            default { Write-Host '  Please choose 1 or q (cancel).' }
         }
     }
     return $binDir
