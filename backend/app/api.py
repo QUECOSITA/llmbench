@@ -1,11 +1,7 @@
 import asyncio
-import fcntl
 import logging
 import os
 import shutil
-import signal
-import struct
-import termios
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +16,7 @@ from app.fit import arch_from_config, config_fit, fit_verdict
 from app.flags import build_serving_command, generate_configs
 from app.hardware import detect_hardware
 from app.hf import HfClient, InvalidModelInput, normalize_input, parse_input
+from app.pty_stream import DownloadPty, open_download_pty
 from app.readme_parser import (detect_serving_programs, extract_flags,
                                has_serving_command, top_serving_program)
 from app.servers import (build_bench_command, build_server_command, build_speed_bench_command,
@@ -29,7 +26,6 @@ from app.servers import (build_bench_command, build_server_command, build_speed_
                          speed_bench_default_flags, validate_speed_bench_flags,
                          SPEED_BENCH_BENCHES, SPEED_BENCH_CATEGORIES)
 from app.spawn import spawn_env
-from app.tty_stream import TtyStream
 
 router = APIRouter(prefix="/api")
 
@@ -66,71 +62,9 @@ def _prune_command(cache_dir: str | None = None) -> list[str]:
     return cmd
 
 
-def _open_pty() -> tuple[int, int]:
-    """Open a pty with a real window size.
-
-    os.openpty() defaults to a 0x0 terminal. Tools like tqdm query the size and
-    suppress their progress bars entirely when it reads 0 columns/rows, so set a
-    sane default on the slave before the child is spawned.
-    """
-    master_fd, slave_fd = os.openpty()
-    try:
-        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
-    except OSError:
-        pass
-    return master_fd, slave_fd
-
-
-async def _spawn_pty(cmd: list[str], stdin_fd: int, stdout_fd: int, stderr_fd: int):
-    return await asyncio.create_subprocess_exec(
-        *cmd, stdin=stdin_fd, stdout=stdout_fd, stderr=stderr_fd, start_new_session=True,
-        env=spawn_env(),
-    )
-
-
-async def _read_master(master_fd: int) -> asyncio.Queue[bytes | None]:
-    """Read a pty master fd on a background thread into an asyncio queue."""
-    loop = asyncio.get_running_loop()
-    queue: asyncio.Queue[bytes | None] = asyncio.Queue()
-
-    def _read() -> None:
-        try:
-            while True:
-                try:
-                    data = os.read(master_fd, 4096)
-                except OSError:
-                    break
-                if not data:
-                    break
-                loop.call_soon_threadsafe(queue.put_nowait, data)
-        finally:
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-
-    threading.Thread(target=_read, daemon=True).start()
-    return queue
-
-
-async def _stream_download_output(master_fd: int):
-    """Yield (kind, text) events parsed from a pty master fd."""
-    queue = await _read_master(master_fd)
-    tty = TtyStream()
-    while True:
-        chunk = await queue.get()
-        if chunk is None:
-            break
-        for event in tty.feed(chunk):
-            yield event
-    for event in tty.flush():
-        yield event
-
-
-async def _force_kill_after(proc, delay: float) -> None:
+async def _force_kill_after(pty, delay: float) -> None:
     await asyncio.sleep(delay)
-    if proc.returncode is None:
-        try:
-            proc.kill()
-        except ProcessLookupError:
-            pass
+    pty.close()
 
 
 class AppState:
@@ -143,7 +77,7 @@ class AppState:
         self._state_lock = threading.Lock()
         self._job_active = False
         self._download_active = False
-        self._download_proc: asyncio.subprocess.Process | None = None
+        self._download_pty: DownloadPty | None = None
         self._download_cancelled = False
         self._prune_proc: asyncio.subprocess.Process | None = None
         self._prune_answer: asyncio.Queue[str] | None = None
@@ -276,29 +210,22 @@ def _resolve_download_path(s: AppState, repo_id: str, server_id: str,
 
 async def _download_job(s: AppState, repo_id: str, server_id: str,
                         cmd: list[str], gguf_filename: str | None):
-    proc = None
-    master_fd = None
-    slave_fd = None
+    pty = None
     try:
         await broadcast(s, {"type": "download_started", "server_id": server_id,
                             "repo_id": repo_id, "command": " ".join(cmd)})
-        master_fd, slave_fd = _open_pty()
-        proc = await _spawn_pty(cmd, slave_fd, slave_fd, slave_fd)
-        try:
-            os.close(slave_fd)
-            slave_fd = None
-        except OSError:
-            slave_fd = None
-        s._download_proc = proc
-        async for kind, text in _stream_download_output(master_fd):
+        pty = open_download_pty(cmd, env=spawn_env())
+        await pty.spawn()
+        s._download_pty = pty
+        async for kind, text in pty.read_events():
             if kind == "line":
                 await broadcast(s, {"type": "download_log", "server_id": server_id,
                                     "repo_id": repo_id, "line": text})
             else:
                 await broadcast(s, {"type": "download_progress", "server_id": server_id,
                                     "repo_id": repo_id, "line": text})
-        rc = await proc.wait()
-        s._download_proc = None
+        rc = await pty.wait()
+        s._download_pty = None
         if s._download_cancelled:
             await broadcast(s, {"type": "download_cancelled", "server_id": server_id,
                                 "repo_id": repo_id})
@@ -327,13 +254,9 @@ async def _download_job(s: AppState, repo_id: str, server_id: str,
         await broadcast(s, {"type": "download_error", "server_id": server_id,
                             "repo_id": repo_id, "message": str(e)})
     finally:
-        for fd in (slave_fd, master_fd):
-            if fd is not None:
-                try:
-                    os.close(fd)
-                except OSError:
-                    pass
-        s._download_proc = None
+        if pty is not None:
+            pty.close()
+        s._download_pty = None
         s._download_cancelled = False
         with s._state_lock:
             s._download_active = False
@@ -443,13 +366,10 @@ async def cancel_download():
         if not s._download_active:
             raise HTTPException(409, "No download is running")
         s._download_cancelled = True
-    proc = s._download_proc
-    if proc is not None:
-        try:
-            proc.send_signal(signal.SIGINT)
-        except (ProcessLookupError, OSError):
-            pass
-        asyncio.create_task(_force_kill_after(proc, 5.0))
+    pty = s._download_pty
+    if pty is not None:
+        pty.cancel()
+        asyncio.create_task(_force_kill_after(pty, 5.0))
     return {"ok": True}
 
 

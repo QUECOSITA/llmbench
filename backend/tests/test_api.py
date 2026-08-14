@@ -1,6 +1,5 @@
 import asyncio
-import os
-import signal
+import sys
 import time
 
 import pytest
@@ -470,45 +469,33 @@ def test_download_cli_missing_400_with_manual_command(client, monkeypatch):
     assert "--format" in detail and "human" in detail
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="posix pty is not available on Windows")
 def test_open_pty_sets_a_terminal_window_size():
     """tqdm reads the pty's window size and suppresses its bars entirely when
-    it is 0x0, so _open_pty must set a real size on the slave fd."""
-    import app.api as api_mod
+    it is 0x0, so the POSIX pty must set a real size on the slave fd."""
+    import asyncio
+    import fcntl
+    import struct
+    import termios
+    from app.pty_stream import PosixPtyStream
+    stream = PosixPtyStream([sys.executable, "-u", "-c", "import time; time.sleep(0.2)"])
 
-    master_fd, slave_fd = api_mod._open_pty()
-    try:
-        import fcntl
-        import struct
-        import termios
+    async def check():
+        await stream.spawn()
+        master_fd = stream._master_fd
+        assert stream._slave_fd is None  # slave closed after spawn
+        try:
+            packed = fcntl.ioctl(master_fd, termios.TIOCGWINSZ, b"\x00" * 8)
+        except OSError:
+            packed = b""
+        await stream.wait()
+        stream.close()
+        rows, cols = struct.unpack("HHHH", packed)[:2] if packed else (0, 0)
+        return rows, cols
 
-        packed = fcntl.ioctl(slave_fd, termios.TIOCGWINSZ, b"\x00" * 8)
-        rows, cols = struct.unpack("HHHH", packed)[:2]
-        assert rows > 0, "pty slave has zero terminal rows"
-        assert cols > 0, "pty slave has zero terminal columns"
-    finally:
-        os.close(master_fd)
-        os.close(slave_fd)
-
-
-class FakeDownloadProc:
-    """Stands in for an asyncio subprocess attached to a pty."""
-
-    def __init__(self, rc=0):
-        self._rc = rc
-        self.returncode = None
-        self.signals = []
-        self.killed = False
-
-    async def wait(self):
-        self.returncode = self._rc
-        return self._rc
-
-    def send_signal(self, sig):
-        self.signals.append(sig)
-
-    def kill(self):
-        self.killed = True
-        self.returncode = -9
+    rows, cols = asyncio.run(check())
+    assert rows > 0, "pty slave has zero terminal rows"
+    assert cols > 0, "pty slave has zero terminal columns"
 
 
 class FakeStdin:
@@ -559,6 +546,37 @@ class FakePruneProcess:
         return self._rc
 
 
+class FakePty:
+    """Stands in for app.pty_stream.DownloadPty in download tests."""
+
+    def __init__(self, events=None):
+        self._events = events or [("line", "Fetching files..."), ("line", "Done")]
+        self.spawned = False
+        self.closed = False
+        self.cancelled = False
+        self._rc = 0
+
+    async def spawn(self):
+        self.spawned = True
+
+    async def read_events(self):
+        if hasattr(self._events, "__aiter__"):
+            async for kind, text in self._events:
+                yield (kind, text)
+        else:
+            for kind, text in self._events:
+                yield (kind, text)
+
+    def cancel(self):
+        self.cancelled = True
+
+    async def wait(self):
+        return self._rc
+
+    def close(self):
+        self.closed = True
+
+
 def test_download_llama_success_upserts_downloaded(client, tmp_path, monkeypatch):
     import app.api as api_mod
     events = []
@@ -566,17 +584,12 @@ def test_download_llama_success_upserts_downloaded(client, tmp_path, monkeypatch
     async def fake_broadcast(s, event):
         events.append(event)
 
-    async def fake_stream(master_fd):
-        yield ("line", "Fetching files...")
-        yield ("line", "Done")
+    def fake_open_pty(cmd, env=None):
+        return FakePty()
 
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
     monkeypatch.setattr("app.api.broadcast", fake_broadcast)
-    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
-    async def fake_spawn(*a, **k):
-        return FakeDownloadProc()
-    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
-    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
+    monkeypatch.setattr("app.api.open_download_pty", fake_open_pty)
 
     gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
     gguf.parent.mkdir(parents=True)
@@ -607,16 +620,12 @@ def test_download_llama_resolves_gguf_file(client, tmp_path, monkeypatch):
     async def fake_broadcast(s, event):
         events.append(event)
 
-    async def fake_stream(master_fd):
-        yield ("line", "ok")
+    def fake_open_pty(cmd, env=None):
+        return FakePty()
 
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
     monkeypatch.setattr("app.api.broadcast", fake_broadcast)
-    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
-    async def fake_spawn(*a, **k):
-        return FakeDownloadProc()
-    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
-    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
+    monkeypatch.setattr("app.api.open_download_pty", fake_open_pty)
 
     gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
     gguf.parent.mkdir(parents=True)
@@ -677,16 +686,12 @@ def test_download_llama_with_gguf_filename_uses_exact_file(client, tmp_path, mon
     async def fake_broadcast(s, event):
         events.append(event)
 
-    async def fake_stream(master_fd):
-        yield ("line", "ok")
+    def fake_open_pty(cmd, env=None):
+        return FakePty()
 
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
     monkeypatch.setattr("app.api.broadcast", fake_broadcast)
-    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
-    async def fake_spawn(*a, **k):
-        return FakeDownloadProc()
-    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
-    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
+    monkeypatch.setattr("app.api.open_download_pty", fake_open_pty)
 
     gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
     gguf.parent.mkdir(parents=True)
@@ -714,20 +719,20 @@ def test_cancel_409_when_no_download(client):
     assert r.status_code == 409
 
 
-def test_cancel_sends_sigint_to_active_proc(client, monkeypatch):
+def test_cancel_terminates_active_pty(client, monkeypatch):
     import app.api as api_mod
-    proc = FakeDownloadProc()
-    api_mod.state._download_proc = proc
+    pty = FakePty()
+    api_mod.state._download_pty = pty
     api_mod.state._download_active = True
     try:
         r = client.post("/api/models/download/cancel")
         assert r.status_code == 200 and r.json()["ok"] is True
         assert api_mod.state._download_cancelled is True
-        assert proc.signals == [signal.SIGINT]
+        assert pty.cancelled is True
     finally:
         api_mod.state._download_active = False
         api_mod.state._download_cancelled = False
-        api_mod.state._download_proc = None
+        api_mod.state._download_pty = None
 
 
 def test_analyze_fetches_model_arch(client, httpx_mock):
@@ -885,29 +890,26 @@ def test_cancel_then_prune_prompt_y(client, monkeypatch):
     async def fake_broadcast(s, event):
         events.append(event)
 
-    async def fake_stream(master_fd):
-        yield ("line", "Fetching files...")
-        while not api_mod.state._download_cancelled:
-            await asyncio.sleep(0.01)
-        yield ("line", "Done")
-
-    async def fake_spawn(*a, **k):
-        return FakeDownloadProc()
+    def fake_open_pty(cmd, env=None):
+        async def events():
+            yield ("line", "Fetching files...")
+            while not api_mod.state._download_cancelled:
+                await asyncio.sleep(0.01)
+            yield ("line", "Done")
+        return FakePty(events=events())
 
     async def fake_create(*a, **k):
         return FakePruneProcess()
 
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
     monkeypatch.setattr("app.api.broadcast", fake_broadcast)
-    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
-    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
-    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
+    monkeypatch.setattr("app.api.open_download_pty", fake_open_pty)
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
 
     r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
     assert r.status_code == 200
     assert _poll(lambda: any(e["type"] == "download_started" for e in events))
-    assert _poll(lambda: api_mod.state._download_proc is not None)
+    assert _poll(lambda: api_mod.state._download_pty is not None)
 
     r = client.post("/api/models/download/cancel")
     assert r.status_code == 200 and r.json()["ok"] is True
@@ -933,23 +935,20 @@ def test_cancel_then_prune_prompt_n(client, monkeypatch):
     async def fake_broadcast(s, event):
         events.append(event)
 
-    async def fake_stream(master_fd):
-        yield ("line", "Fetching files...")
-        while not api_mod.state._download_cancelled:
-            await asyncio.sleep(0.01)
-        yield ("line", "Done")
-
-    async def fake_spawn(*a, **k):
-        return FakeDownloadProc()
+    def fake_open_pty(cmd, env=None):
+        async def events():
+            yield ("line", "Fetching files...")
+            while not api_mod.state._download_cancelled:
+                await asyncio.sleep(0.01)
+            yield ("line", "Done")
+        return FakePty(events=events())
 
     async def fake_create(*a, **k):
         return FakePruneProcess(after="\nAborted!\n", rc=1)
 
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
     monkeypatch.setattr("app.api.broadcast", fake_broadcast)
-    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
-    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
-    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
+    monkeypatch.setattr("app.api.open_download_pty", fake_open_pty)
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
 
     client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
@@ -970,14 +969,13 @@ def test_cancel_then_prune_nothing_to_prune(client, monkeypatch):
     async def fake_broadcast(s, event):
         events.append(event)
 
-    async def fake_stream(master_fd):
-        yield ("line", "Fetching files...")
-        while not api_mod.state._download_cancelled:
-            await asyncio.sleep(0.01)
-        yield ("line", "Done")
-
-    async def fake_spawn(*a, **k):
-        return FakeDownloadProc()
+    def fake_open_pty(cmd, env=None):
+        async def events():
+            yield ("line", "Fetching files...")
+            while not api_mod.state._download_cancelled:
+                await asyncio.sleep(0.01)
+            yield ("line", "Done")
+        return FakePty(events=events())
 
     async def fake_create(*a, **k):
         return FakePruneProcess(
@@ -987,9 +985,7 @@ def test_cancel_then_prune_nothing_to_prune(client, monkeypatch):
 
     monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
     monkeypatch.setattr("app.api.broadcast", fake_broadcast)
-    monkeypatch.setattr("app.api._open_pty", lambda: (111, 112))
-    monkeypatch.setattr("app.api._spawn_pty", fake_spawn)
-    monkeypatch.setattr("app.api._stream_download_output", fake_stream)
+    monkeypatch.setattr("app.api.open_download_pty", fake_open_pty)
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
 
     client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
@@ -1111,9 +1107,6 @@ def test_run_detail_has_no_waiting_field(client, monkeypatch):
     assert _poll(lambda: bool(client.get(f"/api/benchmarks/{run_id}").json()["results"]))
     detail = client.get(f"/api/benchmarks/{run_id}").json()
     assert "waiting" not in detail
-
-
-import sys
 
 
 def test_generate_configs_llama_spec_readme_uses_speed_bench(tmp_path, monkeypatch):
