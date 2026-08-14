@@ -7,6 +7,7 @@ import pytest
 pytest.importorskip("app.pty_stream")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX pty is not available on Windows")
 def test_open_download_pty_factory_returns_posix_stream():
     from app.pty_stream import open_download_pty
     stream = open_download_pty(["hf", "download", "org/model"])

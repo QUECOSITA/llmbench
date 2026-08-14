@@ -15,7 +15,16 @@ class DownloadPty:
         raise NotImplementedError
 
     async def read_events(self):
-        raise NotImplementedError
+        assert self._queue is not None
+        tty = TtyStream()
+        while True:
+            chunk = await self._queue.get()
+            if chunk is None:
+                break
+            for event in tty.feed(chunk):
+                yield event
+        for event in tty.flush():
+            yield event
 
     def cancel(self) -> None:
         raise NotImplementedError
@@ -56,10 +65,18 @@ class PosixPtyStream(DownloadPty):
         self._master_fd = master_fd
         self._slave_fd = slave_fd
 
-        self._proc = await asyncio.create_subprocess_exec(
-            *self.cmd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
-            start_new_session=True, env=self.env,
-        )
+        try:
+            self._proc = await asyncio.create_subprocess_exec(
+                *self.cmd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+                start_new_session=True, env=self.env,
+            )
+        except Exception:
+            for fd in (master_fd, slave_fd):
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            raise
         try:
             os.close(slave_fd)
         except OSError:
@@ -85,18 +102,6 @@ class PosixPtyStream(DownloadPty):
 
         self._reader_thread = threading.Thread(target=_read, daemon=True)
         self._reader_thread.start()
-
-    async def read_events(self):
-        assert self._queue is not None
-        tty = TtyStream()
-        while True:
-            chunk = await self._queue.get()
-            if chunk is None:
-                break
-            for event in tty.feed(chunk):
-                yield event
-        for event in tty.flush():
-            yield event
 
     def cancel(self) -> None:
         import signal
@@ -139,9 +144,8 @@ class ConPtyStream(DownloadPty):
     async def spawn(self) -> None:
         from winpty import Backend, PtyProcess
 
-        env_pairs = [f"{k}={v}" for k, v in self.env.items()]
         self._proc = PtyProcess.spawn(
-            self.cmd, env=env_pairs, dimensions=(24, 80), backend=Backend.ConPTY,
+            self.cmd, env=self.env, dimensions=(24, 80), backend=Backend.ConPTY,
         )
 
         loop = asyncio.get_running_loop()
@@ -151,7 +155,7 @@ class ConPtyStream(DownloadPty):
 
         def _read() -> None:
             try:
-                while proc.isalive():
+                while True:
                     try:
                         text = proc.read()
                     except EOFError:
@@ -165,18 +169,6 @@ class ConPtyStream(DownloadPty):
         self._reader_thread = threading.Thread(target=_read, daemon=True)
         self._reader_thread.start()
 
-    async def read_events(self):
-        assert self._queue is not None
-        tty = TtyStream()
-        while True:
-            chunk = await self._queue.get()
-            if chunk is None:
-                break
-            for event in tty.feed(chunk):
-                yield event
-        for event in tty.flush():
-            yield event
-
     def cancel(self) -> None:
         if self._proc is not None:
             try:
@@ -185,18 +177,18 @@ class ConPtyStream(DownloadPty):
                 pass
 
     async def wait(self) -> int:
-        assert self._proc is not None
+        if self._proc is None:
+            return 0
         if self._proc.isalive():
             self._proc.terminate(force=True)
-        return self._proc.exitstatus() if hasattr(self._proc, "exitstatus") else 0
+        return await asyncio.to_thread(self._proc.wait)
 
     def close(self) -> None:
-        if self._proc is not None:
+        if self._proc is not None and self._proc.isalive():
             try:
                 self._proc.close(force=True)
             except Exception:
                 pass
-            self._proc = None
 
 
 def open_download_pty(cmd: list[str], env: dict[str, str] | None = None) -> DownloadPty:
