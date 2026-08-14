@@ -2,12 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Implementation delta (from verification):** the missing-llama.cpp branch of `up.ps1`
-now offers a **full source build** (`(2) install it now`) mirroring the Linux
-`scripts/ensure-llama-cpp.sh`, instead of only prompting for a path / pointing at the
-prebuilt releases. `scripts/up.ps1` is the source of truth.
+**Implementation delta 2 (from verification):** the llama.cpp **install flow is removed**
+from `up.ps1`. Installing llama.cpp is the **user's responsibility** — download a prebuilt
+Windows build from the [llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases).
+`up.ps1` only resolves an existing install (`LLMBENCH_LLAMA_CPP_BIN_DIR`, PATH, standard
+locations) and, when missing, prompts for the path to an existing install or aborts with the
+releases URL. This supersedes the earlier source-build (`(2) install it now`) delta, which
+was removed. `scripts/up.ps1` is the source of truth.
 
-**Goal:** Provide Windows equivalents of the Linux `up.sh`/`down.sh` workflow via thin `.bat` launchers + PowerShell scripts: resolve llama.cpp (source build offered when missing) → venv + deps → start uvicorn (8000) and Vite (5173) in the background → `down.bat` stops both.
+**Goal:** Provide Windows equivalents of the Linux `up.sh`/`down.sh` workflow via thin `.bat` launchers + PowerShell scripts: resolve an existing llama.cpp install (no auto-install; user installs it themselves) → venv + deps → start uvicorn (8000) and Vite (5173) in the background → `down.bat` stops both.
 
 **Architecture:** `up.bat`/`down.bat` call `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\up.ps1` / `scripts\down.ps1`. Mirrors `up.sh` sourcing `scripts/ensure-llama-cpp.sh`. No backend/frontend code changes.
 
@@ -257,10 +260,11 @@ After the existing `./down.sh` paragraph (around line 42), add:
 
 ```markdown
 **Windows:** use `up.bat` and `down.bat` instead of `up.sh`/`down.sh`. They run the
-same workflow via PowerShell (`scripts\up.ps1` / `scripts\down.ps1`): llama.cpp is
-resolved from `LLMBENCH_LLAMA_CPP_BIN_DIR`, PATH, or the standard locations; if it
-is missing, `up.bat` prompts for a path or points at the prebuilt
-[llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases). `down.bat`
+same workflow via PowerShell (`scripts\up.ps1` / `scripts\down.ps1`). Installing
+llama.cpp is your responsibility — grab a prebuilt Windows build from the
+[llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases). `up.bat`
+resolves it from `LLMBENCH_LLAMA_CPP_BIN_DIR`, PATH, or the standard locations; if it
+is missing, it prompts for the path to an existing install or aborts. `down.bat`
 stops the uvicorn and vite processes.
 ```
 
