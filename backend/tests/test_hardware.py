@@ -36,6 +36,13 @@ def test_parse_nvidia_smi_blackwell_driver_format():
     assert vram == pytest.approx(15.9, abs=0.1)
 
 
+def test_ram_total_gb_matches_psutil(monkeypatch):
+    import psutil
+    from app.hardware import _ram_total_gb
+    expected = psutil.virtual_memory().total / (1024 * 1024 * 1024)
+    assert abs(_ram_total_gb() - expected) < 1.0
+
+
 def test_detect_hardware_shape():
     hw = detect_hardware()
     assert "arch" in hw and "cpu_cores" in hw and "ram_total_gb" in hw

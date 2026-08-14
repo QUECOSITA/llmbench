@@ -33,14 +33,10 @@ def parse_nvidia_smi(smi_output: str) -> tuple[str | None, float]:
 
 def _ram_total_gb() -> float:
     try:
-        with open("/proc/meminfo") as fh:
-            for line in fh:
-                if line.startswith("MemTotal:"):
-                    kb = int(line.split()[1])
-                    return kb / (1024 * 1024)
-    except OSError:
-        pass
-    return 0.0
+        import psutil
+        return psutil.virtual_memory().total / (1024 * 1024 * 1024)
+    except (ImportError, OSError):
+        return 0.0
 
 
 def _cpu_cores() -> int:
