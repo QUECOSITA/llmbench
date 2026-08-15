@@ -1047,7 +1047,7 @@ def test_run_streams_straight_through_with_ws_client(client, monkeypatch):
         assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "completed")
         assert not any(e["type"] == "config_wait" for e in events)
         assert any(e["type"] == "bench_log" for e in events)
-        assert api_mod.state._job_active is False
+        assert _poll(lambda: api_mod.state._job_active is False)
 
         r2 = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
         assert r2.status_code == 200
@@ -1083,7 +1083,7 @@ def test_run_completes_straight_through_with_failed_config(client, monkeypatch):
 
     assert _poll(lambda: api_mod.db_mod.get_run_status(api_mod.state.conn, run_id) == "failed")
     assert not any(e["type"] == "config_wait" for e in events)
-    assert api_mod.state._job_active is False
+    assert _poll(lambda: api_mod.state._job_active is False)
 
     r2 = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
     assert r2.status_code == 200
