@@ -28,6 +28,8 @@ jobs:
       - name: Install Windows deps
         if: matrix.os == 'windows-latest'
         run: pip install -e ".[win]"
+      - name: Install speed-bench deps
+        run: pip install -e ".[speed-bench]"
       - name: Run tests
         run: pytest tests/ -q
 

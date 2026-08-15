@@ -134,6 +134,12 @@ try {
     Pop-Location
 }
 
+Write-Host '[up] installing optional speed-bench dependencies...'
+& $venvPython -m pip install -e '.[speed-bench]'
+if ($LASTEXITCODE -ne 0) {
+    Write-Host '  warning: speed-bench deps failed to install; speed-bench will be unavailable (the app still runs).'
+}
+
 Write-Host '[up] starting backend (uvicorn on :8000)...'
 $backendLog = Join-Path $backendDir 'uvicorn.log'
 $backendErr = Join-Path $backendDir 'uvicorn.log.err'
