@@ -1,7 +1,16 @@
 import importlib.util
+import logging
+import os
+import re
+import shlex
 import shutil
 import sys
+import threading
 from pathlib import Path
+
+import httpx
+
+logger = logging.getLogger(__name__)
 
 SERVERS = {
     "llama.cpp": {
@@ -24,13 +33,18 @@ def _module_importable(module: str) -> bool:
     return importlib.util.find_spec(module) is not None
 
 
+def _binary_candidates(name: str) -> list[str]:
+    return [name, f"{name}.exe"]
+
+
 def resolve_bench_binary(server_id: str, bin_dir: str | None = None) -> str | None:
     """Resolve the executable that runs a server's benchmark. llama.cpp resolves
     the llama-bench binary from bin_dir or PATH."""
     if server_id == "llama.cpp" and bin_dir:
-        candidate = Path(bin_dir) / "llama-bench"
-        if candidate.is_file():
-            return str(candidate)
+        for cand in _binary_candidates("llama-bench"):
+            candidate = Path(bin_dir) / cand
+            if candidate.is_file():
+                return str(candidate)
     for b in SERVERS[server_id]["bench_binaries"]:
         found = shutil.which(b)
         if found:
@@ -44,11 +58,12 @@ def speed_bench_deps_available() -> bool:
     return all(importlib.util.find_spec(m) is not None for m in _SPEED_BENCH_DEPS)
 
 
-def detect_binaries(bin_dir: str | None = None) -> dict[str, bool]:
+def detect_binaries(bin_dir: str | None = None,
+                    data_dir: str | None = None) -> dict[str, bool]:
     out: dict[str, bool] = {}
     for server_id in SERVERS:
         out[server_id] = resolve_bench_binary(server_id, bin_dir) is not None
-    out["speed-bench"] = (resolve_speed_bench_script(bin_dir) is not None
+    out["speed-bench"] = (resolve_speed_bench_script(bin_dir, data_dir=data_dir) is not None
                           and speed_bench_deps_available())
     return out
 
@@ -76,9 +91,10 @@ def is_spec_decoding_model(repo_id: str, gguf_filename: str | None = None,
 def resolve_serving_binary(server_id: str, bin_dir: str | None = None) -> str | None:
     meta = SERVERS[server_id]
     if server_id == "llama.cpp" and bin_dir:
-        candidate = Path(bin_dir) / "llama-server"
-        if candidate.is_file():
-            return str(candidate)
+        for cand in _binary_candidates("llama-server"):
+            candidate = Path(bin_dir) / cand
+            if candidate.is_file():
+                return str(candidate)
     for b in meta["serving_binaries"]:
         found = shutil.which(b)
         if found:
@@ -87,23 +103,70 @@ def resolve_serving_binary(server_id: str, bin_dir: str | None = None) -> str | 
 
 
 def resolve_speed_bench_script(bin_dir: str | None = None,
-                               configured: str | Path | None = None) -> str | None:
+                               configured: str | Path | None = None,
+                               data_dir: str | Path | None = None) -> str | None:
     """Locate speed_bench.py. Honors an explicitly configured path, otherwise
     auto-discovers it in the llama.cpp source tree that contains the resolved
-    llama-server binary."""
+    llama-server binary, then falls back to a copy previously provisioned into
+    data_dir/speed-bench/."""
     if configured:
         p = Path(configured)
         if p.is_file():
             return str(p)
     server = resolve_serving_binary("llama.cpp", bin_dir)
-    if not server:
-        return None
-    bin_path = Path(server).parent
-    for parent in [bin_path, *bin_path.parents[:3]]:
-        candidate = parent / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
-        if candidate.is_file():
-            return str(candidate)
+    if server:
+        bin_path = Path(server).parent
+        for parent in [bin_path, *bin_path.parents[:3]]:
+            candidate = parent / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
+            if candidate.is_file():
+                return str(candidate)
+    if data_dir:
+        provisioned = Path(data_dir) / "speed-bench" / "speed_bench.py"
+        if provisioned.is_file():
+            return str(provisioned)
     return None
+
+
+SPEED_BENCH_SCRIPT_URL = (
+    "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/"
+    "tools/server/bench/speed-bench/speed_bench.py"
+)
+
+_provision_lock = threading.Lock()
+_provision_attempted: set[str] = set()
+
+
+def ensure_speed_bench_script(bin_dir: str | None = None,
+                              configured: str | Path | None = None,
+                              data_dir: str | Path | None = None) -> str | None:
+    """Like resolve_speed_bench_script, but if the script is missing (and no
+    explicit configured path is set) it best-effort downloads the client from
+    the llama.cpp repo into data_dir/speed-bench/ once per process. Never
+    raises; returns the script path or None."""
+    script = resolve_speed_bench_script(bin_dir, configured, data_dir)
+    if script:
+        return script
+    if configured:
+        return None
+    if not data_dir:
+        return None
+    target = Path(data_dir) / "speed-bench" / "speed_bench.py"
+    key = str(target)
+    with _provision_lock:
+        if key in _provision_attempted:
+            return None
+        # Deliberately never cleared: a transient failure disables auto-provision
+        # for the rest of the process (retry on next backend restart).
+        _provision_attempted.add(key)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        resp = httpx.get(SPEED_BENCH_SCRIPT_URL, timeout=20)
+        resp.raise_for_status()
+        target.write_text(resp.text, encoding="utf-8")
+    except Exception as exc:
+        logger.warning("failed to provision speed_bench.py into %s: %s", target, exc)
+        return None
+    return str(target) if target.is_file() else None
 
 
 SPEED_BENCH_CLI_FLAGS = ("--url", "--model", "--bench", "--category", "--osl",
@@ -127,11 +190,59 @@ def speed_bench_default_flags(osl: int = 528) -> str:
     return f"--bench qualitative --category all --limit 1 --osl {osl}"
 
 
+def _split_windows(text: str) -> list[str]:
+    """Split a command line the way Windows treats it: backslashes are literal
+    (so C:\\Users\\... survives intact), double and single quotes group
+    whitespace and are stripped, and an unclosed quote raises ValueError.
+    Separates tokens on whitespace (spaces, tabs, and CR/LF)."""
+    args: list[str] = []
+    cur: list[str] = []
+    quote: str | None = None
+    for ch in text:
+        if quote is not None:
+            if ch == quote:
+                quote = None
+            else:
+                cur.append(ch)
+            continue
+        if ch in ('"', "'"):
+            quote = ch
+        elif ch in " \t\r\n":
+            if cur:
+                args.append("".join(cur))
+                cur = []
+        else:
+            cur.append(ch)
+    if quote is not None:
+        raise ValueError("No closing quotation")
+    if cur:
+        args.append("".join(cur))
+    return args
+
+
+def _has_windows_path(text: str) -> bool:
+    """True when the text contains a Windows drive-letter path (X:\\...), which
+    cannot be a valid POSIX path, so it is tokenized with Windows rules on any
+    OS."""
+    return re.search(r"[A-Za-z]:\\", text) is not None
+
+
+def _split_command(text: str, windows: bool | None = None) -> list[str]:
+    """Tokenize a command string. With windows=True backslashes are kept literal
+    and quotes group whitespace; otherwise it delegates to shlex.split (POSIX).
+    Defaults to the current OS, except that a Windows drive-letter path anywhere
+    in the text forces Windows tokenization on any platform."""
+    if windows is None:
+        windows = os.name == "nt" or _has_windows_path(text)
+    if windows:
+        return _split_windows(text)
+    return shlex.split(text)
+
+
 def parse_speed_bench_flags(text: str) -> list[str]:
     """Split the user-edited flags string into tokens. Drop any leading bare
     tokens (so pasting the full command works) and normalize --flag=value."""
-    import shlex
-    tokens = shlex.split(text)
+    tokens = _split_command(text)
     while tokens and not tokens[0].startswith("-"):
         tokens = tokens[1:]
     out: list[str] = []
@@ -200,9 +311,8 @@ def build_server_command(serving_command: str, bin_dir: str | None = None) -> li
     """Turn the editable llama-server serving command into an executable token
     list: swap in the resolved binary and drop --port/--host (the runner injects
     its own). -p (--parallel) is left alone."""
-    import shlex
     try:
-        tokens = shlex.split(serving_command)
+        tokens = _split_command(serving_command)
     except ValueError as exc:
         raise ValueError(f"invalid serving command: {exc}") from exc
     if not tokens:
@@ -274,9 +384,8 @@ def parse_serving_command(server_id: str, command: str) -> dict[str, str]:
     """Extract flag/value pairs from an edited serving command. Bare boolean
     flags parse to value "", and positional tokens (binary names, repo ids)
     are ignored. The result can be fed back into build_bench_command."""
-    import shlex
     try:
-        tokens = shlex.split(command)
+        tokens = _split_command(command)
     except ValueError as exc:
         raise ValueError(f"invalid serving command: {exc}") from exc
     flags: dict[str, str] = {}

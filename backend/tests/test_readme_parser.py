@@ -79,6 +79,35 @@ def test_extract_flags_does_not_bleed_other_servers_flags():
     assert "--model-path" not in llama
 
 
+def test_extract_flags_ignores_build_install_commands():
+    """Build/install instructions in a README (cmake/git/apt) must not leak
+    their flags into the serving command extraction, even when the build block
+    mentions llama.cpp/llama-cli (regression: unsloth/Qwen3.5-4B-MTP-GGUF)."""
+    text = (
+        "# Build\n"
+        "```bash\n"
+        "apt-get install -y git cmake\n"
+        "git clone https://github.com/ggml-org/llama.cpp\n"
+        "cmake -B llama.cpp/build -DBUILD_SHARED_LIBS OFF -DGGML_CUDA ON\n"
+        "cmake --build llama.cpp/build --config Release -j --clean-first --target llama-cli\n"
+        "```\n"
+        "```bash\n"
+        "llama-server -hf unsloth/Qwen3.5-4B-MTP-GGUF --hf-file Qwen3.5-4B-UD-Q8_K_XL.gguf "
+        "--ctx-size 8192 --n-gpu-layers 99 --batch-size 512 --spec-type draft-mtp "
+        "--spec-draft-n-max 6 -fa on\n"
+        "```\n"
+    )
+    flags = extract_flags(text, ["llama.cpp"])
+    assert flags["-hf"] == "unsloth/Qwen3.5-4B-MTP-GGUF"
+    assert flags["--hf-file"] == "Qwen3.5-4B-UD-Q8_K_XL.gguf"
+    assert flags["--ctx-size"] == "8192"
+    assert flags["--spec-type"] == "draft-mtp"
+    assert flags["-fa"] == "on"
+    for bad in ("-y", "-B", "-DBUILD_SHARED_LIBS", "-DGGML_CUDA",
+                "--build", "--config", "-j", "--clean-first", "--target"):
+        assert bad not in flags, f"build flag {bad} leaked into serving flags"
+
+
 def test_has_serving_command_matches_command_tokens():
     assert has_serving_command("Run: llama-server -m x.gguf", "llama.cpp")
     assert has_serving_command("benchmark with speed-bench", "llama.cpp")

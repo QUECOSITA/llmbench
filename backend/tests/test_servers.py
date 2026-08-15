@@ -1,10 +1,14 @@
 import sys
 
+import httpx
+import pytest
+
 from app.servers import SERVERS, detect_binaries, build_bench_command, resolve_bench_binary, README_FLAG_MAP
 from app.servers import parse_serving_command, model_ref_from_flags
 from app.servers import (is_spec_decoding_model, resolve_serving_binary, resolve_speed_bench_script,
                          build_server_command, build_speed_bench_command, speed_bench_deps_available,
-                         parse_speed_bench_flags, validate_speed_bench_flags, speed_bench_default_flags)
+                         parse_speed_bench_flags, validate_speed_bench_flags, speed_bench_default_flags,
+                         ensure_speed_bench_script, _split_command)
 
 
 def test_detect_finds_llama_bench(monkeypatch):
@@ -221,6 +225,18 @@ def test_resolve_serving_binary_uses_bin_dir(tmp_path):
     assert resolve_serving_binary("llama.cpp", bin_dir=str(tmp_path)) == str(fake)
 
 
+def test_resolve_bench_binary_windows_exe(tmp_path):
+    from app.servers import resolve_bench_binary
+    (tmp_path / "llama-bench.exe").write_bytes(b"x")
+    assert resolve_bench_binary("llama.cpp", str(tmp_path)) == str(tmp_path / "llama-bench.exe")
+
+
+def test_resolve_serving_binary_windows_exe(tmp_path):
+    from app.servers import resolve_serving_binary
+    (tmp_path / "llama-server.exe").write_bytes(b"x")
+    assert resolve_serving_binary("llama.cpp", str(tmp_path)) == str(tmp_path / "llama-server.exe")
+
+
 def test_resolve_speed_bench_script_configured_wins(tmp_path):
     configured = tmp_path / "speed_bench.py"
     configured.write_text("x")
@@ -390,3 +406,131 @@ def test_parse_serving_command_malformed_raises_clear_error():
         assert "closing quotation" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_split_command_windows_preserves_backslash_path():
+    text = r"llama-server -m C:\Users\Ruben\.llmbench\gguf\model.gguf --spec-type draft-mtp"
+    assert _split_command(text, windows=True) == [
+        "llama-server", "-m", r"C:\Users\Ruben\.llmbench\gguf\model.gguf",
+        "--spec-type", "draft-mtp",
+    ]
+
+
+def test_split_command_windows_quoted_path_with_spaces():
+    text = r'llama-server -m "C:\Program Files\llama\model.gguf" -c 2048'
+    assert _split_command(text, windows=True) == [
+        "llama-server", "-m", r"C:\Program Files\llama\model.gguf", "-c", "2048",
+    ]
+
+
+def test_split_command_windows_flag_list():
+    text = "--bench qualitative --category all --limit 1 --osl 528"
+    assert _split_command(text, windows=True) == [
+        "--bench", "qualitative", "--category", "all", "--limit", "1", "--osl", "528",
+    ]
+
+
+def test_split_command_windows_splits_crlf():
+    text = "--bench qualitative\r\n--limit 2"
+    assert _split_command(text, windows=True) == ["--bench", "qualitative", "--limit", "2"]
+
+
+def test_split_command_windows_unclosed_quote_raises():
+    with pytest.raises(ValueError) as exc:
+        _split_command("llama-server --reasoning-budget-message $'\n", windows=True)
+    assert "closing quotation" in str(exc.value)
+
+
+def test_split_command_posix_default_matches_shlex():
+    assert _split_command("llama-server -m /models/x.gguf -c 2048", windows=False) == [
+        "llama-server", "-m", "/models/x.gguf", "-c", "2048",
+    ]
+
+
+def test_split_command_auto_detects_windows_path_on_posix():
+    assert _split_command(r"llama-server -m C:\Users\me\model.gguf -c 2048") == [
+        "llama-server", "-m", r"C:\Users\me\model.gguf", "-c", "2048",
+    ]
+
+
+def test_build_server_command_windows_path_roundtrip(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    tokens = build_server_command(
+        r"llama-server -m C:\Users\Ruben\.llmbench\gguf\model.gguf --spec-type draft-mtp --port 9999",
+        bin_dir=str(bin_dir))
+    assert tokens[0] == str(bin_dir / "llama-server")
+    assert r"C:\Users\Ruben\.llmbench\gguf\model.gguf" in tokens
+
+
+def test_detect_binaries_data_dir_discovery(tmp_path):
+    provisioned = tmp_path / "data" / "speed-bench" / "speed_bench.py"
+    provisioned.parent.mkdir(parents=True)
+    provisioned.write_text("x")
+    assert resolve_speed_bench_script(data_dir=str(tmp_path / "data")) == str(provisioned)
+
+
+def test_ensure_speed_bench_script_downloads_into_data_dir(tmp_path, monkeypatch):
+    class FakeResp:
+        text = "#!/usr/bin/env python3\n"
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("app.servers.httpx.get", lambda *a, **k: FakeResp())
+    data_dir = tmp_path / "data"
+    script = ensure_speed_bench_script(data_dir=str(data_dir))
+    assert script == str(data_dir / "speed-bench" / "speed_bench.py")
+    assert (data_dir / "speed-bench" / "speed_bench.py").read_text() == "#!/usr/bin/env python3\n"
+
+
+def test_ensure_speed_bench_script_download_failure_returns_none(tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise httpx.HTTPError("offline")
+
+    monkeypatch.setattr("app.servers.httpx.get", boom)
+    assert ensure_speed_bench_script(data_dir=str(tmp_path / "data")) is None
+
+
+def test_ensure_speed_bench_script_does_not_override_configured(tmp_path, monkeypatch):
+    configured = tmp_path / "speed_bench.py"
+    configured.write_text("x")
+    monkeypatch.setattr(
+        "app.servers.httpx.get",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not download")),
+    )
+    assert ensure_speed_bench_script(configured=configured) == str(configured)
+
+
+def test_ensure_speed_bench_script_finds_existing_script(tmp_path, monkeypatch):
+    bin_dir = tmp_path / "build" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    script = tmp_path / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("x")
+    monkeypatch.setattr(
+        "app.servers.httpx.get",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not download")),
+    )
+    assert ensure_speed_bench_script(bin_dir=str(bin_dir)) == str(script)
+
+
+def test_ensure_speed_bench_script_downloads_at_most_once(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_get(*a, **k):
+        calls.append(a)
+        class _Resp:
+            text = "x\n"
+            def raise_for_status(self):
+                pass
+        return _Resp()
+
+    monkeypatch.setattr("app.servers.httpx.get", fake_get)
+    data_dir = tmp_path / "data"
+    first = ensure_speed_bench_script(data_dir=str(data_dir))
+    second = ensure_speed_bench_script(data_dir=str(data_dir))
+    assert first is not None and second is not None
+    assert len(calls) == 1

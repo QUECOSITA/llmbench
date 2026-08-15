@@ -122,34 +122,67 @@ def _is_negative_number(value: str) -> bool:
         return False
 
 
+_SERVING_EXEC_RE = re.compile(
+    r"(?:^|[;&|]\s*)(?:sudo\s+)?(?:[A-Za-z0-9_./\\-]*/)?(?:llama-server|llama-cli|llama-bench)(?:\.exe)?\b",
+    re.IGNORECASE,
+)
+
+
+def _logical_commands(block: str) -> list[str]:
+    """Split a code block into logical shell commands, joining backslash
+    continuation lines so a multi-line invocation is scanned as one."""
+    commands: list[str] = []
+    cur: list[str] = []
+    for line in block.split("\n"):
+        stripped = line.rstrip()
+        if stripped.endswith("\\"):
+            cur.append(stripped[:-1].rstrip())
+        elif stripped.strip():
+            cur.append(stripped)
+            commands.append(" ".join(cur).strip())
+            cur = []
+    if cur:
+        commands.append(" ".join(cur).strip())
+    return commands
+
+
+def _extract_flags_from_command(command: str, flags: dict[str, str]) -> None:
+    i = 0
+    while True:
+        m = _FLAG_RE.search(command, i)
+        if m is None:
+            break
+        flag = m.group(1)
+        q_value, q_end, unterminated = _consume_quoted_value(command, m.end(1))
+        if unterminated:
+            i = m.end()
+            continue
+        if q_value is not None:
+            flags[flag] = q_value
+            i = q_end
+            continue
+        value = (m.group(2) or m.group(3) or "").strip(" '\"")
+        if value and value in _VALUE_TERMINATORS:
+            value = ""
+        elif value.startswith("-") and not _is_negative_number(value):
+            value = ""
+        flags[flag] = value
+        i = m.end()
+
+
 def extract_flags(text: str, servers: list[str]) -> dict[str, str]:
     """Return {flag: value|''} parsed from code blocks plus the full text,
-    gated on known server command mentions."""
+    gated on known server command mentions. Flags are only taken from lines that
+    actually invoke a serving binary (llama-server/llama-cli/llama-bench), so
+    build/install instructions (cmake/git/pip/apt) never leak their flags into
+    the serving command."""
     flags: dict[str, str] = {}
     fenced = re.findall(r"```[^\n]*\n(.*?)```", text, re.DOTALL)
     blocks = fenced if fenced else [text]
     for block in blocks:
         if not any(any(re.search(p, block, re.IGNORECASE) for p in _COMMAND_PATTERNS.get(s, ())) for s in servers):
             continue
-        i = 0
-        while True:
-            m = _FLAG_RE.search(block, i)
-            if m is None:
-                break
-            flag = m.group(1)
-            q_value, q_end, unterminated = _consume_quoted_value(block, m.end(1))
-            if unterminated:
-                i = m.end()
-                continue
-            if q_value is not None:
-                flags[flag] = q_value
-                i = q_end
-                continue
-            value = (m.group(2) or m.group(3) or "").strip(" '\"")
-            if value and value in _VALUE_TERMINATORS:
-                value = ""
-            elif value.startswith("-") and not _is_negative_number(value):
-                value = ""
-            flags[flag] = value
-            i = m.end()
+        for command in _logical_commands(block):
+            if _SERVING_EXEC_RE.search(command):
+                _extract_flags_from_command(command, flags)
     return flags

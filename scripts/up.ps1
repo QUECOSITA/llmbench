@@ -128,10 +128,21 @@ try {
     }
 
     Write-Host '[up] installing backend dependencies...'
-    & $venvPython -m pip install -e '.[dev]'
+    & $venvPython -m pip install -e '.[dev,win]'
     if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
 } finally {
     Pop-Location
+}
+
+Write-Host '[up] installing optional speed-bench dependencies...'
+Push-Location $backendDir
+try {
+    & $venvPython -m pip install -e '.[speed-bench]'
+} finally {
+    Pop-Location
+}
+if ($LASTEXITCODE -ne 0) {
+    Write-Host '  warning: speed-bench deps failed to install; speed-bench will be unavailable (the app still runs).'
 }
 
 Write-Host '[up] starting backend (uvicorn on :8000)...'
@@ -142,11 +153,24 @@ $backend = Start-Process -FilePath $venvPython `
     -WorkingDirectory $backendDir -WindowStyle Hidden `
     -RedirectStandardOutput $backendLog -RedirectStandardError $backendErr -PassThru
 
+Write-Host '[up] resolving npm for the frontend...'
+$npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+if (-not $npmCmd) {
+    Write-Host ''
+    Write-Host '  npm was not found. Node.js is required for the frontend.'
+    Write-Host '  Install Node.js LTS from https://nodejs.org/, then restart the'
+    Write-Host '  terminal (or run "nvm use" if you use nvm-windows).'
+    Write-Host '  Startup aborted.'
+    exit 1
+}
+Write-Host "[up] npm found at $($npmCmd.Source)"
+
 Write-Host '[up] starting frontend (vite on :5173)...'
 $frontendLog = Join-Path $frontendDir 'vite.log'
 $frontendErr = Join-Path $frontendDir 'vite.log.err'
+$npmArgs = '""{0}" install && "{0}" run dev"' -f $npmCmd.Source
 $frontend = Start-Process -FilePath 'cmd.exe' `
-    -ArgumentList '/c', 'npm install && npm run dev' `
+    -ArgumentList '/c', $npmArgs `
     -WorkingDirectory $frontendDir -WindowStyle Hidden `
     -RedirectStandardOutput $frontendLog -RedirectStandardError $frontendErr -PassThru
 
