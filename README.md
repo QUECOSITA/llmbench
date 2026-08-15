@@ -41,7 +41,9 @@ Stop everything:
 
 This kills the `uvicorn` and `vite` processes and reminds you to `deactivate` the backend venv.
 
-**Windows:** use `up.bat` and `down.bat` instead of `up.sh`/`down.sh`. They run the same workflow via PowerShell (`scripts\up.ps1` / `scripts\down.ps1`). Installing llama.cpp is your responsibility — grab a prebuilt Windows build from the [llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases). `up.bat` resolves it from `LLMBENCH_LLAMA_CPP_BIN_DIR`, PATH, or the standard locations; if it is missing, it prompts for the path to an existing install or aborts. `down.bat` stops the uvicorn and vite processes.
+**Windows:** use `up.bat` and `down.bat` instead of `up.sh`/`down.sh`. They run the same workflow via PowerShell (`scripts\up.ps1` / `scripts\down.ps1`). `up.bat` installs the backend deps including the Windows-only `pywinpty` extra (ConPTY, so download progress bars render like Linux), resolves `npm.cmd` (aborting with an actionable message if Node.js is missing), and stops/cleans up via `down.bat`. Installing llama.cpp is your responsibility — grab a prebuilt Windows build from the [llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases); `up.bat` resolves it from `LLMBENCH_LLAMA_CPP_BIN_DIR`, PATH, or the standard locations. `down.bat` stops the uvicorn and vite processes.
+
+**macOS:** `up.sh`/`down.sh` work as-is (they are bash). RAM detection uses `psutil`, so there is no `/proc` dependency. Install llama.cpp via Homebrew (`brew install llama.cpp`) or a Metal build; the app auto-detects it from PATH. Note GPU benchmarking is NVIDIA/CUDA-oriented; on Apple Silicon the app boots and serves but GPU-fit semantics are unchanged.
 
 To run manually:
 
