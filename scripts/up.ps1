@@ -2,12 +2,120 @@
 # Resolves an existing llama.cpp install (installing llama.cpp is the user's
 # responsibility), creates the backend venv, installs deps, and starts uvicorn +
 # the Vite dev server in the background with hidden windows.
+# Mirrors up.sh: shows all requirements up-front, gates on the hard ones
+# (Python 3.11+, Node.js 20+), verifies the HF CLI inside the venv after deps,
+# and hands llama.cpp to the existing interactive resolution flow.
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 $backendDir = Join-Path $root 'backend'
 $frontendDir = Join-Path $root 'frontend'
 $venvPython = Join-Path $backendDir '.venv\Scripts\python.exe'
+
+# --- requirements: show all up-front, then gate on the hard ones ------------
+
+$script:requirementsMissing = $false
+
+function Show-Req {
+    param([string]$Name, [string]$Status, [string[]]$Hints = @())
+    Write-Host ("  {0,-22} : {1}" -f $Name, $Status)
+    if ($Status -eq 'MISSING') {
+        foreach ($hint in $Hints) { Write-Host "    -> $hint" }
+        $script:requirementsMissing = $true
+    }
+}
+
+function Test-PythonReq {
+    $pyCmd = Get-Command py -ErrorAction SilentlyContinue
+    $pyExe = $null
+    if ($pyCmd) {
+        $pyExe = $pyCmd.Source
+        $ver = (& $pyExe -3 -V 2>&1 | Out-String).Trim()
+    } else {
+        $pyCmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($pyCmd) {
+            $pyExe = $pyCmd.Source
+            $ver = (& $pyExe -V 2>&1 | Out-String).Trim()
+        }
+    }
+    if (-not $pyExe -or -not $ver) {
+        Show-Req 'Python 3.11+' 'MISSING' @('Python 3 was not found (py/python). Install from https://www.python.org/downloads/')
+        return
+    }
+    if ($ver -match 'Python (\d+)\.(\d+)') {
+        $major = [int]$Matches[1]
+        $minor = [int]$Matches[2]
+        if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 11)) {
+            Show-Req 'Python 3.11+' 'MISSING' @("found $ver — install 3.11+ from https://www.python.org/downloads/")
+            return
+        }
+        Show-Req 'Python 3.11+' "OK ($ver)"
+    } else {
+        Show-Req 'Python 3.11+' 'MISSING' @("unexpected version output: $ver")
+    }
+}
+
+function Test-NodeReq {
+    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $nodeCmd) {
+        Show-Req 'Node.js 20+' 'MISSING' @('node not found — install from https://nodejs.org/')
+        return
+    }
+    $ver = (& $nodeCmd.Source --version 2>&1 | Out-String).Trim()
+    if ($ver -match '^v(\d+)') {
+        $major = [int]$Matches[1]
+        if ($major -lt 20) {
+            Show-Req 'Node.js 20+' 'MISSING' @("found $ver — install 20+ from https://nodejs.org/")
+            return
+        }
+        Show-Req 'Node.js 20+' "OK ($ver)"
+    } else {
+        Show-Req 'Node.js 20+' 'MISSING' @("unexpected version output: $ver")
+    }
+}
+
+function Test-HfCliPre {
+    # Announced up-front; actually verified inside the venv after deps install.
+    if ((Get-Command hf -ErrorAction SilentlyContinue) -or
+        (Get-Command huggingface-cli -ErrorAction SilentlyContinue)) {
+        Show-Req 'HF CLI (hf)' 'OK (on PATH)'
+    } else {
+        Show-Req 'HF CLI (hf)' 'CHECK AFTER DEPS' @('installed into the backend venv via huggingface-hub')
+    }
+}
+
+function Test-LlamaCppPre {
+    Show-Req 'llama.cpp' 'RESOLVED NEXT' @('(interactive flow)')
+}
+
+function Test-GpuInfo {
+    Show-Req 'NVIDIA GPU' 'informational' @('(CPU-only build is fine)')
+}
+
+function Test-SpeedBenchInfo {
+    Show-Req 'speed-bench' 'informational' @('(optional, auto-installed)')
+}
+
+function Show-Requirements {
+    Write-Host ''
+    Write-Host '  ============================================='
+    Write-Host '  llmbench — requirements check'
+    Write-Host '  ============================================='
+    Test-PythonReq
+    Test-NodeReq
+    Test-HfCliPre
+    Test-LlamaCppPre
+    Test-GpuInfo
+    Test-SpeedBenchInfo
+    Write-Host '  ============================================='
+    if ($script:requirementsMissing) {
+        Write-Host ''
+        Write-Host '  llmbench requirements not met. Startup aborted.'
+        exit 1
+    }
+}
+
+Show-Requirements
 
 function Test-BinDir([string]$dir) {
     if (-not $dir -or -not (Test-Path $dir)) { return $false }
@@ -133,6 +241,23 @@ try {
 } finally {
     Pop-Location
 }
+
+Write-Host '[up] verifying HF CLI in the backend venv...'
+$hfInVenv = $false
+foreach ($candidate in @('hf.exe', 'hf.cmd', 'hf')) {
+    if (Test-Path (Join-Path (Split-Path $venvPython) $candidate)) {
+        $hfInVenv = $true
+        break
+    }
+}
+if (-not $hfInVenv) {
+    Write-Host ''
+    Write-Host '  HF CLI (hf) is required but was not found in the backend venv.'
+    Write-Host '  Install it with: pip install huggingface-hub'
+    Write-Host '  Startup aborted.'
+    exit 1
+}
+Write-Host '  HF CLI (hf): OK'
 
 Write-Host '[up] installing optional speed-bench dependencies...'
 Push-Location $backendDir
