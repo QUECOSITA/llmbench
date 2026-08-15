@@ -157,7 +157,7 @@ Write-Host "[up] npm found at $($npmCmd.Source)"
 Write-Host '[up] starting frontend (vite on :5173)...'
 $frontendLog = Join-Path $frontendDir 'vite.log'
 $frontendErr = Join-Path $frontendDir 'vite.log.err'
-$npmArgs = '"{0}" install && "{0}" run dev' -f $npmCmd.Source
+$npmArgs = '""{0}" install && "{0}" run dev"' -f $npmCmd.Source
 $frontend = Start-Process -FilePath 'cmd.exe' `
     -ArgumentList '/c', $npmArgs `
     -WorkingDirectory $frontendDir -WindowStyle Hidden `
