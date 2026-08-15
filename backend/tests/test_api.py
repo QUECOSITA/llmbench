@@ -1301,7 +1301,7 @@ def test_rebuild_bench_command_clears_stale_bench_error(tmp_path, monkeypatch):
 
 def test_start_run_speed_bench_invalid_flags_rejected(client, monkeypatch):
     monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: True)
-    monkeypatch.setattr("app.api.resolve_speed_bench_script", lambda *a, **k: "/tmp/speed_bench.py")
+    monkeypatch.setattr("app.api.ensure_speed_bench_script", lambda *a, **k: "/tmp/speed_bench.py")
     config = {
         "server_id": "llama.cpp",
         "bench_tool": "speed-bench",
@@ -1319,7 +1319,7 @@ def test_start_run_speed_bench_invalid_flags_rejected(client, monkeypatch):
 
 
 def test_start_run_speed_bench_unavailable_rejected(client, monkeypatch):
-    monkeypatch.setattr("app.api.resolve_speed_bench_script", lambda *a, **k: None)
+    monkeypatch.setattr("app.api.ensure_speed_bench_script", lambda *a, **k: None)
     config = {
         "server_id": "llama.cpp",
         "bench_tool": "speed-bench",
@@ -1347,7 +1347,7 @@ def test_generate_speed_bench_missing_deps_sets_bench_error(tmp_path, monkeypatc
                         workload_file=tmp_path / "prompts.jsonl",
                         llama_cpp_bin_dir=bin_dir)
     (tmp_path / "prompts.jsonl").write_text("{\"prompt\": \"hi\"}\n")
-    monkeypatch.setattr("app.api.resolve_speed_bench_script", lambda *a, **k: str(script))
+    monkeypatch.setattr("app.api.ensure_speed_bench_script", lambda *a, **k: str(script))
     monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: False)
     with TestClient(create_app(settings)) as c:
         r = c.post("/api/configs/generate", json={
@@ -1365,7 +1365,7 @@ def test_generate_speed_bench_missing_deps_sets_bench_error(tmp_path, monkeypatc
 
 
 def test_start_run_speed_bench_missing_deps_rejected(client, monkeypatch):
-    monkeypatch.setattr("app.api.resolve_speed_bench_script", lambda *a, **k: "/tmp/speed_bench.py")
+    monkeypatch.setattr("app.api.ensure_speed_bench_script", lambda *a, **k: "/tmp/speed_bench.py")
     monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: False)
     config = {
         "server_id": "llama.cpp",

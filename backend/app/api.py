@@ -20,8 +20,8 @@ from app.pty_stream import DownloadPty, open_download_pty
 from app.readme_parser import (detect_serving_programs, extract_flags,
                                has_serving_command, top_serving_program)
 from app.servers import (build_bench_command, build_server_command, build_speed_bench_command,
-                         detect_binaries, is_spec_decoding_model, model_ref_from_flags,
-                         parse_serving_command, resolve_speed_bench_script,
+                         detect_binaries, ensure_speed_bench_script, is_spec_decoding_model,
+                         model_ref_from_flags, parse_serving_command, resolve_speed_bench_script,
                          speed_bench_deps_available, parse_speed_bench_flags,
                          speed_bench_default_flags, validate_speed_bench_flags,
                          SPEED_BENCH_BENCHES, SPEED_BENCH_CATEGORIES)
@@ -116,7 +116,8 @@ def _require_state() -> AppState:
 async def servers():
     s = _require_state()
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
-    return {"readiness": detect_binaries(bin_dir), "hardware": detect_hardware()}
+    return {"readiness": detect_binaries(bin_dir, data_dir=str(s.settings.data_dir)),
+            "hardware": detect_hardware()}
 
 
 @router.get("/speed-bench/info")
@@ -433,7 +434,12 @@ async def generate(payload: dict):
         )
         cfg["bench_tool"] = "speed-bench" if uses_speed_bench else "llama-bench"
         if uses_speed_bench:
-            script = resolve_speed_bench_script(bin_dir, configured=s.settings.speed_bench_script)
+            script = await asyncio.to_thread(
+                ensure_speed_bench_script,
+                bin_dir,
+                configured=s.settings.speed_bench_script,
+                data_dir=str(s.settings.data_dir),
+            )
             if script and speed_bench_deps_available():
                 flags_text = speed_bench_default_flags(s.settings.speed_bench_osl)
                 cfg["bench_flags"] = flags_text
@@ -486,7 +492,11 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
             cfg["bench_command"] = []
             cfg["bench_error"] = f"invalid serving command: {exc}"
             return
-        script = resolve_speed_bench_script(bin_dir, configured=s.settings.speed_bench_script)
+        script = ensure_speed_bench_script(
+            bin_dir,
+            configured=s.settings.speed_bench_script,
+            data_dir=str(s.settings.data_dir),
+        )
         if not (script and speed_bench_deps_available()):
             cfg["bench_command"] = []
             cfg["bench_error"] = _speed_bench_error(script)

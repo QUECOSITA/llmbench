@@ -4,7 +4,10 @@ import re
 import shlex
 import shutil
 import sys
+import threading
 from pathlib import Path
+
+import httpx
 
 SERVERS = {
     "llama.cpp": {
@@ -52,11 +55,12 @@ def speed_bench_deps_available() -> bool:
     return all(importlib.util.find_spec(m) is not None for m in _SPEED_BENCH_DEPS)
 
 
-def detect_binaries(bin_dir: str | None = None) -> dict[str, bool]:
+def detect_binaries(bin_dir: str | None = None,
+                    data_dir: str | None = None) -> dict[str, bool]:
     out: dict[str, bool] = {}
     for server_id in SERVERS:
         out[server_id] = resolve_bench_binary(server_id, bin_dir) is not None
-    out["speed-bench"] = (resolve_speed_bench_script(bin_dir) is not None
+    out["speed-bench"] = (resolve_speed_bench_script(bin_dir, data_dir=data_dir) is not None
                           and speed_bench_deps_available())
     return out
 
@@ -96,23 +100,67 @@ def resolve_serving_binary(server_id: str, bin_dir: str | None = None) -> str | 
 
 
 def resolve_speed_bench_script(bin_dir: str | None = None,
-                               configured: str | Path | None = None) -> str | None:
+                               configured: str | Path | None = None,
+                               data_dir: str | Path | None = None) -> str | None:
     """Locate speed_bench.py. Honors an explicitly configured path, otherwise
     auto-discovers it in the llama.cpp source tree that contains the resolved
-    llama-server binary."""
+    llama-server binary, then falls back to a copy previously provisioned into
+    data_dir/speed-bench/."""
     if configured:
         p = Path(configured)
         if p.is_file():
             return str(p)
     server = resolve_serving_binary("llama.cpp", bin_dir)
-    if not server:
-        return None
-    bin_path = Path(server).parent
-    for parent in [bin_path, *bin_path.parents[:3]]:
-        candidate = parent / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
-        if candidate.is_file():
-            return str(candidate)
+    if server:
+        bin_path = Path(server).parent
+        for parent in [bin_path, *bin_path.parents[:3]]:
+            candidate = parent / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
+            if candidate.is_file():
+                return str(candidate)
+    if data_dir:
+        provisioned = Path(data_dir) / "speed-bench" / "speed_bench.py"
+        if provisioned.is_file():
+            return str(provisioned)
     return None
+
+
+SPEED_BENCH_SCRIPT_URL = (
+    "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/"
+    "tools/server/bench/speed-bench/speed_bench.py"
+)
+
+_provision_lock = threading.Lock()
+_provision_attempted: set[str] = set()
+
+
+def ensure_speed_bench_script(bin_dir: str | None = None,
+                              configured: str | Path | None = None,
+                              data_dir: str | Path | None = None) -> str | None:
+    """Like resolve_speed_bench_script, but if the script is missing (and no
+    explicit configured path is set) it best-effort downloads the client from
+    the llama.cpp repo into data_dir/speed-bench/ once per process. Never
+    raises; returns the script path or None."""
+    script = resolve_speed_bench_script(bin_dir, configured, data_dir)
+    if script:
+        return script
+    if configured:
+        return None
+    if not data_dir:
+        return None
+    target = Path(data_dir) / "speed-bench" / "speed_bench.py"
+    key = str(target)
+    with _provision_lock:
+        if key in _provision_attempted:
+            return None
+        _provision_attempted.add(key)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        resp = httpx.get(SPEED_BENCH_SCRIPT_URL, timeout=20)
+        resp.raise_for_status()
+        target.write_text(resp.text, encoding="utf-8")
+    except Exception:
+        return None
+    return str(target) if target.is_file() else None
 
 
 SPEED_BENCH_CLI_FLAGS = ("--url", "--model", "--bench", "--category", "--osl",
