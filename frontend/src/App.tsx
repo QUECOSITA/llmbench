@@ -101,7 +101,7 @@ export function App() {
   const [hardware, setHardware] = useState<Record<string, unknown>>({});
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [server, setServer] = useState<string>("");
-  const [n, setN] = useState(4);
+  const [n, setN] = useState(1);
   const [configs, setConfigs] = useState<ConfigRow[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
