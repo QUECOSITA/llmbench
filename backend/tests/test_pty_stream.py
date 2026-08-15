@@ -31,3 +31,22 @@ def test_posix_pty_stream_reads_output(tmp_path):
     events, rc = asyncio.run(run())
     assert rc == 0
     assert any(kind == "line" and "hello" in text for kind, text in events)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="ConPTY is Windows-only")
+def test_win_conpty_stream_reads_output(tmp_path):
+    from app.pty_stream import open_download_pty
+    script = tmp_path / "emit.py"
+    script.write_text("import sys\nprint('hello-conpty')\n")
+    stream = open_download_pty([sys.executable, "-u", str(script)])
+
+    async def run():
+        await stream.spawn()
+        events = [ev async for ev in stream.read_events()]
+        rc = await stream.wait()
+        stream.close()
+        return events, rc
+
+    events, rc = asyncio.run(run())
+    assert rc == 0
+    assert any(kind == "line" and "hello-conpty" in text for kind, text in events)

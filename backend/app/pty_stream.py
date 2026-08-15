@@ -118,6 +118,11 @@ class PosixPtyStream(DownloadPty):
         return self._proc.returncode
 
     def close(self) -> None:
+        if self._proc is not None and self._proc.returncode is None:
+            try:
+                self._proc.kill()
+            except ProcessLookupError:
+                pass
         if self._master_fd is not None:
             try:
                 os.close(self._master_fd)
