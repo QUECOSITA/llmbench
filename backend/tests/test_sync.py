@@ -148,7 +148,7 @@ def test_remove_model_deletes_whole_repo_and_snapshot(tmp_path, monkeypatch):
     snap = _make_snapshot(settings, "org/model")
     conn = init_db(tmp_path / "db.sqlite")
     upsert_model(conn, "org/model", "llama.cpp", "hf", str(snap), "downloaded")
-    monkeypatch.setattr("shutil.which", lambda *a, **k: None)
+    monkeypatch.setattr("app.sync.hf_bin", lambda: None)
 
     asyncio.run(remove_model(conn, settings, "org/model"))
 
@@ -161,7 +161,7 @@ def test_remove_model_noop_when_repo_has_no_rows(tmp_path, monkeypatch):
     settings = _settings(tmp_path)
     snap = _make_snapshot(settings, "org/untracked")
     conn = init_db(tmp_path / "db.sqlite")
-    monkeypatch.setattr("shutil.which", lambda *a, **k: None)
+    monkeypatch.setattr("app.sync.hf_bin", lambda: None)
 
     asyncio.run(remove_model(conn, settings, "org/untracked"))
 
@@ -177,7 +177,7 @@ def test_remove_llama_deletes_gguf_file(tmp_path, monkeypatch):
     conn = init_db(tmp_path / "db.sqlite")
     upsert_model(conn, "org/model", "llama.cpp", "hf", str(gguf), "downloaded",
                  gguf_filename="model.gguf")
-    monkeypatch.setattr("shutil.which", lambda *a, **k: None)
+    monkeypatch.setattr("app.sync.hf_bin", lambda: None)
 
     asyncio.run(remove_model(conn, settings, "org/model"))
 
@@ -203,7 +203,7 @@ def test_remove_model_uses_hf_cache_rm_when_cli_present(tmp_path, monkeypatch):
     upsert_model(conn, "org/model", "llama.cpp", "hf", str(snapshot_dir_for(settings, "org/model")), "downloaded")
 
     captured: dict = {}
-    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
 
     async def fake_create(*cmd, **kw):
         captured["cmd"] = list(cmd)
@@ -217,7 +217,7 @@ def test_remove_model_uses_hf_cache_rm_when_cli_present(tmp_path, monkeypatch):
     asyncio.run(run())
 
     assert captured["cmd"] == [
-        "hf", "cache", "rm", "hf://models/org/model", "-y",
+        "/usr/bin/hf", "cache", "rm", "hf://models/org/model", "-y",
         "--cache-dir", str(settings.hf_cache_dir),
     ]
     assert get_model(conn, "org/model", "llama.cpp") is None
@@ -229,7 +229,7 @@ def test_remove_model_hf_cache_rm_failure_keeps_rows(tmp_path, monkeypatch):
     conn = init_db(tmp_path / "db.sqlite")
     upsert_model(conn, "org/model", "llama.cpp", "hf", str(snapshot_dir_for(settings, "org/model")), "downloaded")
 
-    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
 
     async def fake_create(*cmd, **kw):
         return FakeRmProcess(rc=1, out=b"repo not found")
@@ -249,7 +249,7 @@ def test_remove_model_falls_back_to_rmtree_when_cli_missing(tmp_path, monkeypatc
     snap = _make_snapshot(settings, "org/model")
     conn = init_db(tmp_path / "db.sqlite")
     upsert_model(conn, "org/model", "llama.cpp", "hf", str(snap), "downloaded")
-    monkeypatch.setattr("shutil.which", lambda *a, **k: None)
+    monkeypatch.setattr("app.sync.hf_bin", lambda: None)
 
     asyncio.run(remove_model(conn, settings, "org/model"))
 
@@ -264,7 +264,7 @@ def test_remove_model_rmtree_when_cli_exits_zero_but_leaves_snapshot(tmp_path, m
     conn = init_db(tmp_path / "db.sqlite")
     upsert_model(conn, "org/model", "llama.cpp", "hf", str(snap), "downloaded")
 
-    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
 
     async def fake_create(*cmd, **kw):
         return FakeRmProcess(rc=0)
@@ -286,7 +286,7 @@ def test_remove_model_gguf_dir_file_when_no_snapshot(tmp_path, monkeypatch):
     upsert_model(conn, "org/model", "llama.cpp", "hf", str(gguf), "downloaded",
                  gguf_filename="model.gguf")
 
-    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
     called = []
 
     async def fake_create(*cmd, **kw):

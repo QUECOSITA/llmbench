@@ -1,4 +1,17 @@
-from app.hf import normalize_input, InvalidModelInput, parse_input
+import sys
+from pathlib import Path
+
+from app.hf import hf_bin, normalize_input, InvalidModelInput, parse_input
+
+
+def test_hf_bin_prefers_venv_shim():
+    exe_dir = Path(sys.executable).parent
+    venv_shim = next((exe_dir / name for name in ("hf.exe", "hf.cmd", "hf")
+                      if (exe_dir / name).is_file()), None)
+    if venv_shim is not None:
+        assert hf_bin() == str(venv_shim)
+    else:
+        assert hf_bin() is None
 
 
 def test_normalize_repo_id():

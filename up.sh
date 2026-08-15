@@ -95,10 +95,19 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 pip install -e '.[speed-bench]' || echo "warning: speed-bench dependencies not installed; speed-bench unavailable (app still runs)."
-if ! command -v hf >/dev/null 2>&1 && ! command -v huggingface-cli >/dev/null 2>&1; then
+_hf_cmd="$(command -v hf || command -v huggingface-cli || true)"
+if [ -z "$_hf_cmd" ]; then
     echo
     echo "  HF CLI (hf) is required but was not found in the backend venv."
     echo "  Install it with: pip install 'huggingface-hub>=1.0'"
+    echo "  Startup aborted."
+    exit 1
+fi
+if ! "$_hf_cmd" --version >/dev/null 2>&1; then
+    echo
+    echo "  HF CLI (hf) is installed but cannot start ($_hf_cmd)."
+    echo "  A stale 'hf' shim usually points at a removed Python install."
+    echo "  Check your Python installation, then re-run up.sh."
     echo "  Startup aborted."
     exit 1
 fi

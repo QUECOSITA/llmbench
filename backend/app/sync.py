@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 
 from app import db as db_mod
+from app.hf import hf_bin
 from app.readme_parser import detect_serving_programs, top_serving_program
 
 _CACHE_PREFIX = "models--"
@@ -115,7 +116,7 @@ def _path_under(path: Path, root: Path) -> bool:
 
 
 def rm_command(repo_id: str, cache_dir: str | None = None) -> list[str]:
-    cmd = ["hf", "cache", "rm", f"hf://models/{repo_id}", "-y"]
+    cmd = [hf_bin() or "hf", "cache", "rm", f"hf://models/{repo_id}", "-y"]
     if cache_dir:
         cmd += ["--cache-dir", cache_dir]
     return cmd
@@ -128,7 +129,7 @@ async def remove_model(conn, settings, repo_id: str) -> None:
 
     snap = snapshot_dir_for(settings, repo_id)
     if snap.exists():
-        if shutil.which("hf") is not None:
+        if hf_bin() is not None:
             cache_dir = str(settings.hf_cache_dir) if settings.hf_cache_dir else None
             proc = await asyncio.create_subprocess_exec(
                 *rm_command(repo_id, cache_dir),

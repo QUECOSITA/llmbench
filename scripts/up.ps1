@@ -243,10 +243,12 @@ try {
 }
 
 Write-Host '[up] verifying HF CLI in the backend venv...'
-$hfInVenv = $false
+$venvScripts = Split-Path $venvPython
+$hfInVenv = $null
 foreach ($candidate in @('hf.exe', 'hf.cmd', 'hf')) {
-    if (Test-Path (Join-Path (Split-Path $venvPython) $candidate)) {
-        $hfInVenv = $true
+    $cand = Join-Path $venvScripts $candidate
+    if (Test-Path $cand) {
+        $hfInVenv = $cand
         break
     }
 }
@@ -254,6 +256,15 @@ if (-not $hfInVenv) {
     Write-Host ''
     Write-Host '  HF CLI (hf) is required but was not found in the backend venv.'
     Write-Host '  Install it with: pip install huggingface-hub'
+    Write-Host '  Startup aborted.'
+    exit 1
+}
+& $hfInVenv --version *> $null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ''
+    Write-Host "  HF CLI (hf) is installed but cannot start ($hfInVenv)."
+    Write-Host "  A stale 'hf' shim usually points at a removed Python install."
+    Write-Host '  Check your Python installation, then re-run up.bat.'
     Write-Host '  Startup aborted.'
     exit 1
 }
