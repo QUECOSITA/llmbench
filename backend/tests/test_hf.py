@@ -1,4 +1,36 @@
-from app.hf import normalize_input, InvalidModelInput, parse_input
+from pathlib import Path
+
+import app.hf as hf_mod
+from app.hf import hf_bin, normalize_input, InvalidModelInput, parse_input
+
+
+def _fake_python(tmp_path, shim_name):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    if shim_name:
+        (bin_dir / shim_name).write_text("")
+    return str(bin_dir / "python.exe")
+
+
+def test_hf_bin_prefers_venv_shim(tmp_path, monkeypatch):
+    python = _fake_python(tmp_path, "hf.exe")
+    monkeypatch.setattr(hf_mod.sys, "executable", python)
+    monkeypatch.setattr(hf_mod.shutil, "which", lambda *a, **k: "/usr/bin/hf")
+    assert hf_bin() == str(Path(python).parent / "hf.exe")
+
+
+def test_hf_bin_falls_back_to_path_when_no_venv_shim(tmp_path, monkeypatch):
+    python = _fake_python(tmp_path, None)
+    monkeypatch.setattr(hf_mod.sys, "executable", python)
+    monkeypatch.setattr(hf_mod.shutil, "which", lambda *a, **k: "/usr/bin/hf")
+    assert hf_bin() == "/usr/bin/hf"
+
+
+def test_hf_bin_none_when_no_venv_shim_and_no_path(tmp_path, monkeypatch):
+    python = _fake_python(tmp_path, None)
+    monkeypatch.setattr(hf_mod.sys, "executable", python)
+    monkeypatch.setattr(hf_mod.shutil, "which", lambda *a, **k: None)
+    assert hf_bin() is None
 
 
 def test_normalize_repo_id():

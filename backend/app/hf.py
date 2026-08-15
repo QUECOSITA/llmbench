@@ -1,7 +1,27 @@
 import re
+import shutil
+import sys
+from pathlib import Path
 
 class InvalidModelInput(ValueError):
     pass
+
+
+def hf_bin() -> str | None:
+    """Locate the ``hf`` CLI executable.
+
+    Prefer the venv-local shim that pip installed next to ``sys.executable``
+    (always present because ``huggingface-hub`` is a hard dependency). Falling
+    back to a PATH lookup is risky: a stale system-wide ``hf`` shim may be
+    picked up instead, and on Windows such a shim can reference a deleted
+    Python install and die with exit code 103 before doing anything.
+    """
+    exe_dir = Path(sys.executable).parent
+    for name in ("hf.exe", "hf.cmd", "hf"):
+        candidate = exe_dir / name
+        if candidate.is_file():
+            return str(candidate)
+    return shutil.which("hf")
 
 _REPO_RE = re.compile(r"^[\w.\-]+/[\w.\-]+$")
 _REPO_FILE_RE = re.compile(r"^[\w.\-]+/[\w.\-]+/[\w.+\-]+$")
@@ -86,7 +106,7 @@ class HfClient:
         return [f for f in files if f.get("type") == "file" and f["path"].endswith(".gguf")]
 
     def download_command(self, repo_id: str, include: str | None = None) -> list[str]:
-        cmd = ["hf", "download", repo_id]
+        cmd = [hf_bin() or "hf", "download", repo_id]
         if include:
             cmd += ["--include", include]
         return cmd

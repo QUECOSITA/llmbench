@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import shutil
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,7 +14,7 @@ from app.config import Settings
 from app.fit import arch_from_config, config_fit, fit_verdict
 from app.flags import build_serving_command, generate_configs
 from app.hardware import detect_hardware
-from app.hf import HfClient, InvalidModelInput, normalize_input, parse_input
+from app.hf import HfClient, InvalidModelInput, hf_bin, normalize_input, parse_input
 from app.pty_stream import DownloadPty, open_download_pty
 from app.readme_parser import (detect_serving_programs, extract_flags,
                                has_serving_command, top_serving_program)
@@ -48,7 +47,7 @@ KNOWN_SERVERS = ("llama.cpp",)
 
 def _download_command(repo_id: str, server_id: str, gguf_filename: str | None = None,
                       cache_dir: str | None = None) -> list[str]:
-    cmd = ["hf", "download", "--format", "human", repo_id]
+    cmd = [hf_bin() or "hf", "download", "--format", "human", repo_id]
     cmd += ["--include", gguf_filename or "*.gguf", "--include", "README.md"]
     if cache_dir:
         cmd += ["--cache-dir", cache_dir]
@@ -56,7 +55,7 @@ def _download_command(repo_id: str, server_id: str, gguf_filename: str | None = 
 
 
 def _prune_command(cache_dir: str | None = None) -> list[str]:
-    cmd = ["hf", "cache", "prune", "--format", "human"]
+    cmd = [hf_bin() or "hf", "cache", "prune", "--format", "human"]
     if cache_dir:
         cmd += ["--cache-dir", cache_dir]
     return cmd
@@ -236,7 +235,8 @@ async def _download_job(s: AppState, repo_id: str, server_id: str,
             db_mod.upsert_model(s.conn, repo_id=repo_id, server_id=server_id,
                                 format="hf", local_path="", status="missing")
             await broadcast(s, {"type": "download_error", "server_id": server_id,
-                                "repo_id": repo_id, "message": f"download exited with code {rc}"})
+                                "repo_id": repo_id,
+                                "message": f"download exited with code {rc} (see the download log for details)"})
             return
         local_path, gguf_resolved, size = _resolve_download_path(s, repo_id, server_id, gguf_filename)
         if local_path is None:
@@ -291,7 +291,7 @@ async def start_download(payload: dict):
         raise HTTPException(422, f"'server_id' must be one of {list(KNOWN_SERVERS)}.")
     cache_dir = str(s.settings.hf_cache_dir) if s.settings.hf_cache_dir else None
     cmd = _download_command(repo_id, server_id, payload.get("gguf_filename"), cache_dir=cache_dir)
-    if shutil.which("hf") is None:
+    if hf_bin() is None:
         raise HTTPException(400, f"HF CLI not found. Run: {' '.join(cmd)}")
     with s._state_lock:
         if s._download_active:

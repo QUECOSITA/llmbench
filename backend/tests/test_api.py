@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import create_app
 from app.config import Settings
+from app.hf import hf_bin
 
 FAKE_BENCH = """\
 model,size,params,backend,test,t,n_threads,batch,ngl,ms,t/s
@@ -460,7 +461,7 @@ def test_download_missing_fields_422(client):
 
 
 def test_download_cli_missing_400_with_manual_command(client, monkeypatch):
-    monkeypatch.setattr("shutil.which", lambda *a, **k: None)
+    monkeypatch.setattr("app.api.hf_bin", lambda: None)
     r = client.post("/api/models/download", json={"repo_id": "org/model", "server_id": "llama.cpp"})
     assert r.status_code == 400
     detail = r.json()["detail"]
@@ -660,22 +661,24 @@ def test_download_rejects_duplicate(client, monkeypatch):
 
 def test_download_command_llama_uses_specific_gguf_when_given():
     from app.api import _download_command, _prune_command
+    from app.hf import hf_bin
+    hf = hf_bin() or "hf"
     assert _download_command("org/model", "llama.cpp", gguf_filename="model.Q4_K_M.gguf") == [
-        "hf", "download", "--format", "human", "org/model",
+        hf, "download", "--format", "human", "org/model",
         "--include", "model.Q4_K_M.gguf", "--include", "README.md",
     ]
     assert _download_command("org/model", "llama.cpp") == [
-        "hf", "download", "--format", "human", "org/model",
+        hf, "download", "--format", "human", "org/model",
         "--include", "*.gguf", "--include", "README.md",
     ]
     assert _download_command("org/model", "llama.cpp", cache_dir="/tmp/hf") == [
-        "hf", "download", "--format", "human", "org/model",
+        hf, "download", "--format", "human", "org/model",
         "--include", "*.gguf", "--include", "README.md",
         "--cache-dir", "/tmp/hf",
     ]
-    assert _prune_command() == ["hf", "cache", "prune", "--format", "human"]
+    assert _prune_command() == [hf, "cache", "prune", "--format", "human"]
     assert _prune_command(cache_dir="/tmp/hf") == [
-        "hf", "cache", "prune", "--format", "human", "--cache-dir", "/tmp/hf",
+        hf, "cache", "prune", "--format", "human", "--cache-dir", "/tmp/hf",
     ]
 
 
@@ -822,7 +825,7 @@ def test_delete_model_invokes_hf_cache_rm(client, tmp_path, monkeypatch):
     r = client.delete("/api/models/org%2Fmodel")
     assert r.status_code == 200
     assert captured["cmd"] == [
-        "hf", "cache", "rm", "hf://models/org/model", "-y",
+        hf_bin() or "hf", "cache", "rm", "hf://models/org/model", "-y",
         "--cache-dir", str(settings.hf_cache_dir),
     ]
 

@@ -16,10 +16,28 @@ The tool reads the model's README to detect the intended serving program (llama.
 
 ## Requirements
 
-- NVIDIA GPU workstation; Python 3.11+, Node 20+.
-- HF CLI (`hf` / `huggingface-cli`) for downloads.
+- NVIDIA GPU workstation (optional; a CPU-only build of llama.cpp also works); Python 3.11+; Node.js 20+.
+- HF CLI (`hf` / `huggingface-cli`) for downloads. It is a hard requirement and is installed
+  into the backend venv as a core dependency (`huggingface-hub`), so it is always available
+  after `pip install`.
 - Serving binaries to benchmark: llama.cpp (`llama-bench`/`llama-server`). Availability is auto-detected and shown as readiness in the UI.
 - To benchmark speculative-decoding / MTP llama.cpp models, the app uses `speed-bench` (llama-server + `speed_bench.py`). It auto-discovers `speed_bench.py` next to `llama-server` in the llama.cpp source tree, or honors `LLMBENCH_SPEED_BENCH_SCRIPT`. If neither is found, the app downloads it into `~/.llmbench/speed-bench/` on the first MTP benchmark (best-effort). Its Python deps (`datasets`, `requests`, `tqdm`) are installed automatically by `up.sh`/`up.bat` as an optional step that never blocks startup. The speed-bench client always runs with `--limit 1 --category all --bench qualitative --osl 528`.
+
+## Workflow
+
+`up.sh` (Linux/macOS) and `up.bat` (Windows) run the same requirements gate before starting
+anything:
+
+1. **Show all requirements up-front** — Python 3.11+, Node.js 20+, HF CLI, llama.cpp, plus
+   informational notes (NVIDIA GPU, speed-bench deps).
+2. **Verify** each requirement.
+3. **If a hard requirement is missing, the user is told and startup exits** with install
+   instructions; otherwise the app continues.
+4. **llama.cpp** is resolved interactively (point at an existing install, build it now, or
+   cancel → exit). The HF CLI is verified inside the backend venv after dependencies install.
+
+Hard gates (startup exits when missing): Python 3.11+, Node.js 20+, HF CLI, llama.cpp.
+Informational only (never block): NVIDIA GPU, speed-bench deps.
 
 ## Run
 
