@@ -21,7 +21,7 @@ from app.readme_parser import (detect_serving_programs, extract_flags,
                                has_serving_command, top_serving_program)
 from app.servers import (build_bench_command, build_server_command, build_speed_bench_command,
                          detect_binaries, ensure_speed_bench_script, is_spec_decoding_model,
-                         model_ref_from_flags, parse_serving_command, resolve_speed_bench_script,
+                         model_ref_from_flags, parse_serving_command,
                          speed_bench_deps_available, parse_speed_bench_flags,
                          speed_bench_default_flags, validate_speed_bench_flags,
                          SPEED_BENCH_BENCHES, SPEED_BENCH_CATEGORIES)

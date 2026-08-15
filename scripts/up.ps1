@@ -135,7 +135,12 @@ try {
 }
 
 Write-Host '[up] installing optional speed-bench dependencies...'
-& $venvPython -m pip install -e '.[speed-bench]'
+Push-Location $backendDir
+try {
+    & $venvPython -m pip install -e '.[speed-bench]'
+} finally {
+    Pop-Location
+}
 if ($LASTEXITCODE -ne 0) {
     Write-Host '  warning: speed-bench deps failed to install; speed-bench will be unavailable (the app still runs).'
 }
