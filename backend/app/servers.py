@@ -1,4 +1,7 @@
 import importlib.util
+import os
+import re
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -133,11 +136,58 @@ def speed_bench_default_flags(osl: int = 528) -> str:
     return f"--bench qualitative --category all --limit 1 --osl {osl}"
 
 
+def _split_windows(text: str) -> list[str]:
+    """Split a command line the way Windows treats it: backslashes are literal
+    (so C:\\Users\\... survives intact), double and single quotes group
+    whitespace and are stripped, and an unclosed quote raises ValueError."""
+    args: list[str] = []
+    cur: list[str] = []
+    quote: str | None = None
+    for ch in text:
+        if quote is not None:
+            if ch == quote:
+                quote = None
+            else:
+                cur.append(ch)
+            continue
+        if ch in ('"', "'"):
+            quote = ch
+        elif ch in " \t":
+            if cur:
+                args.append("".join(cur))
+                cur = []
+        else:
+            cur.append(ch)
+    if quote is not None:
+        raise ValueError("No closing quotation")
+    if cur:
+        args.append("".join(cur))
+    return args
+
+
+def _has_windows_path(text: str) -> bool:
+    """True when the text contains a Windows drive-letter path (X:\\...), which
+    cannot be a valid POSIX path, so it is tokenized with Windows rules on any
+    OS."""
+    return re.search(r"[A-Za-z]:\\", text) is not None
+
+
+def _split_command(text: str, windows: bool | None = None) -> list[str]:
+    """Tokenize a command string. With windows=True backslashes are kept literal
+    and quotes group whitespace; otherwise it delegates to shlex.split (POSIX).
+    Defaults to the current OS, except that a Windows drive-letter path anywhere
+    in the text forces Windows tokenization on any platform."""
+    if windows is None:
+        windows = os.name == "nt" or _has_windows_path(text)
+    if windows:
+        return _split_windows(text)
+    return shlex.split(text)
+
+
 def parse_speed_bench_flags(text: str) -> list[str]:
     """Split the user-edited flags string into tokens. Drop any leading bare
     tokens (so pasting the full command works) and normalize --flag=value."""
-    import shlex
-    tokens = shlex.split(text)
+    tokens = _split_command(text)
     while tokens and not tokens[0].startswith("-"):
         tokens = tokens[1:]
     out: list[str] = []
@@ -206,9 +256,8 @@ def build_server_command(serving_command: str, bin_dir: str | None = None) -> li
     """Turn the editable llama-server serving command into an executable token
     list: swap in the resolved binary and drop --port/--host (the runner injects
     its own). -p (--parallel) is left alone."""
-    import shlex
     try:
-        tokens = shlex.split(serving_command)
+        tokens = _split_command(serving_command)
     except ValueError as exc:
         raise ValueError(f"invalid serving command: {exc}") from exc
     if not tokens:
@@ -280,9 +329,8 @@ def parse_serving_command(server_id: str, command: str) -> dict[str, str]:
     """Extract flag/value pairs from an edited serving command. Bare boolean
     flags parse to value "", and positional tokens (binary names, repo ids)
     are ignored. The result can be fed back into build_bench_command."""
-    import shlex
     try:
-        tokens = shlex.split(command)
+        tokens = _split_command(command)
     except ValueError as exc:
         raise ValueError(f"invalid serving command: {exc}") from exc
     flags: dict[str, str] = {}

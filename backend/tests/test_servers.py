@@ -1,10 +1,13 @@
 import sys
 
+import pytest
+
 from app.servers import SERVERS, detect_binaries, build_bench_command, resolve_bench_binary, README_FLAG_MAP
 from app.servers import parse_serving_command, model_ref_from_flags
 from app.servers import (is_spec_decoding_model, resolve_serving_binary, resolve_speed_bench_script,
                          build_server_command, build_speed_bench_command, speed_bench_deps_available,
-                         parse_speed_bench_flags, validate_speed_bench_flags, speed_bench_default_flags)
+                         parse_speed_bench_flags, validate_speed_bench_flags, speed_bench_default_flags,
+                         _split_command)
 
 
 def test_detect_finds_llama_bench(monkeypatch):
@@ -402,3 +405,54 @@ def test_parse_serving_command_malformed_raises_clear_error():
         assert "closing quotation" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_split_command_windows_preserves_backslash_path():
+    text = r"llama-server -m C:\Users\Ruben\.llmbench\gguf\model.gguf --spec-type draft-mtp"
+    assert _split_command(text, windows=True) == [
+        "llama-server", "-m", r"C:\Users\Ruben\.llmbench\gguf\model.gguf",
+        "--spec-type", "draft-mtp",
+    ]
+
+
+def test_split_command_windows_quoted_path_with_spaces():
+    text = r'llama-server -m "C:\Program Files\llama\model.gguf" -c 2048'
+    assert _split_command(text, windows=True) == [
+        "llama-server", "-m", r"C:\Program Files\llama\model.gguf", "-c", "2048",
+    ]
+
+
+def test_split_command_windows_flag_list():
+    text = "--bench qualitative --category all --limit 1 --osl 528"
+    assert _split_command(text, windows=True) == [
+        "--bench", "qualitative", "--category", "all", "--limit", "1", "--osl", "528",
+    ]
+
+
+def test_split_command_windows_unclosed_quote_raises():
+    with pytest.raises(ValueError) as exc:
+        _split_command("llama-server --reasoning-budget-message $'\n", windows=True)
+    assert "closing quotation" in str(exc.value)
+
+
+def test_split_command_posix_default_matches_shlex():
+    assert _split_command("llama-server -m /models/x.gguf -c 2048", windows=False) == [
+        "llama-server", "-m", "/models/x.gguf", "-c", "2048",
+    ]
+
+
+def test_split_command_auto_detects_windows_path_on_posix():
+    assert _split_command(r"llama-server -m C:\Users\me\model.gguf -c 2048") == [
+        "llama-server", "-m", r"C:\Users\me\model.gguf", "-c", "2048",
+    ]
+
+
+def test_build_server_command_windows_path_roundtrip(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    tokens = build_server_command(
+        r"llama-server -m C:\Users\Ruben\.llmbench\gguf\model.gguf --spec-type draft-mtp --port 9999",
+        bin_dir=str(bin_dir))
+    assert tokens[0] == str(bin_dir / "llama-server")
+    assert r"C:\Users\Ruben\.llmbench\gguf\model.gguf" in tokens
