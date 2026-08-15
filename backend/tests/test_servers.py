@@ -429,6 +429,11 @@ def test_split_command_windows_flag_list():
     ]
 
 
+def test_split_command_windows_splits_crlf():
+    text = "--bench qualitative\r\n--limit 2"
+    assert _split_command(text, windows=True) == ["--bench", "qualitative", "--limit", "2"]
+
+
 def test_split_command_windows_unclosed_quote_raises():
     with pytest.raises(ValueError) as exc:
         _split_command("llama-server --reasoning-budget-message $'\n", windows=True)

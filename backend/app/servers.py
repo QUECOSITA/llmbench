@@ -139,7 +139,8 @@ def speed_bench_default_flags(osl: int = 528) -> str:
 def _split_windows(text: str) -> list[str]:
     """Split a command line the way Windows treats it: backslashes are literal
     (so C:\\Users\\... survives intact), double and single quotes group
-    whitespace and are stripped, and an unclosed quote raises ValueError."""
+    whitespace and are stripped, and an unclosed quote raises ValueError.
+    Separates tokens on whitespace (spaces, tabs, and CR/LF)."""
     args: list[str] = []
     cur: list[str] = []
     quote: str | None = None
@@ -152,7 +153,7 @@ def _split_windows(text: str) -> list[str]:
             continue
         if ch in ('"', "'"):
             quote = ch
-        elif ch in " \t":
+        elif ch in " \t\r\n":
             if cur:
                 args.append("".join(cur))
                 cur = []
