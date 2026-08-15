@@ -515,3 +515,22 @@ def test_ensure_speed_bench_script_finds_existing_script(tmp_path, monkeypatch):
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not download")),
     )
     assert ensure_speed_bench_script(bin_dir=str(bin_dir)) == str(script)
+
+
+def test_ensure_speed_bench_script_downloads_at_most_once(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_get(*a, **k):
+        calls.append(a)
+        class _Resp:
+            text = "x\n"
+            def raise_for_status(self):
+                pass
+        return _Resp()
+
+    monkeypatch.setattr("app.servers.httpx.get", fake_get)
+    data_dir = tmp_path / "data"
+    first = ensure_speed_bench_script(data_dir=str(data_dir))
+    second = ensure_speed_bench_script(data_dir=str(data_dir))
+    assert first is not None and second is not None
+    assert len(calls) == 1

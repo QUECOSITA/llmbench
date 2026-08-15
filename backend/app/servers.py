@@ -1,4 +1,5 @@
 import importlib.util
+import logging
 import os
 import re
 import shlex
@@ -8,6 +9,8 @@ import threading
 from pathlib import Path
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 SERVERS = {
     "llama.cpp": {
@@ -152,13 +155,16 @@ def ensure_speed_bench_script(bin_dir: str | None = None,
     with _provision_lock:
         if key in _provision_attempted:
             return None
+        # Deliberately never cleared: a transient failure disables auto-provision
+        # for the rest of the process (retry on next backend restart).
         _provision_attempted.add(key)
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         resp = httpx.get(SPEED_BENCH_SCRIPT_URL, timeout=20)
         resp.raise_for_status()
         target.write_text(resp.text, encoding="utf-8")
-    except Exception:
+    except Exception as exc:
+        logger.warning("failed to provision speed_bench.py into %s: %s", target, exc)
         return None
     return str(target) if target.is_file() else None
 

@@ -472,8 +472,9 @@ def _speed_bench_error(script: str | None) -> str:
     if script:
         return ("speed-bench is not available: speed_bench.py requires 'requests', 'datasets', 'tqdm' "
                 "in the backend venv. Install them with `pip install -e '.[speed-bench]'`.")
-    return ("speed-bench is not available: could not locate speed_bench.py next to llama-server. "
-            "Set LLMBENCH_SPEED_BENCH_SCRIPT or install llama.cpp with the speed-bench tool.")
+    return ("speed-bench is not available: could not locate speed_bench.py and the automatic "
+            "download into the app data dir failed or is pending. Check the backend log, or set "
+            "LLMBENCH_SPEED_BENCH_SCRIPT to point at a speed_bench.py.")
 
 
 def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
