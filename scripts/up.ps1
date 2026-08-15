@@ -46,7 +46,7 @@ function Test-PythonReq {
         $major = [int]$Matches[1]
         $minor = [int]$Matches[2]
         if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 11)) {
-            Show-Req 'Python 3.11+' 'MISSING' @("found $ver — install 3.11+ from https://www.python.org/downloads/")
+            Show-Req 'Python 3.11+' 'MISSING' @("found $ver - install 3.11+ from https://www.python.org/downloads/")
             return
         }
         Show-Req 'Python 3.11+' "OK ($ver)"
@@ -58,14 +58,14 @@ function Test-PythonReq {
 function Test-NodeReq {
     $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
     if (-not $nodeCmd) {
-        Show-Req 'Node.js 20+' 'MISSING' @('node not found — install from https://nodejs.org/')
+        Show-Req 'Node.js 20+' 'MISSING' @('node not found - install from https://nodejs.org/')
         return
     }
     $ver = (& $nodeCmd.Source --version 2>&1 | Out-String).Trim()
     if ($ver -match '^v(\d+)') {
         $major = [int]$Matches[1]
         if ($major -lt 20) {
-            Show-Req 'Node.js 20+' 'MISSING' @("found $ver — install 20+ from https://nodejs.org/")
+            Show-Req 'Node.js 20+' 'MISSING' @("found $ver - install 20+ from https://nodejs.org/")
             return
         }
         Show-Req 'Node.js 20+' "OK ($ver)"
@@ -99,7 +99,7 @@ function Test-SpeedBenchInfo {
 function Show-Requirements {
     Write-Host ''
     Write-Host '  ============================================='
-    Write-Host '  llmbench — requirements check'
+    Write-Host '  llmbench - requirements check'
     Write-Host '  ============================================='
     Test-PythonReq
     Test-NodeReq
