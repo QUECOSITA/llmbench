@@ -162,6 +162,8 @@ async def analyze(payload: dict):
         except Exception:
             arch = None
     verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"], arch=arch)
+    for g in gguf:
+        g["fit"] = fit_verdict(g["size"], hw["gpu_vram_gb"], hw["ram_total_gb"], arch=arch)
     first_gguf_basename = os.path.basename(gguf[0]["path"]) if gguf else None
     auto_bench_tool = (
         "speed-bench"
@@ -179,6 +181,7 @@ async def analyze(payload: dict):
         "gguf_files": gguf,
         "weights_bytes": weights,
         "downloaded": _model_status(s, repo_id),
+        "downloaded_ggufs": _model_ggufs(s, repo_id),
         "fit_verdict": verdict,
         "model_arch": arch,
         "hardware": {
@@ -192,8 +195,17 @@ async def analyze(payload: dict):
 def _model_status(s: AppState, repo_id: str) -> dict[str, bool]:
     out = {}
     for server_id in ("llama.cpp",):
-        m = db_mod.get_model(s.conn, repo_id, server_id)
-        out[server_id] = bool(m and m["status"] == "downloaded")
+        out[server_id] = bool(db_mod.get_models(s.conn, repo_id, server_id, status="downloaded"))
+    return out
+
+
+def _model_ggufs(s: AppState, repo_id: str) -> dict[str, list[str]]:
+    out = {}
+    for server_id in ("llama.cpp",):
+        out[server_id] = [
+            m["gguf_filename"] for m in db_mod.get_models(s.conn, repo_id, server_id, status="downloaded")
+            if m["gguf_filename"]
+        ]
     return out
 
 

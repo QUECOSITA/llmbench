@@ -1683,3 +1683,21 @@ def test_clear_history_409_when_job_active(client):
         assert r.json()["context"]["active_run"] is not None
     finally:
         api_mod.state._job_active = False
+
+
+def test_analyze_per_file_fit_and_downloaded_ggufs(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.Q2_K.gguf", "type": "file", "size": 2_000_000_000},
+              {"path": "model.Q8_0.gguf", "type": "file", "size": 8_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n")
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    body = r.json()
+    by_path = {g["path"]: g for g in body["gguf_files"]}
+    assert by_path["model.Q2_K.gguf"]["fit"]["needed_gb"] < by_path["model.Q8_0.gguf"]["fit"]["needed_gb"]
+    assert body["downloaded_ggufs"] == {"llama.cpp": []}
+    assert body["downloaded"] == {"llama.cpp": False}
