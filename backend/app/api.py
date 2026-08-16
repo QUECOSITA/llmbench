@@ -160,11 +160,18 @@ async def analyze(payload: dict):
         except Exception:
             arch = None
     verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"], arch=arch)
+    first_gguf_basename = os.path.basename(gguf[0]["path"]) if gguf else None
+    auto_bench_tool = (
+        "speed-bench"
+        if is_spec_decoding_model(repo_id, first_gguf_basename, flags)
+        else "llama-bench"
+    )
     return {
         "repo_id": repo_id,
         "detected_server": detected,
         "server_scores": scores,
         "readme_has_serving_command": has_serving_command(readme, "llama.cpp"),
+        "auto_bench_tool": auto_bench_tool,
         "readme_flags": flags,
         "readme_flags_by_server": readme_flags_by_server,
         "gguf_files": gguf,

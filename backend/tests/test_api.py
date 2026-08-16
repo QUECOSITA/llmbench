@@ -129,6 +129,45 @@ def test_analyze_readme_has_serving_command_true(client, httpx_mock):
     assert body["readme_has_serving_command"] is True
 
 
+def test_analyze_auto_bench_tool_speed_bench_for_mtp_repo(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/Qwen3-MTP/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.Q4_K_M.gguf", "type": "file", "size": 4_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/Qwen3-MTP/raw/main/README.md",
+                            text="# M\n")
+    r = client.post("/api/models/analyze", json={"input": "org/Qwen3-MTP"})
+    assert r.status_code == 200
+    assert r.json()["auto_bench_tool"] == "speed-bench"
+
+
+def test_analyze_auto_bench_tool_speed_bench_for_spec_readme(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.Q4_K_M.gguf", "type": "file", "size": 4_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n\n```\nllama-server -m model.gguf --spec-type draft-mtp\n```\n")
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    assert r.json()["auto_bench_tool"] == "speed-bench"
+
+
+def test_analyze_auto_bench_tool_llama_bench_for_plain_model(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.Q4_K_M.gguf", "type": "file", "size": 4_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n")
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    assert r.json()["auto_bench_tool"] == "llama-bench"
+
+
 def test_analyze_gguf_boost_without_serving_command_reports_false(client, httpx_mock):
     """gguf boost still detects llama.cpp, but README has no serving command."""
     httpx_mock.add_response(
