@@ -73,9 +73,9 @@ def _migrate_models_table(conn):
             )
             conn.execute(
                 """
-                INSERT INTO models_new (repo_id, server_id, format, local_path, status,
+                INSERT INTO models_new (id, repo_id, server_id, format, local_path, status,
                                         gguf_filename, size_bytes, downloaded_at)
-                SELECT repo_id, server_id, format, local_path, status,
+                SELECT id, repo_id, server_id, format, local_path, status,
                        gguf_filename, size_bytes, downloaded_at
                 FROM models
                 """

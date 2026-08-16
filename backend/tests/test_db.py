@@ -74,31 +74,42 @@ def test_migrate_legacy_models_table_preserves_history(tmp_path):
     conn.execute(
         "INSERT INTO models(repo_id, server_id, format, local_path, status, gguf_filename, size_bytes) "
         "VALUES (?,?,?,?,?,?,?)",
+        ("org/deleted", "llama.cpp", "hf", "/gone", "missing", None, None),
+    )
+    conn.execute("DELETE FROM models WHERE id = 1")
+    conn.execute(
+        "INSERT INTO models(repo_id, server_id, format, local_path, status, gguf_filename, size_bytes) "
+        "VALUES (?,?,?,?,?,?,?)",
         ("org/legacy", "llama.cpp", "hf", "/x", "downloaded", "a.gguf", 100),
     )
     conn.execute("INSERT INTO runs(repo_id, requested_n) VALUES ('org/legacy', 2)")
     conn.execute(
         "INSERT INTO configs(run_id, server_id, model_id, flag_conf_json, serving_command, bench_command) "
-        "VALUES (1, 'llama.cpp', 1, '[]', 'serve', 'bench')"
+        "VALUES (1, 'llama.cpp', 2, '[]', 'serve', 'bench')"
     )
     conn.commit()
     conn.close()
 
     migrated = init_db(db_path)
-    assert [m["gguf_filename"] for m in list_models(migrated)] == ["a.gguf"]
+    models = list_models(migrated)
+    assert [m["gguf_filename"] for m in models] == ["a.gguf"]
+    assert models[0]["id"] == 2
     config_row = migrated.execute(
         "SELECT c.id, c.model_id, m.repo_id FROM configs c "
         "LEFT JOIN models m ON m.id = c.model_id WHERE c.id = 1"
     ).fetchone()
     assert config_row is not None
-    assert config_row["model_id"] == 1
+    assert config_row["model_id"] == 2
     assert config_row["repo_id"] == "org/legacy"
+    upsert_model(migrated, "org/legacy", "llama.cpp", "hf", "/z", "downloaded",
+                 gguf_filename="c.gguf")
+    assert max(m["id"] for m in list_models(migrated)) > 2
     index_names = [r[1] for r in migrated.execute("PRAGMA index_list('models')")]
     assert "uq_models_repo_server" in index_names
     assert "uq_models_repo_server_gguf" in index_names
     upsert_model(migrated, "org/legacy", "llama.cpp", "hf", "/y", "downloaded",
                  gguf_filename="b.gguf")
-    assert len(get_models(migrated, "org/legacy", "llama.cpp")) == 2
+    assert len(get_models(migrated, "org/legacy", "llama.cpp")) == 3
     migrated.close()
 
 
