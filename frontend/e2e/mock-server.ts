@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 
 const models = new Map<string, { server_id: string; repo_id: string; status: string; gguf_filename: string | null }>();
 function seedModel(server_id: string, repo_id: string, gguf_filename: string | null = null) {
-  models.set(`${server_id}::${repo_id}`, { server_id, repo_id, status: "downloaded", gguf_filename });
+  models.set(`${server_id}::${repo_id}::${gguf_filename ?? ""}`, { server_id, repo_id, status: "downloaded", gguf_filename });
 }
 seedModel("llama.cpp", "org/model", "model.gguf");
 
@@ -47,13 +47,21 @@ const server = createServer(async (req, res) => {
       if (parsed.input) repoId = String(parsed.input).split("/resolve/")[0];
     } catch {}
     const hasCommand = repoId !== "org/noserve";
+    const isMulti = repoId === "org/multi";
+    const ggufFiles = isMulti
+      ? [
+          { path: "model.Q4_K_M.gguf", size: 4_000_000_000, fit: { stage: "gpu", warning: false, needed_gb: 7.1 } },
+          { path: "model.Q8_0.gguf", size: 8_000_000_000, fit: { stage: "ram_offload", warning: false, needed_gb: 11.2 } },
+        ]
+      : [{ path: "model.gguf", size: 4_000_000_000 }];
     Object.assign(body, {
       repo_id: repoId,
       detected_server: "llama.cpp",
       readme_has_serving_command: hasCommand,
       readme_flags: { "--ctx-size": "8192" },
       weights_bytes: 4e9,
-      gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+      gguf_files: ggufFiles,
+      downloaded_ggufs: { "llama.cpp": [] },
       fit_verdict: { stage: "gpu", warning: false, needed_gb: 3.8 },
       model_arch: { layers: 32, heads: 32, hidden: 4096, max_ctx: 8192 },
       hardware: { gpu_vram_gb: 24, ram_total_gb: 64, gpu_name: "RTX 4090" },
@@ -64,6 +72,18 @@ const server = createServer(async (req, res) => {
   } else if (req.url?.startsWith("/api/models/download/prune-answer")) {
     Object.assign(body, { ok: true });
   } else if (req.url?.startsWith("/api/models/download")) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk);
+    try {
+      const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      const repo = String(parsed.repo_id ?? "");
+      const names = parsed.gguf_filenames ?? [];
+      if (Array.isArray(names) && names.length > 0) {
+        for (const n of names) seedModel("llama.cpp", repo, String(n));
+      } else if (repo) {
+        seedModel("llama.cpp", repo, "model.gguf");
+      }
+    } catch {}
     Object.assign(body, { ok: true });
   } else if (req.url?.startsWith("/api/configs/generate")) {
     Object.assign(body, {
