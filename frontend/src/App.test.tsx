@@ -437,7 +437,7 @@ test("download flow: click Download, shows downloading then downloaded and refre
   await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(2));
 });
 
-test("download for direct file link passes the single gguf filename", async () => {
+test("download for direct file link passes the single gguf filename in gguf_filenames", async () => {
   const { api } = await import("./api/client");
   const downloadModelSpy = vi.spyOn(api, "downloadModel");
   downloadModelSpy.mockResolvedValueOnce({ ok: true });
@@ -469,7 +469,7 @@ test("download for direct file link passes the single gguf filename", async () =
   expect(downloadModelSpy).toHaveBeenCalledWith({
     repo_id: "org/model",
     server_id: "llama.cpp",
-    gguf_filename: "model.Q4_K_M.gguf",
+    gguf_filenames: ["model.Q4_K_M.gguf"],
   });
 });
 
@@ -821,7 +821,7 @@ test("confirming unsupported download reveals the Download button", async () => 
   expect(downloadModelSpy).toHaveBeenCalledWith({
     repo_id: "org/model",
     server_id: "llama.cpp",
-    gguf_filename: "model.gguf",
+    gguf_filenames: ["model.gguf"],
   });
 });
 
@@ -1069,4 +1069,72 @@ test("fetches speed-bench info on mount and passes it to the config bank", async
     </MemoryRouter>,
   );
   await waitFor(() => expect(api.getSpeedBenchInfo).toHaveBeenCalled());
+});
+
+test("multi-gguf: lists files as checkboxes, Download downloads only checked files", async () => {
+  const { api } = await import("./api/client");
+  const downloadModelSpy = vi.spyOn(api, "downloadModel").mockResolvedValue({ ok: true });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_flags: {},
+    gguf_files: [
+      { path: "model.Q4_K_M.gguf", size: 4_000_000_000, fit: { stage: "gpu", warning: false, needed_gb: 7.1 } },
+      { path: "model.Q8_0.gguf", size: 8_000_000_000, fit: { stage: "ram_offload", warning: false, needed_gb: 11.2 } },
+    ],
+    downloaded_ggufs: { "llama.cpp": [] },
+    downloaded: { "llama.cpp": false },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  const checkboxes = screen.getAllByRole("checkbox");
+  expect(checkboxes).toHaveLength(2);
+  expect(screen.getByText(/File\(model\.Q4_K_M\.gguf\)/i)).toBeInTheDocument();
+  expect(screen.getByText(/File\(model\.Q8_0\.gguf\)/i)).toBeInTheDocument();
+
+  const downloadBtn = screen.getByRole("button", { name: "Download" });
+  expect(downloadBtn).toBeDisabled();
+
+  fireEvent.click(checkboxes[0]);
+  expect(downloadBtn).not.toBeDisabled();
+  fireEvent.click(downloadBtn);
+
+  expect(downloadModelSpy).toHaveBeenCalledWith({
+    repo_id: "org/model",
+    server_id: "llama.cpp",
+    gguf_filenames: ["model.Q4_K_M.gguf"],
+  });
+});
+
+test("multi-gguf: already-downloaded files are marked and excluded from selection", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_flags: {},
+    gguf_files: [
+      { path: "model.Q4_K_M.gguf", size: 4_000_000_000, fit: { stage: "gpu", warning: false, needed_gb: 7.1 } },
+      { path: "model.Q8_0.gguf", size: 8_000_000_000, fit: { stage: "ram_offload", warning: false, needed_gb: 11.2 } },
+    ],
+    downloaded_ggufs: { "llama.cpp": ["model.Q4_K_M.gguf"] },
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  const checkboxes = screen.getAllByRole("checkbox");
+  expect(checkboxes[0]).toBeDisabled();
+  expect(checkboxes[1]).not.toBeDisabled();
+  expect(screen.getByText("GENERATE")).not.toBeDisabled();
 });

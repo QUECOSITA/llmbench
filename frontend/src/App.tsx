@@ -28,7 +28,8 @@ interface Analysis {
   readme_has_serving_command?: boolean;
   readme_flags?: Record<string, string>;
   readme_flags_by_server?: Record<string, Record<string, string>>;
-  gguf_files?: Array<{ path: string; size: number }>;
+  gguf_files?: Array<{ path: string; size: number; fit?: { stage: string; warning: boolean; needed_gb: number } }>;
+  downloaded_ggufs?: Record<string, string[]>;
   weights_bytes?: number;
   downloaded?: Record<string, boolean>;
   fit_verdict?: { stage: string; warning: boolean; needed_gb: number };
@@ -117,6 +118,7 @@ export function App() {
   const [downloadKey, setDownloadKey] = useState<string | null>(null);
   const [confirmUnsupportedDownload, setConfirmUnsupportedDownload] = useState(false);
   const [dismissedUnsupported, setDismissedUnsupported] = useState(false);
+  const [selectedGgufs, setSelectedGgufs] = useState<string[]>([]);
   const [speedBenchInfo, setSpeedBenchInfo] = useState<SpeedBenchInfo | null>(null);
   const downloadEvents = useDownloadProgress();
 
@@ -129,9 +131,22 @@ export function App() {
     }
   }, [downloadEvents]);
 
+  const ggufFiles = analysis?.gguf_files ?? [];
+  const multiGguf = ggufFiles.length > 1;
+  const effectiveServer = server || analysis?.detected_server;
+  const downloadedGgufs = effectiveServer
+    ? (analysis?.downloaded_ggufs?.[effectiveServer] ?? [])
+    : [];
+  const allGgufsDownloaded =
+    ggufFiles.length > 0 &&
+    ggufFiles.every((g) => downloadedGgufs.includes(g.path.split("/").pop() ?? g.path));
+
   const onDownload = useCallback(
     async (serverId: string) => {
       if (!analysis?.repo_id) return;
+      const files = ggufFiles.map((g) => g.path.split("/").pop() ?? g.path);
+      const targets = multiGguf ? selectedGgufs.filter((f) => files.includes(f)) : files;
+      if (multiGguf && targets.length === 0) return;
       const k = `${serverId}::${analysis.repo_id}`;
       setDownloadKey(k);
       setDownloads((prev) => ({
@@ -139,8 +154,11 @@ export function App() {
         [k]: { status: "downloading", command: "", lines: [], waitingInput: false, pruneAccepted: null, progress: false },
       }));
       try {
-        const gguf = analysis.gguf_files?.length === 1 ? analysis.gguf_files[0].path : undefined;
-        await api.downloadModel({ repo_id: analysis.repo_id, server_id: serverId, gguf_filename: gguf });
+        await api.downloadModel({
+          repo_id: analysis.repo_id,
+          server_id: serverId,
+          gguf_filenames: targets.length > 0 ? targets : undefined,
+        });
       } catch (err) {
         setDownloads((prev) => ({
           ...prev,
@@ -148,7 +166,7 @@ export function App() {
         }));
       }
     },
-    [analysis],
+    [analysis, ggufFiles, multiGguf, selectedGgufs],
   );
 
   const onCancel = useCallback(async () => {
@@ -202,6 +220,7 @@ export function App() {
     setDownloadKey(null);
     setConfirmUnsupportedDownload(false);
     setDismissedUnsupported(false);
+    setSelectedGgufs([]);
   }, []);
 
   const onLoad = useCallback(
@@ -413,11 +432,12 @@ export function App() {
   const hasGguf = (analysis?.gguf_files?.length ?? 0) > 0;
   const noFit = analysis?.fit_verdict?.stage === "no_fit";
   const alreadyDownloaded = Boolean(analysis?.downloaded?.["llama.cpp"]);
-  const effectiveServer = server || analysis?.detected_server;
   const downloadKeyForModel = effectiveServer && analysis?.repo_id ? `${effectiveServer}::${analysis.repo_id}` : null;
   const modelDownloaded = Boolean(
     effectiveServer &&
-      (analysis?.downloaded?.[effectiveServer] || downloads[downloadKeyForModel ?? ""]?.status === "downloaded"),
+      (downloadedGgufs.length > 0 ||
+        analysis?.downloaded?.[effectiveServer] ||
+        downloads[downloadKeyForModel ?? ""]?.status === "downloaded"),
   );
 
   return (
@@ -504,7 +524,50 @@ export function App() {
                           const already = analysis.downloaded?.[sid];
                           const busy = dl && (dl.status === "downloading" || dl.status === "cancelled" || dl.status === "pruning");
                           const done = dl?.status === "downloaded" || already;
-                          return (
+                          return multiGguf ? (
+                            <div key={sid} style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start", fontSize: 12 }}>
+                              {ggufFiles.map((g) => {
+                                const base = g.path.split("/").pop() ?? g.path;
+                                const isDownloaded = downloadedGgufs.includes(base);
+                                const checked = selectedGgufs.includes(base);
+                                return (
+                                  <label key={base} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={isDownloaded}
+                                      onChange={(e) =>
+                                        setSelectedGgufs((prev) =>
+                                          e.target.checked ? [...prev, base] : prev.filter((f) => f !== base),
+                                        )
+                                      }
+                                    />
+                                    <span>{t("model.fileLabel")}({base})</span>
+                                    {isDownloaded ? (
+                                      <span style={{ color: "var(--anode)" }}>{t("dlStatus.downloaded")}</span>
+                                    ) : g.fit ? (
+                                      <FitStatusLine verdict={g.fit} hardware={analysis.hardware} />
+                                    ) : null}
+                                  </label>
+                                );
+                              })}
+                              <span style={{ fontSize: 12 }}>
+                                {busy ? (
+                                  <span style={{ color: "var(--anode)" }}>
+                                    {dl?.status === "downloading" ? t("dlStatus.downloading") : t("dlStatus.cancelled")}
+                                  </span>
+                                ) : dl?.status === "error" ? (
+                                  <span style={{ color: "var(--accent)" }}>{t("download.error", { message: dl.message })}</span>
+                                ) : allGgufsDownloaded ? (
+                                  <span style={{ color: "var(--anode)" }}>{t("dlStatus.downloaded")}</span>
+                                ) : (
+                                  <button onClick={() => onDownload(sid)} disabled={selectedGgufs.length === 0}>
+                                    {t("common.download")}
+                                  </button>
+                                )}
+                              </span>
+                            </div>
+                          ) : (
                             <span key={sid} style={{ fontSize: 12 }}>
                               <b>{sid}:</b>{" "}
                               {busy ? (
