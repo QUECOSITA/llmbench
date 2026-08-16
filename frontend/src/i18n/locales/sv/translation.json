@@ -12,6 +12,7 @@
     "generate": "GENERERA",
     "runBenchmark": "KÖR BENCHMARK",
     "cancel": "AVBRYT",
+    "cancelBenchmark": "AVBRYT BENCHMARK",
     "download": "Ladda ner",
     "load": "LADDA",
     "remove": "TA BORT",

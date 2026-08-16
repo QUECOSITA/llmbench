@@ -258,7 +258,7 @@ export function App() {
           results: (detail.results ?? []).map(toResultRow),
         });
         setRunning(false);
-        if (status && status !== "completed") {
+        if (status && status !== "completed" && status !== "aborted" && status !== "cancelled") {
           setError(t("run.statusError", { status: statusLabel(status) }));
         }
       } catch {
@@ -290,7 +290,7 @@ export function App() {
         }
         setRunning(false);
         setWatchingRunId(null);
-        if (status && status !== "completed") {
+        if (status && status !== "completed" && status !== "aborted" && status !== "cancelled") {
           setError(t("run.statusError", { status: statusLabel(status) }));
         }
       } catch {
@@ -381,6 +381,18 @@ export function App() {
       }
     }
   }, [analysis, configs, pollRun, server, watchRun]);
+
+  const onCancelRun = useCallback(async () => {
+    setError(null);
+    setErrorContext(null);
+    try {
+      await api.cancelBenchmark();
+    } catch (err) {
+      const apiErr = err as { status?: number };
+      if (apiErr.status === 409) return;
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
 
   const events = useBenchmarkProgress();
 
@@ -544,6 +556,7 @@ export function App() {
                 running={running}
                 canRun={Boolean(analysis?.repo_id) && configs.length > 0 && Boolean(server || analysis?.detected_server)}
                 onRun={onRun}
+                onCancel={onCancelRun}
                 progress={
                   progressState.running || progressState.results.length > 0
                     ? {

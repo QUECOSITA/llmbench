@@ -12,6 +12,7 @@
     "generate": "生成",
     "runBenchmark": "运行基准测试",
     "cancel": "取消",
+    "cancelBenchmark": "取消基准测试",
     "download": "下载",
     "load": "加载",
     "remove": "移除",

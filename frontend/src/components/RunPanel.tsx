@@ -12,6 +12,7 @@ interface Progress {
 interface Props {
   running: boolean;
   onRun: () => void;
+  onCancel?: () => void;
   progress: Progress | null;
   canRun?: boolean;
   lines: string[];
@@ -21,6 +22,7 @@ interface Props {
 export function RunPanel({
   running,
   onRun,
+  onCancel,
   progress,
   canRun = true,
   lines,
@@ -39,9 +41,13 @@ export function RunPanel({
     <section className="panel">
       <span className="panel-cap">{t("panel.run")}</span>
       <div className="row">
-        <button onClick={onRun} disabled={running || !canRun}>
-          {t("common.runBenchmark")}
-        </button>
+        {running ? (
+          <button onClick={onCancel}>{t("common.cancelBenchmark")}</button>
+        ) : (
+          <button onClick={onRun} disabled={!canRun}>
+            {t("common.runBenchmark")}
+          </button>
+        )}
         <span style={{ color: "var(--anode)", fontSize: 12 }}>{label}</span>
       </div>
       <MetricsBanks

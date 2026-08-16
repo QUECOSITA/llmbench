@@ -7,6 +7,7 @@ const STATUS_KEY: Record<string, ParseKeys> = {
   completed: "status.completed",
   failed: "status.failed",
   cancelled: "status.cancelled",
+  aborted: "status.cancelled",
   error: "status.error",
   ok: "status.ok",
 };

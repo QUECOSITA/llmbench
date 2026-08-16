@@ -12,6 +12,7 @@
     "generate": "생성",
     "runBenchmark": "벤치마크 실행",
     "cancel": "취소",
+    "cancelBenchmark": "벤치마크 취소",
     "download": "다운로드",
     "load": "불러오기",
     "remove": "제거",

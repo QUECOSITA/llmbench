@@ -12,6 +12,7 @@
     "generate": "生成",
     "runBenchmark": "ベンチマークを実行",
     "cancel": "キャンセル",
+    "cancelBenchmark": "ベンチマークをキャンセル",
     "download": "ダウンロード",
     "load": "読み込む",
     "remove": "削除",

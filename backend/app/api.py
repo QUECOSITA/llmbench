@@ -81,6 +81,7 @@ class AppState:
         self._prune_proc: asyncio.subprocess.Process | None = None
         self._prune_answer: asyncio.Queue[str] | None = None
         self._active_run_id: int | None = None
+        self._cancel_requested = False
 
 
 state: AppState | None = None
@@ -569,8 +570,22 @@ async def start_run(payload: dict):
     run_id = db_mod.create_run(s.conn, repo_id, len(configs))
     with s._state_lock:
         s._job_active = True
+        s._cancel_requested = False
     asyncio.create_task(_run_job(s, run_id, configs))
     return {"run_id": run_id}
+
+
+@router.post("/benchmarks/cancel")
+async def cancel_run():
+    s = _require_state()
+    with s._state_lock:
+        if not s._job_active or s._active_run_id is None:
+            raise HTTPException(409, "No benchmark is running")
+        s._cancel_requested = True
+    runner = s.runner
+    if runner is not None:
+        runner.abort()
+    return {"ok": True}
 
 
 async def _run_job(s: AppState, run_id: int, configs: list[dict]):
@@ -582,6 +597,9 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                 await broadcast(s, {"type": "run_started", "run_id": run_id, "total": len(configs)})
                 status = "completed"
                 for i, cfg in enumerate(configs):
+                    if s._cancel_requested:
+                        status = "aborted"
+                        break
                     await broadcast(s, {"type": "config_start", "run_id": run_id, "index": i,
                                         "total": len(configs), "config": cfg})
                     if cfg.get("bench_tool") == "speed-bench":
@@ -631,6 +649,7 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
         s._active_run_id = None
         with s._state_lock:
             s._job_active = False
+            s._cancel_requested = False
 
 
 def _coerce_model_id(raw) -> int | None:

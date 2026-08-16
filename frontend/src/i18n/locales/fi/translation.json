@@ -12,6 +12,7 @@
     "generate": "LUO",
     "runBenchmark": "SUORITA BENCHMARK",
     "cancel": "PERUUTA",
+    "cancelBenchmark": "PERUUTA BENCHMARK",
     "download": "Lataa",
     "load": "LADAA",
     "remove": "POISTA",

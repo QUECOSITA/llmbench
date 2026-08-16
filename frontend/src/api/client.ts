@@ -165,6 +165,7 @@ export const api = {
     method: "POST",
     body: JSON.stringify(body),
   }),
+  cancelBenchmark: () => request<{ ok: boolean }>("/benchmarks/cancel", { method: "POST" }),
   listModels: () => request<{ models: DownloadedModel[] }>("/models"),
   downloadModel: (body: { repo_id: string; server_id: string; gguf_filename?: string }) =>
     request<{ ok: boolean }>("/models/download", {
