@@ -239,8 +239,10 @@ def _resolve_download_path(s: AppState, repo_id: str, server_id: str,
                            gguf_filename: str | None) -> tuple[str | None, str | None, int | None]:
     """Single-file convenience for callers that only need one resolved gguf.
 
-    The generate endpoint still relies on this; Task 5 will migrate it to the
-    plural helper directly."""
+    The generate endpoint still relies on this wrapper.
+    Note: when both gguf_dir and the HF snapshot hold ggufs, this returns the
+    smallest-named snapshot file first — interim behavior to be revisited when
+    generate migrates to per-file selection."""
     results = _resolve_download_paths(s, repo_id, server_id,
                                       [gguf_filename] if gguf_filename else None)
     return results[0] if results else (None, None, None)
@@ -467,9 +469,16 @@ async def generate(payload: dict):
     resolved_gguf = payload.get("gguf_path")
     gguf_filename = os.path.basename(resolved_gguf) if resolved_gguf else None
     if resolved_gguf is None and server_id == "llama.cpp":
-        local_path, name, _size = _resolve_download_path(s, repo_id, "llama.cpp", None)
+        local_path, name, size = _resolve_download_path(s, repo_id, "llama.cpp", None)
         resolved_gguf = local_path
         gguf_filename = name
+        if size:
+            weights = size
+    elif resolved_gguf:
+        try:
+            weights = Path(resolved_gguf).stat().st_size
+        except OSError:
+            pass
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
     requested_bench_tool = payload.get("bench_tool")
     if requested_bench_tool not in (None, "llama-bench", "speed-bench"):

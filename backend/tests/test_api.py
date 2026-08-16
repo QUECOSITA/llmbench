@@ -1742,3 +1742,19 @@ def test_download_llama_multi_gguf_upserts_one_row_per_file(client, tmp_path, mo
 
     assert _poll(lambda: len(rows()) == 2 and all(x["status"] == "downloaded" for x in rows()))
     assert {x["gguf_filename"] for x in rows()} == {"a.gguf", "b.gguf"}
+
+
+def test_generate_configs_fit_uses_resolved_gguf_size(client, tmp_path):
+    import app.api as api_mod
+    gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
+    gguf.parent.mkdir(parents=True)
+    gguf.write_bytes(b"x" * (3 * 1024 ** 3))  # 3 GiB on disk
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1, "vram_gb": 24.0,
+        "weights_bytes": 10_000_000_000, "ram_gb": 64.0,
+        "model_arch": {"layers": 32, "heads": 32, "hidden": 4096, "max_ctx": 8192},
+        "readme_flags": {},
+    })
+    assert r.status_code == 200
+    fit = r.json()["configs"][0]["fit"]
+    assert fit["weights_gb"] == 3.0
