@@ -114,3 +114,56 @@ test("supports --bench=value form", () => {
   expect(screen.getByText(/--category:/)).toHaveTextContent("high_entropy");
   expect(screen.getByText(/--category:/)).toHaveTextContent("low_entropy");
 });
+
+test("renders the bench tool selector when showBenchToolSelector is true", () => {
+  render(
+    <ConfigBank
+      n={1}
+      onNChange={() => {}}
+      onGenerate={() => {}}
+      configs={[]}
+      showBenchToolSelector
+      benchTool="llama-bench"
+      onBenchToolChange={() => {}}
+    />,
+  );
+  expect(screen.getByLabelText(/bench tool/i)).toBeInTheDocument();
+});
+
+test("hides the bench tool selector when showBenchToolSelector is false", () => {
+  render(<ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={[]} />);
+  expect(screen.queryByLabelText(/bench tool/i)).not.toBeInTheDocument();
+});
+
+test("fires onBenchToolChange on selection", () => {
+  const onBenchToolChange = vi.fn();
+  render(
+    <ConfigBank
+      n={1}
+      onNChange={() => {}}
+      onGenerate={() => {}}
+      configs={[]}
+      showBenchToolSelector
+      benchTool="llama-bench"
+      onBenchToolChange={onBenchToolChange}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText(/bench tool/i), { target: { value: "speed-bench" } });
+  expect(onBenchToolChange).toHaveBeenCalledWith("speed-bench");
+});
+
+test("disables the bench tool selector when canGenerate is false", () => {
+  render(
+    <ConfigBank
+      n={1}
+      onNChange={() => {}}
+      onGenerate={() => {}}
+      configs={[]}
+      canGenerate={false}
+      showBenchToolSelector
+      benchTool="llama-bench"
+      onBenchToolChange={() => {}}
+    />,
+  );
+  expect(screen.getByLabelText(/bench tool/i)).toBeDisabled();
+});
