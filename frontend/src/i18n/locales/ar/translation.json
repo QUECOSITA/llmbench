@@ -12,6 +12,7 @@
     "generate": "إنشاء",
     "runBenchmark": "تشغيل الاختبار",
     "cancel": "إلغاء",
+    "cancelBenchmark": "إلغاء الاختبار",
     "download": "تنزيل",
     "load": "تحميل",
     "remove": "إزالة",
@@ -36,6 +37,7 @@
   },
   "config": {
     "bankTitle": "02 · بنك التكوين · N = {{n}}",
+    "benchTool": "أداة BENCH",
     "speedBenchFlags": "أعلام SPEED-BENCH",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all، أو (لاختبار {{bench}}): {{cats}}",

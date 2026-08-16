@@ -102,6 +102,7 @@ export function App() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [server, setServer] = useState<string>("");
   const [n, setN] = useState(1);
+  const [benchTool, setBenchTool] = useState<"llama-bench" | "speed-bench">("llama-bench");
   const [configs, setConfigs] = useState<ConfigRow[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -194,6 +195,7 @@ export function App() {
   const onAnalyze = useCallback(async (input: string) => {
     const data = await api.analyze(input);
     setAnalysis(data);
+    setBenchTool(data.auto_bench_tool === "speed-bench" ? "speed-bench" : "llama-bench");
     setServer(data.detected_server ?? "");
     setConfigs([]);
     setDownloads({});
@@ -227,9 +229,10 @@ export function App() {
       weights_bytes: analysis.weights_bytes,
       ram_gb: (hardware.ram_total_gb as number) ?? 0,
       model_arch: analysis.model_arch,
+      bench_tool: analysis.readme_has_serving_command === false ? benchTool : undefined,
     });
     setConfigs(data.configs);
-  }, [analysis, hardware, server]);
+  }, [analysis, hardware, server, benchTool]);
 
   const [progressState, dispatch] = useReducer(progressReducer, INITIAL_STATE);
 
@@ -255,7 +258,7 @@ export function App() {
           results: (detail.results ?? []).map(toResultRow),
         });
         setRunning(false);
-        if (status && status !== "completed") {
+        if (status && status !== "completed" && status !== "aborted" && status !== "cancelled") {
           setError(t("run.statusError", { status: statusLabel(status) }));
         }
       } catch {
@@ -287,7 +290,7 @@ export function App() {
         }
         setRunning(false);
         setWatchingRunId(null);
-        if (status && status !== "completed") {
+        if (status && status !== "completed" && status !== "aborted" && status !== "cancelled") {
           setError(t("run.statusError", { status: statusLabel(status) }));
         }
       } catch {
@@ -378,6 +381,18 @@ export function App() {
       }
     }
   }, [analysis, configs, pollRun, server, watchRun]);
+
+  const onCancelRun = useCallback(async () => {
+    setError(null);
+    setErrorContext(null);
+    try {
+      await api.cancelBenchmark();
+    } catch (err) {
+      const apiErr = err as { status?: number };
+      if (apiErr.status === 409) return;
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
 
   const events = useBenchmarkProgress();
 
@@ -532,12 +547,16 @@ export function App() {
                   setConfigs((prev) => prev.map((c, j) => (j === i ? { ...c, bench_flags: flags } : c)))
                 }
                 speedBenchInfo={speedBenchInfo}
+                benchTool={benchTool}
+                onBenchToolChange={setBenchTool}
+                showBenchToolSelector={!hasServingCommand}
               />
 
               <RunPanel
                 running={running}
                 canRun={Boolean(analysis?.repo_id) && configs.length > 0 && Boolean(server || analysis?.detected_server)}
                 onRun={onRun}
+                onCancel={onCancelRun}
                 progress={
                   progressState.running || progressState.results.length > 0
                     ? {

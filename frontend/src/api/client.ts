@@ -59,6 +59,7 @@ export interface Analysis {
   repo_id?: string;
   detected_server?: string | null;
   readme_has_serving_command?: boolean;
+  auto_bench_tool?: string;
   readme_flags?: Record<string, string>;
   readme_flags_by_server?: Record<string, Record<string, string>>;
   gguf_files?: Array<{ path: string; size: number }>;
@@ -145,6 +146,7 @@ export const api = {
     weights_bytes?: number;
     ram_gb?: number;
     model_arch?: ModelArch;
+    bench_tool?: string;
   }) =>
     request<{
       configs: Array<{
@@ -163,6 +165,7 @@ export const api = {
     method: "POST",
     body: JSON.stringify(body),
   }),
+  cancelBenchmark: () => request<{ ok: boolean }>("/benchmarks/cancel", { method: "POST" }),
   listModels: () => request<{ models: DownloadedModel[] }>("/models"),
   downloadModel: (body: { repo_id: string; server_id: string; gguf_filename?: string }) =>
     request<{ ok: boolean }>("/models/download", {

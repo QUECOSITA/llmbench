@@ -37,6 +37,25 @@ class FakeProcess:
         self.killed = True
 
 
+class BlockingFakeProcess:
+    """A fake subprocess whose streams block until kill() feeds EOF, letting
+    a running benchmark stay 'running' until it is aborted."""
+
+    def __init__(self):
+        self.stdout = asyncio.StreamReader()
+        self.stderr = asyncio.StreamReader()
+        self.returncode = None
+        self.killed = False
+
+    async def wait(self):
+        return self.returncode
+
+    def kill(self):
+        self.killed = True
+        self.stdout.feed_eof()
+        self.stderr.feed_eof()
+
+
 def _poll(predicate, timeout=3.0, interval=0.05):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -127,6 +146,45 @@ def test_analyze_readme_has_serving_command_true(client, httpx_mock):
     body = r.json()
     assert body["detected_server"] == "llama.cpp"
     assert body["readme_has_serving_command"] is True
+
+
+def test_analyze_auto_bench_tool_speed_bench_for_mtp_repo(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/Qwen3-MTP/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.Q4_K_M.gguf", "type": "file", "size": 4_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/Qwen3-MTP/raw/main/README.md",
+                            text="# M\n")
+    r = client.post("/api/models/analyze", json={"input": "org/Qwen3-MTP"})
+    assert r.status_code == 200
+    assert r.json()["auto_bench_tool"] == "speed-bench"
+
+
+def test_analyze_auto_bench_tool_speed_bench_for_spec_readme(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.Q4_K_M.gguf", "type": "file", "size": 4_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n\n```\nllama-server -m model.gguf --spec-type draft-mtp\n```\n")
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    assert r.json()["auto_bench_tool"] == "speed-bench"
+
+
+def test_analyze_auto_bench_tool_llama_bench_for_plain_model(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.Q4_K_M.gguf", "type": "file", "size": 4_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n")
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    assert r.json()["auto_bench_tool"] == "llama-bench"
 
 
 def test_analyze_gguf_boost_without_serving_command_reports_false(client, httpx_mock):
@@ -451,6 +509,98 @@ def test_run_executes_rebuilt_bench_command_from_edited_serving_command(client, 
     assert "--fit-ctx" in captured["argv"]
     assert captured["argv"][captured["argv"].index("--fit-ctx") + 1] == "54000"
     assert "4096" not in captured["argv"]
+
+
+def _bench_config(**overrides):
+    cfg = {
+        "server_id": "llama.cpp",
+        "flags": {"-c": "4096"},
+        "model_id": None,
+        "serving_command": "llama-server -m x",
+        "bench_command": ["llama-bench", "-m", "x"],
+    }
+    cfg.update(overrides)
+    return cfg
+
+
+def test_cancel_benchmark_with_no_active_run_409(client):
+    r = client.post("/api/benchmarks/cancel")
+    assert r.status_code == 409
+
+
+def test_cancel_benchmark_aborts_running_run(client, monkeypatch):
+    captured = {}
+
+    async def fake_create(*a, **k):
+        proc = BlockingFakeProcess()
+        captured["proc"] = proc
+        return proc
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    cfg = _bench_config()
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    def status():
+        runs = {x["id"]: x for x in client.get("/api/benchmarks").json()["runs"]}
+        return runs[run_id]["status"]
+
+    assert _poll(lambda: status() == "running")
+
+    r2 = client.post("/api/benchmarks/cancel")
+    assert r2.status_code == 200
+    assert r2.json() == {"ok": True}
+
+    assert _poll(lambda: status() != "running")
+    assert status() == "aborted"
+    assert captured["proc"].killed
+
+    detail = client.get(f"/api/benchmarks/{run_id}").json()
+    assert detail["status"] == "aborted"
+    assert detail["results"][0]["result_status"] == "aborted"
+
+    r3 = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    assert r3.status_code == 200
+
+
+def test_cancel_benchmark_keeps_completed_configs(client, monkeypatch):
+    captured = {}
+    calls = []
+
+    async def fake_create(*a, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            return FakeProcess(FAKE_BENCH.encode())
+        proc = BlockingFakeProcess()
+        captured["proc2"] = proc
+        return proc
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    cfg = _bench_config()
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg, cfg]})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    def results():
+        return client.get(f"/api/benchmarks/{run_id}").json()["results"]
+
+    assert _poll(lambda: len(results()) >= 1)
+    ok_rows = [x for x in results() if x["result_status"] == "ok"]
+    assert len(ok_rows) == 1
+
+    r2 = client.post("/api/benchmarks/cancel")
+    assert r2.status_code == 200
+
+    def status():
+        runs = {x["id"]: x for x in client.get("/api/benchmarks").json()["runs"]}
+        return runs[run_id]["status"]
+
+    assert _poll(lambda: status() != "running")
+    assert status() == "aborted"
+    assert [x["result_status"] for x in results()].count("ok") == 1
 
 
 def test_download_missing_fields_422(client):
@@ -1184,6 +1334,69 @@ def test_generate_configs_llama_non_spec_uses_llama_bench(client):
     cfg = r.json()["configs"][0]
     assert cfg["bench_tool"] == "llama-bench"
     assert cfg["bench_command"][0] == "llama-bench"
+
+
+def test_generate_configs_manual_speed_bench_on_plain_model(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: True)
+    bin_dir = tmp_path / "llama" / "build" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    script = tmp_path / "llama" / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("#!/usr/bin/env python3\n")
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl",
+                        llama_cpp_bin_dir=bin_dir)
+    (tmp_path / "prompts.jsonl").write_text("{\"prompt\": \"hi\"}\n")
+    with TestClient(create_app(settings)) as c:
+        r = c.post("/api/configs/generate", json={
+            "server_id": "llama.cpp",
+            "repo_id": "org/plain-model",
+            "n": 1,
+            "readme_flags": {},
+            "bench_tool": "speed-bench",
+        })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["bench_tool"] == "speed-bench"
+    assert cfg["bench_command"][0] == sys.executable
+
+
+def test_generate_configs_manual_llama_bench_on_mtp_model(client):
+    r = client.post("/api/configs/generate", json={
+        "server_id": "llama.cpp",
+        "repo_id": "org/Qwen3-MTP",
+        "n": 1,
+        "readme_flags": {"--spec-type": "draft-mtp"},
+        "bench_tool": "llama-bench",
+    })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["bench_tool"] == "llama-bench"
+    assert cfg["bench_command"][0] == "llama-bench"
+
+
+def test_generate_configs_invalid_bench_tool_422(client):
+    r = client.post("/api/configs/generate", json={
+        "server_id": "llama.cpp",
+        "repo_id": "org/model",
+        "n": 1,
+        "readme_flags": {},
+        "bench_tool": "bogus",
+    })
+    assert r.status_code == 422
+
+
+def test_generate_configs_absent_bench_tool_keeps_auto_detection(client):
+    r = client.post("/api/configs/generate", json={
+        "server_id": "llama.cpp",
+        "repo_id": "org/plain-model",
+        "n": 1,
+        "readme_flags": {},
+    })
+    assert r.status_code == 200
+    assert r.json()["configs"][0]["bench_tool"] == "llama-bench"
 
 
 def test_rebuild_bench_command_speed_bench(tmp_path, monkeypatch):

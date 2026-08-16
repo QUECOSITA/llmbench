@@ -74,6 +74,8 @@ const server = createServer(async (req, res) => {
         fit: { stage: "gpu", label: "FITS VRAM", fits_vram: true, offloaded: false, needed_gb: 3.8, kv_gb: 4.3, weights_gb: 4 },
       }],
     });
+  } else if (req.url?.startsWith("/api/benchmarks/cancel")) {
+    Object.assign(body, { ok: true });
   } else if (req.method === "GET" && req.url === "/api/benchmarks") {
     Object.assign(body, { runs });
   } else if (req.method === "POST" && req.url?.startsWith("/api/benchmarks")) {

@@ -12,6 +12,7 @@
     "generate": "GENERAR",
     "runBenchmark": "EJECUTAR BENCHMARK",
     "cancel": "CANCELAR",
+    "cancelBenchmark": "CANCELAR BENCHMARK",
     "download": "Descargar",
     "load": "CARGAR",
     "remove": "ELIMINAR",
@@ -36,6 +37,7 @@
   },
   "config": {
     "bankTitle": "02 · BANCO DE CONFIGURACIÓN · N = {{n}}",
+    "benchTool": "HERRAMIENTA DE BENCH",
     "speedBenchFlags": "FLAGS DE SPEED-BENCH",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all, o (para el bench {{bench}}): {{cats}}",

@@ -23,6 +23,7 @@ vi.mock("./api/client", () => ({
       configs: [{ flags: { "--n-gpu": "1" }, serving_command: "python serve.py", bench_command: [] }],
     }),
     startBenchmark: vi.fn().mockResolvedValue({ run_id: 1 }),
+    cancelBenchmark: vi.fn().mockResolvedValue({ ok: true }),
     getRun: vi.fn().mockResolvedValue({ status: "running", total: 1, results: [] }),
     downloadModel: vi.fn().mockResolvedValue({ ok: true }),
     cancelDownload: vi.fn().mockResolvedValue({ ok: true }),
@@ -198,6 +199,36 @@ test("run that fails on the backend re-enables RUN and shows the failure", async
   expect(await screen.findByText(/run failed/i)).toBeInTheDocument();
 });
 
+test("RUN toggles to CANCEL and cancelling aborts the run without an error", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.getRun).mockResolvedValue({ status: "aborted", total: 1, results: [] });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+  fireEvent.click(screen.getByText(/generate/i));
+  await screen.findByText(/python serve/i);
+  fireEvent.click(screen.getByText(/run benchmark/i));
+
+  await waitFor(() => {
+    expect(screen.getByText(/cancel benchmark/i)).toBeEnabled();
+  });
+  fireEvent.click(screen.getByText(/cancel benchmark/i));
+  expect(vi.mocked(api.cancelBenchmark)).toHaveBeenCalled();
+
+  await waitFor(() => {
+    expect(screen.getByText(/run benchmark/i)).toBeEnabled();
+  }, { timeout: 3000 });
+  expect(screen.queryByText(/run failed/i)).not.toBeInTheDocument();
+});
+
 test("completed run populates ranked results and re-enables RUN", async () => {
   const { api } = await import("./api/client");
   vi.mocked(api.getRun).mockResolvedValue({
@@ -279,7 +310,7 @@ test("409 already-running switches into watch mode showing the live run", async 
     expect(screen.getByText(/watching benchmark run #7 in progress/i)).toBeInTheDocument();
   });
   await waitFor(() => {
-    expect(screen.getByText(/run benchmark/i)).toBeDisabled();
+    expect(screen.getByText(/cancel benchmark/i)).toBeEnabled();
   });
   await waitFor(() => {
     const table = document.querySelector(".results-table") as HTMLElement | null;
@@ -546,6 +577,88 @@ test("run payload round-trips bench_tool", async () => {
   await waitFor(() => expect(startSpy).toHaveBeenCalled());
   const body = startSpy.mock.calls[0][0] as { configs: Array<{ bench_tool?: string }> };
   expect(body.configs[0].bench_tool).toBe("speed-bench");
+});
+
+test("shows the bench tool selector only when README proposes no serving config and passes bench_tool to generate", async () => {
+  const { api } = await import("./api/client");
+  const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({
+    configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf", bench_command: [], bench_tool: "llama-bench", fit: null }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: false,
+    gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+    readme_flags: {},
+    auto_bench_tool: "llama-bench",
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  const select = screen.getByLabelText(/bench tool/i) as HTMLSelectElement;
+  expect(select.value).toBe("llama-bench");
+
+  fireEvent.change(select, { target: { value: "speed-bench" } });
+  fireEvent.click(screen.getByText(/generate/i));
+  await waitFor(() => expect(generateSpy).toHaveBeenCalled());
+  const body = generateSpy.mock.calls[0][0] as { bench_tool?: string };
+  expect(body.bench_tool).toBe("speed-bench");
+});
+
+test("defaults the selector to auto_bench_tool=speed-bench from analyze", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/Qwen3-MTP",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: false,
+    gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+    readme_flags: {},
+    auto_bench_tool: "speed-bench",
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/Qwen3-MTP" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/Qwen3-MTP/i);
+
+  const select = screen.getByLabelText(/bench tool/i) as HTMLSelectElement;
+  expect(select.value).toBe("speed-bench");
+});
+
+test("no bench tool selector and no bench_tool in generate payload when README proposes a serving config", async () => {
+  const { api } = await import("./api/client");
+  const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({
+    configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf", bench_command: [], bench_tool: "llama-bench", fit: null }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: true,
+    readme_flags: {},
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  expect(screen.queryByLabelText(/bench tool/i)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText(/generate/i));
+  await waitFor(() => expect(generateSpy).toHaveBeenCalled());
+  const body = generateSpy.mock.calls[0][0] as { bench_tool?: string };
+  expect(body.bench_tool).toBeUndefined();
 });
 
 test("run payload round-trips edited bench_flags", async () => {

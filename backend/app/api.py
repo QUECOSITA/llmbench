@@ -81,6 +81,7 @@ class AppState:
         self._prune_proc: asyncio.subprocess.Process | None = None
         self._prune_answer: asyncio.Queue[str] | None = None
         self._active_run_id: int | None = None
+        self._cancel_requested = False
 
 
 state: AppState | None = None
@@ -160,11 +161,18 @@ async def analyze(payload: dict):
         except Exception:
             arch = None
     verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"], arch=arch)
+    first_gguf_basename = os.path.basename(gguf[0]["path"]) if gguf else None
+    auto_bench_tool = (
+        "speed-bench"
+        if is_spec_decoding_model(repo_id, first_gguf_basename, flags)
+        else "llama-bench"
+    )
     return {
         "repo_id": repo_id,
         "detected_server": detected,
         "server_scores": scores,
         "readme_has_serving_command": has_serving_command(readme, "llama.cpp"),
+        "auto_bench_tool": auto_bench_tool,
         "readme_flags": flags,
         "readme_flags_by_server": readme_flags_by_server,
         "gguf_files": gguf,
@@ -422,9 +430,16 @@ async def generate(payload: dict):
         resolved_gguf = local_path
         gguf_filename = name
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
+    requested_bench_tool = payload.get("bench_tool")
+    if requested_bench_tool not in (None, "llama-bench", "speed-bench"):
+        raise HTTPException(422, "'bench_tool' must be 'llama-bench' or 'speed-bench'.")
     uses_speed_bench = (
         server_id == "llama.cpp"
-        and is_spec_decoding_model(repo_id, gguf_filename, payload.get("readme_flags", {}))
+        and (
+            requested_bench_tool == "speed-bench"
+            if requested_bench_tool is not None
+            else is_spec_decoding_model(repo_id, gguf_filename, payload.get("readme_flags", {}))
+        )
     )
     for cfg in configs:
         cfg["serving_command"] = build_serving_command(
@@ -555,8 +570,22 @@ async def start_run(payload: dict):
     run_id = db_mod.create_run(s.conn, repo_id, len(configs))
     with s._state_lock:
         s._job_active = True
+        s._cancel_requested = False
     asyncio.create_task(_run_job(s, run_id, configs))
     return {"run_id": run_id}
+
+
+@router.post("/benchmarks/cancel")
+async def cancel_run():
+    s = _require_state()
+    with s._state_lock:
+        if not s._job_active or s._active_run_id is None:
+            raise HTTPException(409, "No benchmark is running")
+        s._cancel_requested = True
+    runner = s.runner
+    if runner is not None:
+        runner.abort()
+    return {"ok": True}
 
 
 async def _run_job(s: AppState, run_id: int, configs: list[dict]):
@@ -568,6 +597,9 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                 await broadcast(s, {"type": "run_started", "run_id": run_id, "total": len(configs)})
                 status = "completed"
                 for i, cfg in enumerate(configs):
+                    if s._cancel_requested:
+                        status = "aborted"
+                        break
                     await broadcast(s, {"type": "config_start", "run_id": run_id, "index": i,
                                         "total": len(configs), "config": cfg})
                     if cfg.get("bench_tool") == "speed-bench":
@@ -617,6 +649,7 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
         s._active_run_id = None
         with s._state_lock:
             s._job_active = False
+            s._cancel_requested = False
 
 
 def _coerce_model_id(raw) -> int | None:

@@ -12,6 +12,7 @@
     "generate": "GENERER",
     "runBenchmark": "KJØR BENCHMARK",
     "cancel": "AVBRYT",
+    "cancelBenchmark": "AVBRYT BENCHMARK",
     "download": "Last ned",
     "load": "LAST INN",
     "remove": "FJERN",
@@ -36,6 +37,7 @@
   },
   "config": {
     "bankTitle": "02 · KONFIGURASJONSBANK · N = {{n}}",
+    "benchTool": "BENCH-VERKTØY",
     "speedBenchFlags": "SPEED-BENCH-FLAGG",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all, eller (for bench {{bench}}): {{cats}}",

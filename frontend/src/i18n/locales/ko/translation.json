@@ -12,6 +12,7 @@
     "generate": "생성",
     "runBenchmark": "벤치마크 실행",
     "cancel": "취소",
+    "cancelBenchmark": "벤치마크 취소",
     "download": "다운로드",
     "load": "불러오기",
     "remove": "제거",
@@ -36,6 +37,7 @@
   },
   "config": {
     "bankTitle": "02 · 구성 뱅크 · N = {{n}}",
+    "benchTool": "BENCH 도구",
     "speedBenchFlags": "SPEED-BENCH 플래그",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all 또는 ({{bench}} 벤치의 경우): {{cats}}",

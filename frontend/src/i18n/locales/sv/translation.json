@@ -12,6 +12,7 @@
     "generate": "GENERERA",
     "runBenchmark": "KÖR BENCHMARK",
     "cancel": "AVBRYT",
+    "cancelBenchmark": "AVBRYT BENCHMARK",
     "download": "Ladda ner",
     "load": "LADDA",
     "remove": "TA BORT",
@@ -36,6 +37,7 @@
   },
   "config": {
     "bankTitle": "02 · KONFIGURATIONSBANK · N = {{n}}",
+    "benchTool": "BENCH-VERKTYG",
     "speedBenchFlags": "SPEED-BENCH-FLAGGOR",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all, eller (för bench {{bench}}): {{cats}}",
