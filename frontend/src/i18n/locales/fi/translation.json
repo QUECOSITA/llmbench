@@ -36,6 +36,7 @@
   },
   "config": {
     "bankTitle": "02 · KOKOONPANOPANKKI · N = {{n}}",
+    "benchTool": "BENCH-TYÖKALU",
     "speedBenchFlags": "SPEED-BENCH-LIPUT",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all, tai (bench {{bench}}): {{cats}}",

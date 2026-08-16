@@ -36,6 +36,7 @@
   },
   "config": {
     "bankTitle": "02 · بنك التكوين · N = {{n}}",
+    "benchTool": "أداة BENCH",
     "speedBenchFlags": "أعلام SPEED-BENCH",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all، أو (لاختبار {{bench}}): {{cats}}",

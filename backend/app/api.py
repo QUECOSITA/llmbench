@@ -160,11 +160,18 @@ async def analyze(payload: dict):
         except Exception:
             arch = None
     verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"], arch=arch)
+    first_gguf_basename = os.path.basename(gguf[0]["path"]) if gguf else None
+    auto_bench_tool = (
+        "speed-bench"
+        if is_spec_decoding_model(repo_id, first_gguf_basename, flags)
+        else "llama-bench"
+    )
     return {
         "repo_id": repo_id,
         "detected_server": detected,
         "server_scores": scores,
         "readme_has_serving_command": has_serving_command(readme, "llama.cpp"),
+        "auto_bench_tool": auto_bench_tool,
         "readme_flags": flags,
         "readme_flags_by_server": readme_flags_by_server,
         "gguf_files": gguf,
@@ -422,9 +429,16 @@ async def generate(payload: dict):
         resolved_gguf = local_path
         gguf_filename = name
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
+    requested_bench_tool = payload.get("bench_tool")
+    if requested_bench_tool not in (None, "llama-bench", "speed-bench"):
+        raise HTTPException(422, "'bench_tool' must be 'llama-bench' or 'speed-bench'.")
     uses_speed_bench = (
         server_id == "llama.cpp"
-        and is_spec_decoding_model(repo_id, gguf_filename, payload.get("readme_flags", {}))
+        and (
+            requested_bench_tool == "speed-bench"
+            if requested_bench_tool is not None
+            else is_spec_decoding_model(repo_id, gguf_filename, payload.get("readme_flags", {}))
+        )
     )
     for cfg in configs:
         cfg["serving_command"] = build_serving_command(

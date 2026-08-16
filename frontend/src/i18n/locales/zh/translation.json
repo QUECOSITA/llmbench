@@ -36,6 +36,7 @@
   },
   "config": {
     "bankTitle": "02 · 配置库 · N = {{n}}",
+    "benchTool": "BENCH 工具",
     "speedBenchFlags": "SPEED-BENCH 参数",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all，或（对于 {{bench}} 基准）: {{cats}}",

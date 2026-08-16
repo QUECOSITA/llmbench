@@ -36,6 +36,7 @@
   },
   "config": {
     "bankTitle": "02 · 構成バンク · N = {{n}}",
+    "benchTool": "BENCH ツール",
     "speedBenchFlags": "SPEED-BENCH フラグ",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all、または（{{bench}} ベンチの場合）: {{cats}}",

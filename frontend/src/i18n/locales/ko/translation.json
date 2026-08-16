@@ -36,6 +36,7 @@
   },
   "config": {
     "bankTitle": "02 · 구성 뱅크 · N = {{n}}",
+    "benchTool": "BENCH 도구",
     "speedBenchFlags": "SPEED-BENCH 플래그",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all 또는 ({{bench}} 벤치의 경우): {{cats}}",

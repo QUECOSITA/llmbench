@@ -36,6 +36,7 @@
   },
   "config": {
     "bankTitle": "02 · BANCO DE CONFIGURACIÓN · N = {{n}}",
+    "benchTool": "HERRAMIENTA DE BENCH",
     "speedBenchFlags": "FLAGS DE SPEED-BENCH",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all, o (para el bench {{bench}}): {{cats}}",
