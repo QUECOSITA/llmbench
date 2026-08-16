@@ -8,8 +8,8 @@ The tool reads the model's README to detect the intended serving program (llama.
 
 ## Features
 
-- Analyze a model from a HF link or `user/model`: serving-program detection, proposed flags, hardware fit verdict (VRAM/RAM vs. model size) with a warning banner when headroom is tight.
-- Download models via the HF CLI as a background job with live WebSocket log streaming; llama.cpp downloads resolve the GGUF file path and size. Concurrent or duplicate downloads are rejected (409).
+- Analyze a model from a HF link or `user/model`: serving-program detection, proposed flags, hardware fit verdict (VRAM/RAM vs. model size) with a warning banner when headroom is tight. Repos with multiple `.gguf` files list each file as a selectable checkbox with its own fit verdict.
+- Download models via the HF CLI as a background job with live WebSocket log streaming; llama.cpp downloads resolve the GGUF file path and size, and download only the selected `.gguf` files (one row per file in DOWNLOADED). Config-bank fit uses the benchmarked file's weight. Concurrent or duplicate downloads are rejected (409).
 - Model download button with progress in the model input panel.
 - Serial benchmarks ranked by DECODE STAGE t/s (PROMPT PROCESSING t/s also reported), persisted in SQLite.
 - llama.cpp models that propose speculative decoding (README `--spec-type` / spec flags) or carry `MTP` in the name are benchmarked with `speed-bench` (llama-server + `speed_bench.py`) instead of `llama-bench`, so MTP configs are actually measured.
