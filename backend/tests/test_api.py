@@ -1225,6 +1225,69 @@ def test_generate_configs_llama_non_spec_uses_llama_bench(client):
     assert cfg["bench_command"][0] == "llama-bench"
 
 
+def test_generate_configs_manual_speed_bench_on_plain_model(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: True)
+    bin_dir = tmp_path / "llama" / "build" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    script = tmp_path / "llama" / "tools" / "server" / "bench" / "speed-bench" / "speed_bench.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("#!/usr/bin/env python3\n")
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl",
+                        llama_cpp_bin_dir=bin_dir)
+    (tmp_path / "prompts.jsonl").write_text("{\"prompt\": \"hi\"}\n")
+    with TestClient(create_app(settings)) as c:
+        r = c.post("/api/configs/generate", json={
+            "server_id": "llama.cpp",
+            "repo_id": "org/plain-model",
+            "n": 1,
+            "readme_flags": {},
+            "bench_tool": "speed-bench",
+        })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["bench_tool"] == "speed-bench"
+    assert cfg["bench_command"][0] == sys.executable
+
+
+def test_generate_configs_manual_llama_bench_on_mtp_model(client):
+    r = client.post("/api/configs/generate", json={
+        "server_id": "llama.cpp",
+        "repo_id": "org/Qwen3-MTP",
+        "n": 1,
+        "readme_flags": {"--spec-type": "draft-mtp"},
+        "bench_tool": "llama-bench",
+    })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["bench_tool"] == "llama-bench"
+    assert cfg["bench_command"][0] == "llama-bench"
+
+
+def test_generate_configs_invalid_bench_tool_422(client):
+    r = client.post("/api/configs/generate", json={
+        "server_id": "llama.cpp",
+        "repo_id": "org/model",
+        "n": 1,
+        "readme_flags": {},
+        "bench_tool": "bogus",
+    })
+    assert r.status_code == 422
+
+
+def test_generate_configs_absent_bench_tool_keeps_auto_detection(client):
+    r = client.post("/api/configs/generate", json={
+        "server_id": "llama.cpp",
+        "repo_id": "org/plain-model",
+        "n": 1,
+        "readme_flags": {},
+    })
+    assert r.status_code == 200
+    assert r.json()["configs"][0]["bench_tool"] == "llama-bench"
+
+
 def test_rebuild_bench_command_speed_bench(tmp_path, monkeypatch):
     monkeypatch.setattr("app.api.speed_bench_deps_available", lambda: True)
     from app.api import _rebuild_bench_command, AppState

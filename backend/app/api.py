@@ -429,9 +429,16 @@ async def generate(payload: dict):
         resolved_gguf = local_path
         gguf_filename = name
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
+    requested_bench_tool = payload.get("bench_tool")
+    if requested_bench_tool not in (None, "llama-bench", "speed-bench"):
+        raise HTTPException(422, "'bench_tool' must be 'llama-bench' or 'speed-bench'.")
     uses_speed_bench = (
         server_id == "llama.cpp"
-        and is_spec_decoding_model(repo_id, gguf_filename, payload.get("readme_flags", {}))
+        and (
+            requested_bench_tool == "speed-bench"
+            if requested_bench_tool is not None
+            else is_spec_decoding_model(repo_id, gguf_filename, payload.get("readme_flags", {}))
+        )
     )
     for cfg in configs:
         cfg["serving_command"] = build_serving_command(
