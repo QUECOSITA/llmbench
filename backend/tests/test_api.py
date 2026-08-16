@@ -510,6 +510,9 @@ def test_run_executes_rebuilt_bench_command_from_edited_serving_command(client, 
     assert captured["argv"][captured["argv"].index("--fit-ctx") + 1] == "54000"
     assert "4096" not in captured["argv"]
 
+    detail = client.get(f"/api/benchmarks/{run_id}").json()
+    assert detail["results"][0]["flag_conf"] == {"--ctx-size": "54000"}
+
 
 def _bench_config(**overrides):
     cfg = {
@@ -1426,6 +1429,7 @@ def test_rebuild_bench_command_speed_bench(tmp_path, monkeypatch):
     assert "--port" not in cfg["server_command"]
     assert "--host" not in cfg["server_command"]
     assert "--spec-type" in cfg["server_command"]
+    assert cfg["flags"] == {"--spec-type": "draft-mtp"}
     assert cfg["bench_command"][0] == sys.executable
     assert cfg["bench_command"][1] == str(script)
     assert cfg["bench_command"][cfg["bench_command"].index("--bench") + 1] == "qualitative"

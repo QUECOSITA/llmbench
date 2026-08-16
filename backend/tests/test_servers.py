@@ -5,6 +5,7 @@ import pytest
 
 from app.servers import SERVERS, detect_binaries, build_bench_command, resolve_bench_binary, README_FLAG_MAP
 from app.servers import parse_serving_command, model_ref_from_flags
+from app.servers import serving_command_display_flags
 from app.servers import (is_spec_decoding_model, resolve_serving_binary, resolve_speed_bench_script,
                          build_server_command, build_speed_bench_command, speed_bench_deps_available,
                          parse_speed_bench_flags, validate_speed_bench_flags, speed_bench_default_flags,
@@ -155,6 +156,36 @@ def test_parse_serving_command_llama_bare_bool_flag():
 
 def test_parse_serving_command_empty():
     assert parse_serving_command("llama.cpp", "  ") == {}
+
+
+def test_serving_command_display_flags_hf_pair_canonical():
+    cmd = "llama-server --hf-repo org/model --hf-file x.gguf --ctx-size 8192 -ngl 40"
+    assert serving_command_display_flags("llama.cpp", cmd) == {
+        "--ctx-size": "8192",
+        "--n-gpu-layers": "40",
+    }
+
+
+def test_serving_command_display_flags_local_model_drops_m_and_plumbing():
+    cmd = "llama-server -m /models/x.gguf -c 2048 --port 8080 --host 0.0.0.0"
+    assert serving_command_display_flags("llama.cpp", cmd) == {
+        "--ctx-size": "2048",
+    }
+
+
+def test_serving_command_display_flags_bare_boolean():
+    cmd = "llama-server -m x --flash-attn"
+    assert serving_command_display_flags("llama.cpp", cmd) == {"--flash-attn": ""}
+
+
+def test_serving_command_display_flags_empty_and_malformed():
+    assert serving_command_display_flags("llama.cpp", "  ") == {}
+    assert serving_command_display_flags("llama.cpp", "llama-server --reasoning-budget-message $'\n") == {}
+
+
+def test_serving_command_display_flags_short_alias_canonicalized():
+    cmd = "llama-server -m x -c 54000"
+    assert serving_command_display_flags("llama.cpp", cmd) == {"--ctx-size": "54000"}
 
 
 def test_model_ref_from_flags_llama_hf_pair():

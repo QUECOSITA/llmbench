@@ -21,6 +21,7 @@ from app.readme_parser import (detect_serving_programs, extract_flags,
 from app.servers import (build_bench_command, build_server_command, build_speed_bench_command,
                          detect_binaries, ensure_speed_bench_script, is_spec_decoding_model,
                          model_ref_from_flags, parse_serving_command,
+                         serving_command_display_flags,
                          speed_bench_deps_available, parse_speed_bench_flags,
                          speed_bench_default_flags, validate_speed_bench_flags,
                          SPEED_BENCH_BENCHES, SPEED_BENCH_CATEGORIES)
@@ -526,6 +527,8 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
             return
         cfg["bench_command"] = build_speed_bench_command(
             script, flags, output=str(s.settings.data_dir / "speed-bench.json"))
+        cfg["flags"] = serving_command_display_flags(
+            cfg["server_id"], cfg.get("serving_command", "")) or cfg.get("flags", {})
         cfg.pop("bench_error", None)
         return
     try:
@@ -534,6 +537,8 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
         cfg["bench_command"] = []
         cfg["bench_error"] = f"invalid serving command: {exc}"
         return
+    if flags:
+        cfg["flags"] = serving_command_display_flags(cfg["server_id"], cfg.get("serving_command", ""))
     if not flags:
         flags = cfg.get("flags") or {}
     if not flags:
@@ -632,7 +637,7 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                                        result["decode_tps"], result["duration_s"],
                                        result["output"], result["status"])
                     await broadcast(s, {"type": "config_done", "run_id": run_id, "index": i,
-                                        "result": result})
+                                        "result": result, "flag_conf": cfg.get("flags", {})})
                     if result["status"] == "aborted":
                         status = "aborted"
                         break
