@@ -31,6 +31,13 @@
    - `git push origin feature/my-new-task`
    - Create a Pull Request against `main`.
 
+## Merge Authorization (non-negotiable)
+
+- NEVER auto-merge a Pull Request on GitHub (via `gh`, the GitHub API, or any agent harness: opencode, Claude, Codex, pi, etc.) without an EXPLICIT user order in the prompt.
+- An order to merge MUST contain the literal word "merge" (e.g. "merge the PR", "merge feature/x into main").
+- "go", "continue", "approved", "finish", "ship", "integrate" or any other synonym NEVER authorize a merge. At most they authorize suggesting the merge and waiting for the user to say "merge".
+- After CI and security scans pass, still DO NOT merge — present the merge as a suggestion and wait for the user's explicit "merge" instruction.
+
 ## Security Scanning (Merge Gate)
 
 This repository is actively scanned through:
