@@ -9,6 +9,7 @@ export interface ProgressEvent {
   kind?: "line" | "progress";
   text?: string;
   result?: { status: string; decode_tps: number | null; prompt_processing_tps: number | null };
+  flag_conf?: Record<string, string>;
   status?: string;
   results?: ResultRow[];
 }
@@ -92,7 +93,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
     const decodeTps = event.result?.decode_tps ?? null;
     const newResult: ResultRow = {
       server_id: "",
-      flag_conf: {},
+      flag_conf: event.flag_conf ?? {},
       prompt_processing_tps: promptTps,
       decode_tps: decodeTps,
       result_status: event.result?.status ?? null,

@@ -404,6 +404,19 @@ def parse_serving_command(server_id: str, command: str) -> dict[str, str]:
     return flags
 
 
+def serving_command_display_flags(server_id: str, command: str) -> dict[str, str]:
+    """Extract the flag map shown in the ranked results from a (possibly
+    edited) serving command. Model-selector and network plumbing flags are
+    dropped so only the tunable knobs appear, and short aliases are canonicalized."""
+    try:
+        flags = parse_serving_command(server_id, command)
+    except ValueError:
+        return {}
+    flags = {k: v for k, v in flags.items()
+             if k not in _LLAMA_HF_FLAGS and k != "-m" and k not in ("--port", "--host")}
+    return _canonical_flags(server_id, flags)
+
+
 def model_ref_from_flags(server_id: str, flags: dict[str, str],
                          fallback_repo: str) -> tuple[str, str | None]:
     """Resolve the model reference (and optional gguf filename) used by

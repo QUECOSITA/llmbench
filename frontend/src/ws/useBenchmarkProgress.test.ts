@@ -43,6 +43,25 @@ test("config_done keeps result_status on the row", () => {
   expect(next.decodeTps).toBeNull();
 });
 
+test("config_done carries flag_conf into the result row when provided", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const next = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    flag_conf: { "--ctx-size": "54000" },
+    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0 },
+  }));
+  expect(next.results[0].flag_conf).toEqual({ "--ctx-size": "54000" });
+});
+
+test("config_done defaults flag_conf to empty when not provided", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const next = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0 },
+  }));
+  expect(next.results[0].flag_conf).toEqual({});
+});
+
 test("run_done for matching run_id stops running", () => {
   const state = progressReducer(INITIAL_STATE, ev("run_started", 1));
   const next = progressReducer(state, ev("run_done", 1));
