@@ -548,6 +548,88 @@ test("run payload round-trips bench_tool", async () => {
   expect(body.configs[0].bench_tool).toBe("speed-bench");
 });
 
+test("shows the bench tool selector only when README proposes no serving config and passes bench_tool to generate", async () => {
+  const { api } = await import("./api/client");
+  const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({
+    configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf", bench_command: [], bench_tool: "llama-bench", fit: null }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: false,
+    gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+    readme_flags: {},
+    auto_bench_tool: "llama-bench",
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  const select = screen.getByLabelText(/bench tool/i) as HTMLSelectElement;
+  expect(select.value).toBe("llama-bench");
+
+  fireEvent.change(select, { target: { value: "speed-bench" } });
+  fireEvent.click(screen.getByText(/generate/i));
+  await waitFor(() => expect(generateSpy).toHaveBeenCalled());
+  const body = generateSpy.mock.calls[0][0] as { bench_tool?: string };
+  expect(body.bench_tool).toBe("speed-bench");
+});
+
+test("defaults the selector to auto_bench_tool=speed-bench from analyze", async () => {
+  const { api } = await import("./api/client");
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/Qwen3-MTP",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: false,
+    gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+    readme_flags: {},
+    auto_bench_tool: "speed-bench",
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/Qwen3-MTP" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/Qwen3-MTP/i);
+
+  const select = screen.getByLabelText(/bench tool/i) as HTMLSelectElement;
+  expect(select.value).toBe("speed-bench");
+});
+
+test("no bench tool selector and no bench_tool in generate payload when README proposes a serving config", async () => {
+  const { api } = await import("./api/client");
+  const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({
+    configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf", bench_command: [], bench_tool: "llama-bench", fit: null }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: true,
+    readme_flags: {},
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  expect(screen.queryByLabelText(/bench tool/i)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText(/generate/i));
+  await waitFor(() => expect(generateSpy).toHaveBeenCalled());
+  const body = generateSpy.mock.calls[0][0] as { bench_tool?: string };
+  expect(body.bench_tool).toBeUndefined();
+});
+
 test("run payload round-trips edited bench_flags", async () => {
   const { api } = await import("./api/client");
   const startSpy = vi.spyOn(api, "startBenchmark").mockResolvedValue({ run_id: 1 });
