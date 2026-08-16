@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from app.config import Settings
-from app.db import init_db, get_model, list_models, upsert_model
+from app.db import get_models, init_db, get_model, list_models, upsert_model
 from app.sync import (_hf_cache_root, reconcile_models, remove_model, scan_hf_cache,
                       snapshot_dir_for)
 
@@ -308,6 +308,18 @@ def test_hf_cache_root_falls_back_to_home(tmp_path):
 
     root = _hf_cache_root(SettingsLike())
     assert root == Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def test_reconcile_creates_one_row_per_gguf(tmp_path):
+    settings = _settings(tmp_path)
+    _make_snapshot(settings, "org/model", ggufs=["a.gguf", "b.gguf"],
+                   readme="# model\n\nllama-server -m a.gguf\n")
+    conn = init_db(tmp_path / "db.sqlite")
+
+    reconcile_models(conn, settings)
+
+    rows = get_models(conn, "org/model", "llama.cpp")
+    assert {r["gguf_filename"] for r in rows if r["status"] == "downloaded"} == {"a.gguf", "b.gguf"}
 
 
 def test_list_models_status_filter(tmp_path):

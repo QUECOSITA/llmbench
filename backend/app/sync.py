@@ -94,9 +94,9 @@ def reconcile_models(conn, settings) -> None:
         if detected is None:
             continue
         if detected == "llama.cpp" and ggufs:
-            g = max(ggufs, key=lambda p: p.stat().st_size)
-            db_mod.upsert_model(conn, repo_id, "llama.cpp", "hf", str(g),
-                                "downloaded", gguf_filename=g.name, size_bytes=g.stat().st_size)
+            for g in {g.name: g for g in ggufs}.values():
+                db_mod.upsert_model(conn, repo_id, "llama.cpp", "hf", str(g),
+                                    "downloaded", gguf_filename=g.name, size_bytes=g.stat().st_size)
         _set_downloaded_servers(conn, repo_id, ("llama.cpp",))
 
     for m in db_mod.list_models(conn):
