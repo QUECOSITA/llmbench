@@ -19,9 +19,12 @@ const server = createServer(async (req, res) => {
   }
   const body: Record<string, unknown> = {};
   if (req.method === "DELETE" && req.url?.startsWith("/api/models/")) {
-    const repoId = decodeURIComponent(req.url.replace("/api/models/", ""));
+    const ref = decodeURIComponent(req.url.replace("/api/models/", ""));
+    const parts = ref.split("/");
+    const repoId = parts.length === 3 ? `${parts[0]}/${parts[1]}` : ref;
+    const file = parts.length === 3 ? parts[2] : null;
     for (const [k, v] of [...models]) {
-      if (v.repo_id === repoId) models.delete(k);
+      if (v.repo_id === repoId && (file === null || v.gguf_filename === file)) models.delete(k);
     }
     Object.assign(body, { ok: true });
   } else if (req.url?.startsWith("/api/servers")) {

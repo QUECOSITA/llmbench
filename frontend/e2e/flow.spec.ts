@@ -108,3 +108,32 @@ test("multi-gguf: analyze lists files as checkboxes and download only selected",
   await downloadBtn.click();
   await expect(page.locator(".dl-console")).toBeVisible();
 });
+
+test("multi-gguf: REMOVE deletes only the selected file's row", async ({ page }) => {
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto("http://localhost:5173");
+  await page.getByPlaceholder(/huggingface/i).fill("org/multi");
+  await page.getByRole("button", { name: /analyze/i }).click();
+  await expect(page.getByText(/File\(model\.Q4_K_M\.gguf\)/i)).toBeVisible();
+  await expect(page.getByText(/File\(model\.Q8_0\.gguf\)/i)).toBeVisible();
+  const downloadBtn = page.getByRole("button", { name: "Download" });
+  const q4Checkbox = page.getByRole("checkbox").nth(0);
+  const q8Checkbox = page.getByRole("checkbox").nth(1);
+  if (await q4Checkbox.isEnabled()) await q4Checkbox.check();
+  if (await q8Checkbox.isEnabled()) await q8Checkbox.check();
+  await expect(downloadBtn).toBeEnabled();
+  const downloadResponse = page.waitForResponse(
+    (r) => r.url().includes("/api/models/download") && r.request().method() === "POST",
+  );
+  await downloadBtn.click();
+  await expect(page.locator(".dl-console")).toBeVisible();
+  await downloadResponse;
+  await page.reload();
+  const q4Row = page.locator(".downloaded-row", { hasText: "org/multi/model.Q4_K_M.gguf" });
+  const q8Row = page.locator(".downloaded-row", { hasText: "org/multi/model.Q8_0.gguf" });
+  await expect(q4Row).toBeVisible();
+  await expect(q8Row).toBeVisible();
+  await q4Row.getByRole("button", { name: "REMOVE" }).click();
+  await expect(q4Row).toHaveCount(0);
+  await expect(q8Row).toBeVisible();
+});
