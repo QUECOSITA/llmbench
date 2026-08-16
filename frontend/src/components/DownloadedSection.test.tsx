@@ -56,13 +56,13 @@ test("LOAD calls onLoad with the repo id when no file is known", () => {
   expect(onLoad).toHaveBeenCalledWith("org/model");
 });
 
-test("REMOVE confirms then calls onRemove with the repo id", () => {
+test("REMOVE confirms then calls onRemove with the file-qualified ref", () => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
   const onRemove = vi.fn();
   renderSection({ onRemove });
   const row = screen.getByText("org/model/model.gguf").closest(".downloaded-row") as HTMLElement;
   fireEvent.click(within(row).getByRole("button", { name: "REMOVE" }));
-  expect(onRemove).toHaveBeenCalledWith("org/model");
+  expect(onRemove).toHaveBeenCalledWith("org/model/model.gguf");
 });
 
 test("REMOVE without confirmation does not call onRemove", () => {

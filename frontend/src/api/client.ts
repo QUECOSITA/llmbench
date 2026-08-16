@@ -188,6 +188,6 @@ export const api = {
   listRuns: () => request<{ runs: RunSummary[] }>("/benchmarks"),
   clearRuns: () => request<{ ok: boolean }>("/benchmarks", { method: "DELETE" }),
   getRun: (runId: number) => request<RunDetail>(`/benchmarks/${runId}`),
-  removeModel: (repoId: string) =>
-    request<{ ok: boolean }>(`/models/${encodeURIComponent(repoId)}`, { method: "DELETE" }),
+  removeModel: (modelRef: string) =>
+    request<{ ok: boolean }>(`/models/${encodeURIComponent(modelRef)}`, { method: "DELETE" }),
 };

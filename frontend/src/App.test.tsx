@@ -111,6 +111,28 @@ test("REMOVE deletes the whole repo and refreshes the list", async () => {
   expect(await screen.findByText("no models downloaded")).toBeInTheDocument();
 });
 
+test("REMOVE on a gguf row deletes only that file and refreshes the list", async () => {
+  const { api } = await import("./api/client");
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  vi.mocked(api.listModels)
+    .mockResolvedValueOnce({
+      models: [{ server_id: "llama.cpp", repo_id: "org/model", status: "downloaded", gguf_filename: "model.Q4_K_M.gguf" }],
+    })
+    .mockResolvedValueOnce({ models: [] });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  await screen.findByText("org/model/model.Q4_K_M.gguf");
+  fireEvent.click(screen.getByRole("button", { name: "REMOVE" }));
+
+  await waitFor(() => expect(api.removeModel).toHaveBeenCalledWith("org/model/model.Q4_K_M.gguf"));
+  expect(await screen.findByText("no models downloaded")).toBeInTheDocument();
+});
+
 test("renders the instrument header with panel structure", async () => {
   render(
     <MemoryRouter>

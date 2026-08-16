@@ -9,8 +9,8 @@ export interface DownloadedModel {
 
 interface Props {
   models: DownloadedModel[];
-  onLoad: (repoId: string) => void;
-  onRemove: (repoId: string) => void;
+  onLoad: (modelRef: string) => void;
+  onRemove: (modelRef: string) => void;
 }
 
 const SERVER_DISPLAY: Record<string, string> = {
@@ -40,7 +40,7 @@ export function DownloadedSection({ models, onLoad, onRemove }: Props) {
               className="btn-neutral"
               onClick={() => {
                 if (window.confirm(t("confirm.removeModel", { model: row.ref }))) {
-                  onRemove(row.repo_id);
+                  onRemove(row.ref);
                 }
               }}
             >
