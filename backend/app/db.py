@@ -96,6 +96,48 @@ def _migrate_models_table(conn):
     conn.commit()
 
 
+def _repair_configs_fk(conn):
+    """Rebuild configs when its model_id FK dangles at a table that no longer
+    exists (SQLite rewrites FK targets when a referenced table is renamed, e.g.
+    the old models->models_old migration). No-op on healthy DBs."""
+    referenced = {row[2] for row in conn.execute("PRAGMA foreign_key_list('configs')")}
+    existing = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    if not referenced.issubset(existing):
+        old_isolation = conn.isolation_level
+        conn.isolation_level = None
+        try:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute(
+                """
+                CREATE TABLE configs_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id INTEGER NOT NULL REFERENCES runs(id),
+                    server_id TEXT NOT NULL,
+                    model_id INTEGER REFERENCES models(id),
+                    flag_conf_json TEXT NOT NULL,
+                    serving_command TEXT NOT NULL,
+                    bench_command TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO configs_new (id, run_id, server_id, model_id, flag_conf_json,
+                                         serving_command, bench_command)
+                SELECT id, run_id, server_id, model_id, flag_conf_json,
+                       serving_command, bench_command
+                FROM configs
+                """
+            )
+            conn.execute("DROP TABLE configs")
+            conn.execute("ALTER TABLE configs_new RENAME TO configs")
+        finally:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.isolation_level = old_isolation
+        conn.commit()
+
+
 def init_db(path: str | Path) -> sqlite3.Connection:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
@@ -103,6 +145,7 @@ def init_db(path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
     _migrate_models_table(conn)
+    _repair_configs_fk(conn)
     conn.executescript(
         "INSERT OR IGNORE INTO servers(id, display_name) VALUES "
         "('llama.cpp','llama.cpp');"

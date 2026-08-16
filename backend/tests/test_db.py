@@ -237,3 +237,88 @@ def test_clear_history_empties_runs_but_keeps_models(tmp_path):
     assert list_configs(conn, run_id) == []
     assert len(list_models(conn)) == 1
     conn.close()
+
+
+def test_repair_dangling_configs_fk(tmp_path):
+    db_path = tmp_path / "corrupt.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        """
+        CREATE TABLE models (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_id TEXT NOT NULL,
+            server_id TEXT NOT NULL,
+            format TEXT NOT NULL,
+            local_path TEXT NOT NULL,
+            status TEXT NOT NULL,
+            gguf_filename TEXT,
+            size_bytes INTEGER,
+            downloaded_at TEXT
+        );
+        CREATE TABLE runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_id TEXT NOT NULL,
+            requested_n INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            status TEXT NOT NULL DEFAULT 'queued'
+        );
+        CREATE TABLE configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL REFERENCES runs(id),
+            server_id TEXT NOT NULL,
+            model_id INTEGER REFERENCES "models_old"(id),
+            flag_conf_json TEXT NOT NULL,
+            serving_command TEXT NOT NULL,
+            bench_command TEXT NOT NULL
+        );
+        CREATE TABLE results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            config_id INTEGER NOT NULL REFERENCES configs(id),
+            prompt_processing_tps REAL,
+            decode_tps REAL,
+            duration_s REAL,
+            output_snippet TEXT,
+            status TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO models(repo_id, server_id, format, local_path, status, gguf_filename) "
+        "VALUES (?,?,?,?,?,?)",
+        ("org/model", "llama.cpp", "hf", "/x/a.gguf", "downloaded", "a.gguf"),
+    )
+    conn.execute("INSERT INTO runs(repo_id, requested_n) VALUES ('org/model', 1)")
+    conn.execute(
+        "INSERT INTO configs(run_id, server_id, model_id, flag_conf_json, serving_command, bench_command) "
+        "VALUES (1, 'llama.cpp', NULL, '[]', 'serve', 'bench')"
+    )
+    conn.execute(
+        "INSERT INTO results(config_id, prompt_processing_tps, decode_tps, duration_s, output_snippet, status) "
+        "VALUES (1, 1200.0, 86.4, 30.0, '', 'ok')"
+    )
+    conn.commit()
+    conn.close()
+
+    conn = init_db(db_path)
+    fk_tables = {row[2] for row in conn.execute("PRAGMA foreign_key_list('configs')")}
+    assert fk_tables == {"runs", "models"}
+    model = conn.execute("SELECT repo_id FROM models WHERE id=1").fetchone()
+    assert model["repo_id"] == "org/model"
+    assert conn.execute("SELECT COUNT(*) FROM configs").fetchone()[0] == 1
+    results = get_results_for_run(conn, 1)
+    assert len(results) == 1
+    assert results[0]["decode_tps"] == 86.4
+    cfg_id = create_config(conn, run_id=1, server_id="llama.cpp", model_id=None,
+                           flag_conf_json=[], serving_command="x", bench_command="y")
+    assert cfg_id == 2
+    conn.close()
+
+
+def test_repair_configs_fk_noop_on_healthy_db(tmp_path):
+    db_path = tmp_path / "healthy.db"
+    conn = init_db(db_path)
+    conn.close()
+    conn = init_db(db_path)
+    fk_tables = {row[2] for row in conn.execute("PRAGMA foreign_key_list('configs')")}
+    assert fk_tables == {"runs", "models"}
+    conn.close()
