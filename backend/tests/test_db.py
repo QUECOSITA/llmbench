@@ -36,6 +36,72 @@ def test_upsert_null_gguf_is_idempotent(tmp_path):
     conn.close()
 
 
+def test_migrate_legacy_models_table_preserves_history(tmp_path):
+    db_path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        """
+        CREATE TABLE models (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_id TEXT NOT NULL,
+            server_id TEXT NOT NULL,
+            format TEXT NOT NULL,
+            local_path TEXT NOT NULL,
+            status TEXT NOT NULL,
+            gguf_filename TEXT,
+            size_bytes INTEGER,
+            downloaded_at TEXT,
+            UNIQUE(repo_id, server_id)
+        );
+        CREATE TABLE runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_id TEXT NOT NULL,
+            requested_n INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            status TEXT NOT NULL DEFAULT 'queued'
+        );
+        CREATE TABLE configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL REFERENCES runs(id),
+            server_id TEXT NOT NULL,
+            model_id INTEGER REFERENCES models(id),
+            flag_conf_json TEXT NOT NULL,
+            serving_command TEXT NOT NULL,
+            bench_command TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO models(repo_id, server_id, format, local_path, status, gguf_filename, size_bytes) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("org/legacy", "llama.cpp", "hf", "/x", "downloaded", "a.gguf", 100),
+    )
+    conn.execute("INSERT INTO runs(repo_id, requested_n) VALUES ('org/legacy', 2)")
+    conn.execute(
+        "INSERT INTO configs(run_id, server_id, model_id, flag_conf_json, serving_command, bench_command) "
+        "VALUES (1, 'llama.cpp', 1, '[]', 'serve', 'bench')"
+    )
+    conn.commit()
+    conn.close()
+
+    migrated = init_db(db_path)
+    assert [m["gguf_filename"] for m in list_models(migrated)] == ["a.gguf"]
+    config_row = migrated.execute(
+        "SELECT c.id, c.model_id, m.repo_id FROM configs c "
+        "LEFT JOIN models m ON m.id = c.model_id WHERE c.id = 1"
+    ).fetchone()
+    assert config_row is not None
+    assert config_row["model_id"] == 1
+    assert config_row["repo_id"] == "org/legacy"
+    index_names = [r[1] for r in migrated.execute("PRAGMA index_list('models')")]
+    assert "uq_models_repo_server" in index_names
+    assert "uq_models_repo_server_gguf" in index_names
+    upsert_model(migrated, "org/legacy", "llama.cpp", "hf", "/y", "downloaded",
+                 gguf_filename="b.gguf")
+    assert len(get_models(migrated, "org/legacy", "llama.cpp")) == 2
+    migrated.close()
+
+
 def test_run_and_results(tmp_path):
     conn = init_db(tmp_path / "test.db")
     upsert_model(conn, repo_id="org/model", server_id="llama.cpp", format="hf", local_path="/x", status="downloaded")

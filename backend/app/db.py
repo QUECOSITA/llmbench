@@ -52,32 +52,39 @@ def _migrate_models_table(conn):
     autoindex exists; otherwise just creates the partial unique indexes."""
     index_names = [row[1] for row in conn.execute("PRAGMA index_list('models')")]
     if "sqlite_autoindex_models_1" in index_names:
-        conn.execute("ALTER TABLE models RENAME TO models_old")
-        conn.execute(
-            """
-            CREATE TABLE models (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                repo_id TEXT NOT NULL,
-                server_id TEXT NOT NULL,
-                format TEXT NOT NULL,
-                local_path TEXT NOT NULL,
-                status TEXT NOT NULL,
-                gguf_filename TEXT,
-                size_bytes INTEGER,
-                downloaded_at TEXT
+        old_isolation = conn.isolation_level
+        conn.isolation_level = None
+        try:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute(
+                """
+                CREATE TABLE models_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    repo_id TEXT NOT NULL,
+                    server_id TEXT NOT NULL,
+                    format TEXT NOT NULL,
+                    local_path TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    gguf_filename TEXT,
+                    size_bytes INTEGER,
+                    downloaded_at TEXT
+                )
+                """
             )
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO models (repo_id, server_id, format, local_path, status,
-                                gguf_filename, size_bytes, downloaded_at)
-            SELECT repo_id, server_id, format, local_path, status,
-                   gguf_filename, size_bytes, downloaded_at
-            FROM models_old
-            """
-        )
-        conn.execute("DROP TABLE models_old")
+            conn.execute(
+                """
+                INSERT INTO models_new (repo_id, server_id, format, local_path, status,
+                                        gguf_filename, size_bytes, downloaded_at)
+                SELECT repo_id, server_id, format, local_path, status,
+                       gguf_filename, size_bytes, downloaded_at
+                FROM models
+                """
+            )
+            conn.execute("DROP TABLE models")
+            conn.execute("ALTER TABLE models_new RENAME TO models")
+        finally:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.isolation_level = old_isolation
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_models_repo_server "
         "ON models(repo_id, server_id) WHERE gguf_filename IS NULL"
