@@ -28,6 +28,7 @@
   },
   "model": {
     "analysisSummary": "→ {{repo}} · server {{server}} · {{count}} flag",
+    "fileLabel": "Fil",
     "serverManual": "manuel",
     "servingServer": "serveringsserver",
     "noServerProposed": "dette repos README foreslår ingen serveringsserver — modellen understøttes ikke af llama.cpp",

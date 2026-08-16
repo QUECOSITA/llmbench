@@ -28,6 +28,7 @@
   },
   "model": {
     "analysisSummary": "→ {{repo}} · Server {{server}} · {{count}} Flags",
+    "fileLabel": "Datei",
     "serverManual": "manuell",
     "servingServer": "Serving-Server",
     "noServerProposed": "das README dieses Repos schlägt keinen Serving-Server vor — Modell wird von llama.cpp nicht unterstützt",

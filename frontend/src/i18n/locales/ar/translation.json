@@ -28,6 +28,7 @@
   },
   "model": {
     "analysisSummary": "← {{repo}} · الخادم {{server}} · {{count}} من الأعلام",
+    "fileLabel": "ملف",
     "serverManual": "يدوي",
     "servingServer": "خادم الخدمة",
     "noServerProposed": "لا يقترح README هذا المستودع خادم خدمة — llama.cpp لا يدعم هذا النموذج",
