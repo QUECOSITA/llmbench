@@ -472,7 +472,7 @@ async def generate(payload: dict):
         local_path, name, size = _resolve_download_path(s, repo_id, "llama.cpp", None)
         resolved_gguf = local_path
         gguf_filename = name
-        if size:
+        if size is not None:
             weights = size
     elif resolved_gguf:
         try:

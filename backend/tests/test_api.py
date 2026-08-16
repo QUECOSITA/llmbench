@@ -1745,7 +1745,6 @@ def test_download_llama_multi_gguf_upserts_one_row_per_file(client, tmp_path, mo
 
 
 def test_generate_configs_fit_uses_resolved_gguf_size(client, tmp_path):
-    import app.api as api_mod
     gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
     gguf.parent.mkdir(parents=True)
     gguf.write_bytes(b"x" * (3 * 1024 ** 3))  # 3 GiB on disk
