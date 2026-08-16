@@ -30,6 +30,19 @@ test("full flow: analyze, generate, run, see ranked results", async ({ page }) =
   await expect(page.getByRole("button", { name: /run benchmark/i })).toBeEnabled();
 });
 
+test("RUN toggles to CANCEL and back after cancelling", async ({ page }) => {
+  await page.goto("http://localhost:5173");
+  await page.getByPlaceholder(/huggingface/i).fill("org/model");
+  await page.getByRole("button", { name: /analyze/i }).click();
+  await expect(page.getByText(/server llama.cpp/i)).toBeVisible();
+  await page.getByRole("button", { name: /generate/i }).click();
+  await expect(page.getByText(/llama-server/i).first()).toBeVisible();
+  await page.getByRole("button", { name: /run benchmark/i }).click();
+  await expect(page.getByRole("button", { name: /cancel benchmark/i })).toBeVisible();
+  await page.getByRole("button", { name: /cancel benchmark/i }).click();
+  await expect(page.getByRole("button", { name: /run benchmark/i })).toBeEnabled();
+});
+
 test("download console renders with a CANCEL action", async ({ page }) => {
   await page.goto("http://localhost:5173");
   await page.getByPlaceholder(/huggingface/i).fill("org/dl");

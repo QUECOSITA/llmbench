@@ -12,6 +12,7 @@
     "generate": "GENERER",
     "runBenchmark": "KJØR BENCHMARK",
     "cancel": "AVBRYT",
+    "cancelBenchmark": "AVBRYT BENCHMARK",
     "download": "Last ned",
     "load": "LAST INN",
     "remove": "FJERN",

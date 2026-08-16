@@ -37,6 +37,25 @@ class FakeProcess:
         self.killed = True
 
 
+class BlockingFakeProcess:
+    """A fake subprocess whose streams block until kill() feeds EOF, letting
+    a running benchmark stay 'running' until it is aborted."""
+
+    def __init__(self):
+        self.stdout = asyncio.StreamReader()
+        self.stderr = asyncio.StreamReader()
+        self.returncode = None
+        self.killed = False
+
+    async def wait(self):
+        return self.returncode
+
+    def kill(self):
+        self.killed = True
+        self.stdout.feed_eof()
+        self.stderr.feed_eof()
+
+
 def _poll(predicate, timeout=3.0, interval=0.05):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -451,6 +470,98 @@ def test_run_executes_rebuilt_bench_command_from_edited_serving_command(client, 
     assert "--fit-ctx" in captured["argv"]
     assert captured["argv"][captured["argv"].index("--fit-ctx") + 1] == "54000"
     assert "4096" not in captured["argv"]
+
+
+def _bench_config(**overrides):
+    cfg = {
+        "server_id": "llama.cpp",
+        "flags": {"-c": "4096"},
+        "model_id": None,
+        "serving_command": "llama-server -m x",
+        "bench_command": ["llama-bench", "-m", "x"],
+    }
+    cfg.update(overrides)
+    return cfg
+
+
+def test_cancel_benchmark_with_no_active_run_409(client):
+    r = client.post("/api/benchmarks/cancel")
+    assert r.status_code == 409
+
+
+def test_cancel_benchmark_aborts_running_run(client, monkeypatch):
+    captured = {}
+
+    async def fake_create(*a, **k):
+        proc = BlockingFakeProcess()
+        captured["proc"] = proc
+        return proc
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    cfg = _bench_config()
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    def status():
+        runs = {x["id"]: x for x in client.get("/api/benchmarks").json()["runs"]}
+        return runs[run_id]["status"]
+
+    assert _poll(lambda: status() == "running")
+
+    r2 = client.post("/api/benchmarks/cancel")
+    assert r2.status_code == 200
+    assert r2.json() == {"ok": True}
+
+    assert _poll(lambda: status() != "running")
+    assert status() == "aborted"
+    assert captured["proc"].killed
+
+    detail = client.get(f"/api/benchmarks/{run_id}").json()
+    assert detail["status"] == "aborted"
+    assert detail["results"][0]["result_status"] == "aborted"
+
+    r3 = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    assert r3.status_code == 200
+
+
+def test_cancel_benchmark_keeps_completed_configs(client, monkeypatch):
+    captured = {}
+    calls = []
+
+    async def fake_create(*a, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            return FakeProcess(FAKE_BENCH.encode())
+        proc = BlockingFakeProcess()
+        captured["proc2"] = proc
+        return proc
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    cfg = _bench_config()
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg, cfg]})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    def results():
+        return client.get(f"/api/benchmarks/{run_id}").json()["results"]
+
+    assert _poll(lambda: len(results()) >= 1)
+    ok_rows = [x for x in results() if x["result_status"] == "ok"]
+    assert len(ok_rows) == 1
+
+    r2 = client.post("/api/benchmarks/cancel")
+    assert r2.status_code == 200
+
+    def status():
+        runs = {x["id"]: x for x in client.get("/api/benchmarks").json()["runs"]}
+        return runs[run_id]["status"]
+
+    assert _poll(lambda: status() != "running")
+    assert status() == "aborted"
+    assert [x["result_status"] for x in results()].count("ok") == 1
 
 
 def test_download_missing_fields_422(client):

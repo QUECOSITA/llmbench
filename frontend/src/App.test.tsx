@@ -23,6 +23,7 @@ vi.mock("./api/client", () => ({
       configs: [{ flags: { "--n-gpu": "1" }, serving_command: "python serve.py", bench_command: [] }],
     }),
     startBenchmark: vi.fn().mockResolvedValue({ run_id: 1 }),
+    cancelBenchmark: vi.fn().mockResolvedValue({ ok: true }),
     getRun: vi.fn().mockResolvedValue({ status: "running", total: 1, results: [] }),
     downloadModel: vi.fn().mockResolvedValue({ ok: true }),
     cancelDownload: vi.fn().mockResolvedValue({ ok: true }),
@@ -198,6 +199,36 @@ test("run that fails on the backend re-enables RUN and shows the failure", async
   expect(await screen.findByText(/run failed/i)).toBeInTheDocument();
 });
 
+test("RUN toggles to CANCEL and cancelling aborts the run without an error", async () => {
+  const { api } = await import("./api/client");
+  vi.mocked(api.getRun).mockResolvedValue({ status: "aborted", total: 1, results: [] });
+
+  render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+  fireEvent.click(screen.getByText(/generate/i));
+  await screen.findByText(/python serve/i);
+  fireEvent.click(screen.getByText(/run benchmark/i));
+
+  await waitFor(() => {
+    expect(screen.getByText(/cancel benchmark/i)).toBeEnabled();
+  });
+  fireEvent.click(screen.getByText(/cancel benchmark/i));
+  expect(vi.mocked(api.cancelBenchmark)).toHaveBeenCalled();
+
+  await waitFor(() => {
+    expect(screen.getByText(/run benchmark/i)).toBeEnabled();
+  }, { timeout: 3000 });
+  expect(screen.queryByText(/run failed/i)).not.toBeInTheDocument();
+});
+
 test("completed run populates ranked results and re-enables RUN", async () => {
   const { api } = await import("./api/client");
   vi.mocked(api.getRun).mockResolvedValue({
@@ -279,7 +310,7 @@ test("409 already-running switches into watch mode showing the live run", async 
     expect(screen.getByText(/watching benchmark run #7 in progress/i)).toBeInTheDocument();
   });
   await waitFor(() => {
-    expect(screen.getByText(/run benchmark/i)).toBeDisabled();
+    expect(screen.getByText(/cancel benchmark/i)).toBeEnabled();
   });
   await waitFor(() => {
     const table = document.querySelector(".results-table") as HTMLElement | null;

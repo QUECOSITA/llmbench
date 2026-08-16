@@ -12,6 +12,7 @@
     "generate": "GENERÉR",
     "runBenchmark": "KØR BENCHMARK",
     "cancel": "ANNULLÉR",
+    "cancelBenchmark": "ANNULLÉR BENCHMARK",
     "download": "Download",
     "load": "INDLOAD",
     "remove": "FJERN",

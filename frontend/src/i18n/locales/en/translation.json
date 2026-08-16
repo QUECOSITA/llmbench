@@ -12,6 +12,7 @@
     "generate": "GENERATE",
     "runBenchmark": "RUN BENCHMARK",
     "cancel": "CANCEL",
+    "cancelBenchmark": "CANCEL BENCHMARK",
     "download": "Download",
     "load": "LOAD",
     "remove": "REMOVE",

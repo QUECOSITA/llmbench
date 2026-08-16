@@ -12,6 +12,7 @@
     "generate": "إنشاء",
     "runBenchmark": "تشغيل الاختبار",
     "cancel": "إلغاء",
+    "cancelBenchmark": "إلغاء الاختبار",
     "download": "تنزيل",
     "load": "تحميل",
     "remove": "إزالة",

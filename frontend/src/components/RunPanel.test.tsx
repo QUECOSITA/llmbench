@@ -1,18 +1,36 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { RunPanel } from "./RunPanel";
 
-test("run button disabled while running", () => {
+test("shows CANCEL BENCHMARK while running and hides RUN BENCHMARK", () => {
   render(
     <RunPanel
       running
       onRun={vi.fn()}
+      onCancel={vi.fn()}
       progress={{ index: 0, total: 4 }}
       lines={[]}
       currentCommand=""
     />,
   );
-  expect(screen.getByText(/run benchmark/i)).toBeDisabled();
+  expect(screen.queryByText(/run benchmark/i)).not.toBeInTheDocument();
+  expect(screen.getByText(/cancel benchmark/i)).toBeEnabled();
   expect(screen.getByText(/1\/4/i)).toBeInTheDocument();
+});
+
+test("cancel button triggers onCancel while running", () => {
+  const onCancel = vi.fn();
+  render(
+    <RunPanel
+      running
+      onRun={vi.fn()}
+      onCancel={onCancel}
+      progress={null}
+      lines={[]}
+      currentCommand=""
+    />,
+  );
+  fireEvent.click(screen.getByText(/cancel benchmark/i));
+  expect(onCancel).toHaveBeenCalled();
 });
 
 test("run button triggers onRun", () => {
