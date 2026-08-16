@@ -748,6 +748,7 @@ test("GENERATE with no detected server and no manual pick stays disabled", async
 
 test("only the README-detected server appears in the select and download row", async () => {
   const { api } = await import("./api/client");
+  vi.mocked(api.listModels).mockResolvedValue({ models: [] });
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValueOnce({
     repo_id: "org/model",
@@ -857,6 +858,7 @@ test("declining unsupported download keeps Download hidden", async () => {
 test("GENERATE stays disabled until the model is downloaded, then enables after download", async () => {
   const { api } = await import("./api/client");
   const { useDownloadProgress } = await import("./ws/useDownloadProgress");
+  vi.mocked(api.listModels).mockResolvedValue({ models: [] });
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValueOnce({
     repo_id: "org/model",
@@ -1137,4 +1139,65 @@ test("multi-gguf: already-downloaded files are marked and excluded from selectio
   expect(checkboxes[0]).toBeDisabled();
   expect(checkboxes[1]).not.toBeDisabled();
   expect(screen.getByText("GENERATE")).not.toBeDisabled();
+});
+
+test("multi-gguf: completed in-session download marks file downloaded and prevents re-download", async () => {
+  const { api } = await import("./api/client");
+  const { useDownloadProgress } = await import("./ws/useDownloadProgress");
+  const downloadModelSpy = vi.spyOn(api, "downloadModel").mockResolvedValue({ ok: true });
+  const listModelsSpy = vi.spyOn(api, "listModels");
+  listModelsSpy
+    .mockResolvedValueOnce({ models: [] })
+    .mockResolvedValue({
+      models: [{ server_id: "llama.cpp", repo_id: "org/model", status: "downloaded", gguf_filename: "model.Q4_K_M.gguf" }],
+    });
+  vi.mocked(api.analyze).mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_flags: {},
+    gguf_files: [
+      { path: "model.Q4_K_M.gguf", size: 4_000_000_000, fit: { stage: "gpu", warning: false, needed_gb: 7.1 } },
+      { path: "model.Q8_0.gguf", size: 8_000_000_000, fit: { stage: "ram_offload", warning: false, needed_gb: 11.2 } },
+    ],
+    downloaded_ggufs: { "llama.cpp": [] },
+    downloaded: { "llama.cpp": false },
+  });
+  vi.mocked(useDownloadProgress).mockReturnValue([]);
+
+  const view = render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  const checkboxes = screen.getAllByRole("checkbox");
+  expect(checkboxes[0]).not.toBeDisabled();
+  expect(checkboxes[1]).not.toBeDisabled();
+  fireEvent.click(checkboxes[0]); // check Q4_K_M
+
+  vi.mocked(useDownloadProgress).mockReturnValue([
+    { type: "download_started", server_id: "llama.cpp", repo_id: "org/model", command: "hf download org/model" },
+    { type: "download_log", server_id: "llama.cpp", repo_id: "org/model", line: "Fetching..." },
+    { type: "download_done", server_id: "llama.cpp", repo_id: "org/model", local_path: "/cache/org/model/model.Q4_K_M.gguf" },
+  ]);
+  view.rerender(<MemoryRouter><App /></MemoryRouter>);
+
+  // listModels refreshes asynchronously; Q4_K_M must flip to downloaded/disabled
+  await waitFor(() => {
+    const refreshed = screen.getAllByRole("checkbox");
+    expect(refreshed[0]).toBeDisabled(); // Q4_K_M now downloaded, cannot re-select
+    expect(refreshed[1]).not.toBeDisabled();
+  });
+
+  // Selection was cleared; user checks the remaining file only
+  const downloadBtn = screen.getByRole("button", { name: "Download" });
+  expect(downloadBtn).toBeDisabled();
+  fireEvent.click(screen.getAllByRole("checkbox")[1]);
+  fireEvent.click(screen.getByRole("button", { name: "Download" }));
+  expect(downloadModelSpy).toHaveBeenCalledTimes(1);
+  expect(downloadModelSpy).toHaveBeenCalledWith({
+    repo_id: "org/model",
+    server_id: "llama.cpp",
+    gguf_filenames: ["model.Q8_0.gguf"],
+  });
 });

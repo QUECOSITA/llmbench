@@ -127,6 +127,7 @@ export function App() {
       setDownloads((prev) => downloadReducer(prev, ev));
       if (ev.type === "download_done") {
         api.listModels().then((d) => setDownloaded(d.models));
+        setSelectedGgufs([]);
       }
     }
   }, [downloadEvents]);
@@ -135,7 +136,20 @@ export function App() {
   const multiGguf = ggufFiles.length > 1;
   const effectiveServer = server || analysis?.detected_server;
   const downloadedGgufs = effectiveServer
-    ? (analysis?.downloaded_ggufs?.[effectiveServer] ?? [])
+    ? Array.from(
+        new Set([
+          ...(analysis?.downloaded_ggufs?.[effectiveServer] ?? []),
+          ...downloaded
+            .filter(
+              (m) =>
+                m.server_id === effectiveServer &&
+                m.repo_id === analysis?.repo_id &&
+                m.status === "downloaded" &&
+                m.gguf_filename,
+            )
+            .map((m) => m.gguf_filename as string),
+        ]),
+      )
     : [];
   const allGgufsDownloaded =
     ggufFiles.length > 0 &&
