@@ -5,8 +5,8 @@ import pytest
 
 from app.config import Settings
 from app.db import get_models, init_db, get_model, list_models, upsert_model
-from app.sync import (_hf_cache_root, reconcile_models, remove_model, scan_hf_cache,
-                      snapshot_dir_for)
+from app.sync import (_hf_cache_root, reconcile_models, remove_model, remove_gguf_file,
+                      scan_hf_cache, snapshot_dir_for)
 
 
 def _settings(tmp_path) -> Settings:
@@ -300,6 +300,91 @@ def test_remove_model_gguf_dir_file_when_no_snapshot(tmp_path, monkeypatch):
     assert called == []
     assert get_model(conn, "org/model", "llama.cpp") is None
     assert not gguf.exists()
+
+
+def test_remove_gguf_file_removes_one_row_and_file(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    snap_dir = snapshot_dir_for(settings, "org/model") / "snapshots" / "main"
+    snap_dir.mkdir(parents=True)
+    for name in ("a.gguf", "b.gguf"):
+        (snap_dir / name).write_bytes(b"x" * 100)
+    conn = init_db(tmp_path / "db.sqlite")
+    for name in ("a.gguf", "b.gguf"):
+        upsert_model(conn, "org/model", "llama.cpp", "hf", str(snap_dir / name),
+                     "downloaded", gguf_filename=name)
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "a.gguf"))
+
+    rows = get_models(conn, "org/model", "llama.cpp")
+    assert {r["gguf_filename"] for r in rows} == {"b.gguf"}
+    assert not (snap_dir / "a.gguf").exists()
+    assert (snap_dir / "b.gguf").exists()
+
+
+def test_remove_gguf_file_noop_when_row_missing(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    snap_dir = snapshot_dir_for(settings, "org/model") / "snapshots" / "main"
+    snap_dir.mkdir(parents=True)
+    (snap_dir / "a.gguf").write_bytes(b"x" * 100)
+    conn = init_db(tmp_path / "db.sqlite")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", str(snap_dir / "a.gguf"),
+                 "downloaded", gguf_filename="a.gguf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
+
+    called = []
+
+    async def fail_create(*cmd, **kw):
+        called.append(cmd)
+        raise AssertionError("hf cache rm must not run for per-file removal")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fail_create)
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "nope.gguf"))
+
+    assert called == []
+    assert len(get_models(conn, "org/model", "llama.cpp")) == 1
+    assert (snap_dir / "a.gguf").exists()
+
+
+def test_remove_gguf_file_never_runs_hf_cache_rm(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    gguf = settings.resolved_gguf_dir / "model.gguf"
+    gguf.parent.mkdir(parents=True)
+    gguf.write_bytes(b"x" * 100)
+    conn = init_db(tmp_path / "db.sqlite")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", str(gguf), "downloaded",
+                 gguf_filename="model.gguf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
+
+    called = []
+
+    async def fail_create(*cmd, **kw):
+        called.append(cmd)
+        raise AssertionError("hf cache rm must not run for per-file removal")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fail_create)
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "model.gguf"))
+
+    assert called == []
+    assert get_models(conn, "org/model", "llama.cpp") == []
+    assert not gguf.exists()
+
+
+def test_remove_gguf_file_does_not_unlink_outside_safe_roots(tmp_path):
+    settings = _settings(tmp_path)
+    outside = tmp_path / "elsewhere" / "model.gguf"
+    outside.parent.mkdir(parents=True)
+    outside.write_bytes(b"x" * 100)
+    conn = init_db(tmp_path / "db.sqlite")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", str(outside), "downloaded",
+                 gguf_filename="model.gguf")
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "model.gguf"))
+
+    assert get_models(conn, "org/model", "llama.cpp") == []
+    assert outside.exists()
 
 
 def test_hf_cache_root_falls_back_to_home(tmp_path):

@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from app.db import init_db, upsert_model, get_model, get_models, list_models, create_run, finish_run, save_result, list_runs, get_results_for_run, create_config, fail_stale_runs, get_run_status, set_run_status, get_active_run, clear_history, list_configs
+from app.db import init_db, upsert_model, get_model, get_models, list_models, create_run, finish_run, save_result, list_runs, get_results_for_run, create_config, fail_stale_runs, get_run_status, set_run_status, get_active_run, clear_history, list_configs, delete_model_row
 
 
 def test_model_crud(tmp_path):
@@ -25,6 +25,22 @@ def test_multiple_gguf_rows_for_same_repo_and_server(tmp_path):
                  gguf_filename="b.gguf", size_bytes=200)
     rows = get_models(conn, "org/model", "llama.cpp", status="downloaded")
     assert {r["gguf_filename"] for r in rows} == {"a.gguf", "b.gguf"}
+    conn.close()
+
+
+def test_delete_model_row_removes_only_targeted_gguf(tmp_path):
+    conn = init_db(tmp_path / "test.db")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", "/x/a.gguf", "downloaded",
+                 gguf_filename="a.gguf", size_bytes=100)
+    upsert_model(conn, "org/model", "llama.cpp", "hf", "/x/b.gguf", "downloaded",
+                 gguf_filename="b.gguf", size_bytes=200)
+    upsert_model(conn, "org/model", "llama.cpp", "hf", "/x", "downloaded")
+
+    delete_model_row(conn, "org/model", "llama.cpp", "a.gguf")
+
+    rows = get_models(conn, "org/model", "llama.cpp")
+    assert {r["gguf_filename"] for r in rows if r["gguf_filename"]} == {"b.gguf"}
+    assert any(r["gguf_filename"] is None for r in rows)
     conn.close()
 
 

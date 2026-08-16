@@ -1013,6 +1013,34 @@ def test_delete_model_hf_cache_rm_failure_returns_500(client, tmp_path, monkeypa
     assert "repo not found" in r.json()["detail"]
 
 
+def test_delete_model_removes_single_gguf_row_and_file(client, tmp_path, monkeypatch):
+    from app.config import Settings
+    from app.sync import snapshot_dir_for
+    settings = Settings(data_dir=tmp_path, gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
+    snap = snapshot_dir_for(settings, "org/model")
+    (snap / "snapshots" / "main").mkdir(parents=True)
+    for name in ("model.Q4_K_M.gguf", "model.Q5_K_M.gguf"):
+        (snap / "snapshots" / "main" / name).write_bytes(b"x")
+    monkeypatch.setattr("shutil.which", lambda *a, **k: None)
+
+    assert client.get("/api/models").status_code == 200
+
+    r = client.delete("/api/models/org%2Fmodel%2Fmodel.Q4_K_M.gguf")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+    models = client.get("/api/models").json()["models"]
+    assert [m["gguf_filename"] for m in models] == ["model.Q5_K_M.gguf"]
+    assert not (snap / "snapshots" / "main" / "model.Q4_K_M.gguf").exists()
+    assert (snap / "snapshots" / "main" / "model.Q5_K_M.gguf").exists()
+
+
+def test_delete_model_invalid_ref_returns_422(client):
+    r = client.delete("/api/models/garbage!@#")
+    assert r.status_code == 422
+
+
 def test_generate_configs_includes_per_config_fit(client):
     r = client.post("/api/configs/generate", json={
         "repo_id": "org/model", "server_id": "llama.cpp", "n": 2, "vram_gb": 24.0,

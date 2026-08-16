@@ -315,7 +315,14 @@ async def models():
 async def delete_model(model_ref: str):
     s = _require_state()
     try:
-        await sync_mod.remove_model(s.conn, s.settings, model_ref)
+        repo_id, file_path = parse_input(model_ref)
+    except InvalidModelInput as e:
+        raise HTTPException(422, str(e))
+    try:
+        if file_path:
+            await sync_mod.remove_gguf_file(s.conn, s.settings, repo_id, "llama.cpp", file_path)
+        else:
+            await sync_mod.remove_model(s.conn, s.settings, repo_id)
     except RuntimeError as e:
         raise HTTPException(500, str(e))
     return {"ok": True}

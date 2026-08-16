@@ -216,6 +216,13 @@ def delete_model(conn, repo_id, server_id):
     conn.commit()
 
 
+def delete_model_row(conn, repo_id, server_id, gguf_filename):
+    conn.execute(
+        "DELETE FROM models WHERE repo_id=? AND server_id=? AND gguf_filename=?",
+        (repo_id, server_id, gguf_filename))
+    conn.commit()
+
+
 def create_run(conn, repo_id, requested_n):
     cur = conn.execute("INSERT INTO runs(repo_id, requested_n) VALUES (?,?)", (repo_id, requested_n))
     conn.commit()
