@@ -816,7 +816,7 @@ def test_download_command_llama_uses_specific_gguf_when_given():
     from app.api import _download_command, _prune_command
     from app.hf import hf_bin
     hf = hf_bin() or "hf"
-    assert _download_command("org/model", "llama.cpp", gguf_filename="model.Q4_K_M.gguf") == [
+    assert _download_command("org/model", "llama.cpp", gguf_filenames=["model.Q4_K_M.gguf"]) == [
         hf, "download", "--format", "human", "org/model",
         "--include", "model.Q4_K_M.gguf", "--include", "README.md",
     ]
@@ -1701,3 +1701,44 @@ def test_analyze_per_file_fit_and_downloaded_ggufs(client, httpx_mock):
     assert by_path["model.Q2_K.gguf"]["fit"]["needed_gb"] < by_path["model.Q8_0.gguf"]["fit"]["needed_gb"]
     assert body["downloaded_ggufs"] == {"llama.cpp": []}
     assert body["downloaded"] == {"llama.cpp": False}
+
+
+def test_download_command_llama_uses_multiple_ggufs_when_given():
+    from app.api import _download_command
+    hf = hf_bin() or "hf"
+    assert _download_command("org/model", "llama.cpp", gguf_filenames=["a.gguf", "b.gguf"]) == [
+        hf, "download", "--format", "human", "org/model",
+        "--include", "a.gguf", "--include", "b.gguf", "--include", "README.md",
+    ]
+
+
+def test_download_llama_multi_gguf_upserts_one_row_per_file(client, tmp_path, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    def fake_open_pty(cmd, env=None):
+        return FakePty()
+
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("app.api.open_download_pty", fake_open_pty)
+
+    for name in ("a.gguf", "b.gguf"):
+        p = tmp_path / "gguf" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x" * 1024)
+
+    r = client.post("/api/models/download", json={
+        "repo_id": "org/model", "server_id": "llama.cpp",
+        "gguf_filenames": ["a.gguf", "b.gguf"],
+    })
+    assert r.status_code == 200
+
+    def rows():
+        return api_mod.db_mod.get_models(api_mod.state.conn, "org/model", "llama.cpp")
+
+    assert _poll(lambda: len(rows()) == 2 and all(x["status"] == "downloaded" for x in rows()))
+    assert {x["gguf_filename"] for x in rows()} == {"a.gguf", "b.gguf"}
