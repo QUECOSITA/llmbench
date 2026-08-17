@@ -314,6 +314,20 @@ def test_generate_configs_rejects_non_string_gguf_path(client):
         assert r.status_code == 422, f"gguf_path={bad!r}"
 
 
+def test_generate_configs_rejects_repo_id_without_slash(client, tmp_path):
+    from app.api import state
+    state.settings.resolved_gguf_dir.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    gguf = outside / "model.gguf"
+    gguf.write_bytes(b"dummy")
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "foo", "server_id": "llama.cpp", "n": 1,
+        "gguf_path": str(gguf), "readme_flags": {},
+    })
+    assert r.status_code == 422
+
+
 def test_generate_configs_accepts_snapshot_gguf_path(client):
     from app.api import state
     gguf_path = _make_snapshot_gguf(state.settings, "org/model")

@@ -454,6 +454,8 @@ async def generate(payload: dict):
         raise HTTPException(422, "Missing required field 'server_id'.")
     if repo_id is None:
         raise HTTPException(422, "Missing required field 'repo_id'.")
+    if "/" not in repo_id:
+        raise HTTPException(422, "'repo_id' must be 'org/model'.")
     if n is None:
         raise HTTPException(422, "Missing required field 'n'.")
     try:
