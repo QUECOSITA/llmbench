@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import time
 
@@ -275,9 +276,13 @@ def test_generate_configs_endpoint(client):
 
 
 def test_generate_configs_llama_uses_gguf_path(client):
+    from app.api import state
+    state.settings.resolved_gguf_dir.mkdir(parents=True, exist_ok=True)
+    gguf = state.settings.resolved_gguf_dir / "model.Q4_K_M.gguf"
+    gguf.write_bytes(b"dummy")
     r = client.post("/api/configs/generate", json={
         "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
-        "gguf_path": "/tmp/models/model.Q4_K_M.gguf",
+        "gguf_path": str(gguf),
         "readme_flags": {"-c": "4096"},
     })
     assert r.status_code == 200
@@ -288,7 +293,95 @@ def test_generate_configs_llama_uses_gguf_path(client):
         assert cmd[cmd.index("-hff") + 1] == "model.Q4_K_M.gguf"
         assert "--hf-repo org/model" in cfg["serving_command"]
         assert "--hf-file model.Q4_K_M.gguf" in cfg["serving_command"]
-        assert "/tmp/models/model.Q4_K_M.gguf" not in cfg["serving_command"]
+        assert str(gguf) not in cfg["serving_command"]
+
+
+def test_generate_configs_rejects_unsafe_gguf_path(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
+        "gguf_path": "/etc/shadow",
+        "readme_flags": {"-c": "4096"},
+    })
+    assert r.status_code == 422
+
+
+def test_generate_configs_rejects_symlink_escape_gguf_path(client, tmp_path):
+    from app.api import state
+    state.settings.resolved_gguf_dir.mkdir(parents=True, exist_ok=True)
+    evil = tmp_path / "evil.gguf"
+    evil.write_bytes(b"dummy")
+    link = state.settings.resolved_gguf_dir / "evil_link.gguf"
+    try:
+        os.symlink(evil, link)
+    except OSError:
+        pytest.skip("symlinks unsupported on this platform")
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1,
+        "gguf_path": str(link), "readme_flags": {},
+    })
+    assert r.status_code == 422
+
+
+def test_generate_configs_rejects_sibling_gguf_dir(client):
+    from app.api import state
+    state.settings.resolved_gguf_dir.mkdir(parents=True, exist_ok=True)
+    sibling = state.settings.resolved_gguf_dir.parent / (
+        state.settings.resolved_gguf_dir.name + ".evil"
+    )
+    sibling.mkdir(parents=True, exist_ok=True)
+    gguf = sibling / "model.gguf"
+    gguf.write_bytes(b"dummy")
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1,
+        "gguf_path": str(gguf), "readme_flags": {},
+    })
+    assert r.status_code == 422
+
+
+def test_generate_configs_rejects_non_string_gguf_path(client):
+    for bad in ({"evil": 1}, [1, 2], 42):
+        r = client.post("/api/configs/generate", json={
+            "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
+            "gguf_path": bad,
+            "readme_flags": {"-c": "4096"},
+        })
+        assert r.status_code == 422, f"gguf_path={bad!r}"
+
+
+def test_generate_configs_rejects_repo_id_without_slash(client, tmp_path):
+    from app.api import state
+    state.settings.resolved_gguf_dir.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    gguf = outside / "model.gguf"
+    gguf.write_bytes(b"dummy")
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "foo", "server_id": "llama.cpp", "n": 1,
+        "gguf_path": str(gguf), "readme_flags": {},
+    })
+    assert r.status_code == 422
+
+
+def test_generate_configs_rejects_non_string_repo_id(client, tmp_path):
+    from app.api import state
+    state.settings.resolved_gguf_dir.mkdir(parents=True, exist_ok=True)
+    for bad in (123, True, 1.5, {"evil": 1}, [1, 2]):
+        r = client.post("/api/configs/generate", json={
+            "repo_id": bad, "server_id": "llama.cpp", "n": 1,
+            "readme_flags": {},
+        })
+        assert r.status_code == 422, f"repo_id={bad!r}"
+
+
+def test_generate_configs_accepts_snapshot_gguf_path(client):
+    from app.api import state
+    gguf_path = _make_snapshot_gguf(state.settings, "org/model")
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
+        "gguf_path": gguf_path,
+        "readme_flags": {"--ctx-size": "4096"},
+    })
+    assert r.status_code == 200
 
 
 def _make_snapshot_gguf(settings, repo_id: str) -> str:
@@ -816,7 +909,7 @@ def test_download_command_llama_uses_specific_gguf_when_given():
     from app.api import _download_command, _prune_command
     from app.hf import hf_bin
     hf = hf_bin() or "hf"
-    assert _download_command("org/model", "llama.cpp", gguf_filename="model.Q4_K_M.gguf") == [
+    assert _download_command("org/model", "llama.cpp", gguf_filenames=["model.Q4_K_M.gguf"]) == [
         hf, "download", "--format", "human", "org/model",
         "--include", "model.Q4_K_M.gguf", "--include", "README.md",
     ]
@@ -1011,6 +1104,34 @@ def test_delete_model_hf_cache_rm_failure_returns_500(client, tmp_path, monkeypa
     r = client.delete("/api/models/org%2Fmodel")
     assert r.status_code == 500
     assert "repo not found" in r.json()["detail"]
+
+
+def test_delete_model_removes_single_gguf_row_and_file(client, tmp_path, monkeypatch):
+    from app.config import Settings
+    from app.sync import snapshot_dir_for
+    settings = Settings(data_dir=tmp_path, gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
+    snap = snapshot_dir_for(settings, "org/model")
+    (snap / "snapshots" / "main").mkdir(parents=True)
+    for name in ("model.Q4_K_M.gguf", "model.Q5_K_M.gguf"):
+        (snap / "snapshots" / "main" / name).write_bytes(b"x")
+    monkeypatch.setattr("shutil.which", lambda *a, **k: None)
+
+    assert client.get("/api/models").status_code == 200
+
+    r = client.delete("/api/models/org%2Fmodel%2Fmodel.Q4_K_M.gguf")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+    models = client.get("/api/models").json()["models"]
+    assert [m["gguf_filename"] for m in models] == ["model.Q5_K_M.gguf"]
+    assert not (snap / "snapshots" / "main" / "model.Q4_K_M.gguf").exists()
+    assert (snap / "snapshots" / "main" / "model.Q5_K_M.gguf").exists()
+
+
+def test_delete_model_invalid_ref_returns_422(client):
+    r = client.delete("/api/models/garbage!@#")
+    assert r.status_code == 422
 
 
 def test_generate_configs_includes_per_config_fit(client):
@@ -1683,3 +1804,77 @@ def test_clear_history_409_when_job_active(client):
         assert r.json()["context"]["active_run"] is not None
     finally:
         api_mod.state._job_active = False
+
+
+def test_analyze_per_file_fit_and_downloaded_ggufs(client, httpx_mock):
+    httpx_mock.add_response(
+        url="https://huggingface.co/api/models/org/model/tree/main",
+        json=[{"path": "README.md", "type": "file", "size": 100},
+              {"path": "model.Q2_K.gguf", "type": "file", "size": 2_000_000_000},
+              {"path": "model.Q8_0.gguf", "type": "file", "size": 8_000_000_000}],
+    )
+    httpx_mock.add_response(url="https://huggingface.co/org/model/raw/main/README.md",
+                            text="# M\n")
+    r = client.post("/api/models/analyze", json={"input": "org/model"})
+    assert r.status_code == 200
+    body = r.json()
+    by_path = {g["path"]: g for g in body["gguf_files"]}
+    assert by_path["model.Q2_K.gguf"]["fit"]["needed_gb"] < by_path["model.Q8_0.gguf"]["fit"]["needed_gb"]
+    assert body["downloaded_ggufs"] == {"llama.cpp": []}
+    assert body["downloaded"] == {"llama.cpp": False}
+
+
+def test_download_command_llama_uses_multiple_ggufs_when_given():
+    from app.api import _download_command
+    hf = hf_bin() or "hf"
+    assert _download_command("org/model", "llama.cpp", gguf_filenames=["a.gguf", "b.gguf"]) == [
+        hf, "download", "--format", "human", "org/model",
+        "--include", "a.gguf", "--include", "b.gguf", "--include", "README.md",
+    ]
+
+
+def test_download_llama_multi_gguf_upserts_one_row_per_file(client, tmp_path, monkeypatch):
+    import app.api as api_mod
+    events = []
+
+    async def fake_broadcast(s, event):
+        events.append(event)
+
+    def fake_open_pty(cmd, env=None):
+        return FakePty()
+
+    monkeypatch.setattr("shutil.which", lambda *a, **k: "/usr/bin/hf")
+    monkeypatch.setattr("app.api.broadcast", fake_broadcast)
+    monkeypatch.setattr("app.api.open_download_pty", fake_open_pty)
+
+    for name in ("a.gguf", "b.gguf"):
+        p = tmp_path / "gguf" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x" * 1024)
+
+    r = client.post("/api/models/download", json={
+        "repo_id": "org/model", "server_id": "llama.cpp",
+        "gguf_filenames": ["a.gguf", "b.gguf"],
+    })
+    assert r.status_code == 200
+
+    def rows():
+        return api_mod.db_mod.get_models(api_mod.state.conn, "org/model", "llama.cpp")
+
+    assert _poll(lambda: len(rows()) == 2 and all(x["status"] == "downloaded" for x in rows()))
+    assert {x["gguf_filename"] for x in rows()} == {"a.gguf", "b.gguf"}
+
+
+def test_generate_configs_fit_uses_resolved_gguf_size(client, tmp_path):
+    gguf = tmp_path / "gguf" / "model.Q4_K_M.gguf"
+    gguf.parent.mkdir(parents=True)
+    gguf.write_bytes(b"x" * (3 * 1024 ** 3))  # 3 GiB on disk
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1, "vram_gb": 24.0,
+        "weights_bytes": 10_000_000_000, "ram_gb": 64.0,
+        "model_arch": {"layers": 32, "heads": 32, "hidden": 4096, "max_ctx": 8192},
+        "readme_flags": {},
+    })
+    assert r.status_code == 200
+    fit = r.json()["configs"][0]["fit"]
+    assert fit["weights_gb"] == 3.0

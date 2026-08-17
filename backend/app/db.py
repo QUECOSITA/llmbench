@@ -16,8 +16,7 @@ CREATE TABLE IF NOT EXISTS models (
     status TEXT NOT NULL,
     gguf_filename TEXT,
     size_bytes INTEGER,
-    downloaded_at TEXT,
-    UNIQUE(repo_id, server_id)
+    downloaded_at TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,12 +46,106 @@ CREATE TABLE IF NOT EXISTS results (
 """
 
 
+def _migrate_models_table(conn):
+    """Drop the legacy one-row-per-(repo,server) uniqueness so multiple .gguf
+    rows per repo/server can coexist. Rebuilds the table only when the legacy
+    autoindex exists; otherwise just creates the partial unique indexes."""
+    index_names = [row[1] for row in conn.execute("PRAGMA index_list('models')")]
+    if "sqlite_autoindex_models_1" in index_names:
+        old_isolation = conn.isolation_level
+        conn.isolation_level = None
+        try:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute(
+                """
+                CREATE TABLE models_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    repo_id TEXT NOT NULL,
+                    server_id TEXT NOT NULL,
+                    format TEXT NOT NULL,
+                    local_path TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    gguf_filename TEXT,
+                    size_bytes INTEGER,
+                    downloaded_at TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO models_new (id, repo_id, server_id, format, local_path, status,
+                                        gguf_filename, size_bytes, downloaded_at)
+                SELECT id, repo_id, server_id, format, local_path, status,
+                       gguf_filename, size_bytes, downloaded_at
+                FROM models
+                """
+            )
+            conn.execute("DROP TABLE models")
+            conn.execute("ALTER TABLE models_new RENAME TO models")
+        finally:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.isolation_level = old_isolation
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_models_repo_server "
+        "ON models(repo_id, server_id) WHERE gguf_filename IS NULL"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_models_repo_server_gguf "
+        "ON models(repo_id, server_id, gguf_filename) WHERE gguf_filename IS NOT NULL"
+    )
+    conn.commit()
+
+
+def _repair_configs_fk(conn):
+    """Rebuild configs when its model_id FK dangles at a table that no longer
+    exists (SQLite rewrites FK targets when a referenced table is renamed, e.g.
+    the old models->models_old migration). No-op on healthy DBs."""
+    referenced = {row[2] for row in conn.execute("PRAGMA foreign_key_list('configs')")}
+    existing = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    if not referenced.issubset(existing):
+        old_isolation = conn.isolation_level
+        conn.isolation_level = None
+        try:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute(
+                """
+                CREATE TABLE configs_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id INTEGER NOT NULL REFERENCES runs(id),
+                    server_id TEXT NOT NULL,
+                    model_id INTEGER REFERENCES models(id),
+                    flag_conf_json TEXT NOT NULL,
+                    serving_command TEXT NOT NULL,
+                    bench_command TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO configs_new (id, run_id, server_id, model_id, flag_conf_json,
+                                         serving_command, bench_command)
+                SELECT id, run_id, server_id, model_id, flag_conf_json,
+                       serving_command, bench_command
+                FROM configs
+                """
+            )
+            conn.execute("DROP TABLE configs")
+            conn.execute("ALTER TABLE configs_new RENAME TO configs")
+        finally:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.isolation_level = old_isolation
+        conn.commit()
+
+
 def init_db(path: str | Path) -> sqlite3.Connection:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    _migrate_models_table(conn)
+    _repair_configs_fk(conn)
     conn.executescript(
         "INSERT OR IGNORE INTO servers(id, display_name) VALUES "
         "('llama.cpp','llama.cpp');"
@@ -68,22 +161,47 @@ def _row(conn: sqlite3.Connection, sql: str, params=()) -> dict | None:
 
 def upsert_model(conn, repo_id, server_id, format, local_path, status,
                  gguf_filename=None, size_bytes=None, downloaded_at=None):
-    conn.execute(
-        """
-        INSERT INTO models(repo_id, server_id, format, local_path, status, gguf_filename, size_bytes, downloaded_at)
-        VALUES (?,?,?,?,?,?,?,?)
-        ON CONFLICT(repo_id, server_id) DO UPDATE SET
-            format=excluded.format, local_path=excluded.local_path, status=excluded.status,
-            gguf_filename=excluded.gguf_filename, size_bytes=excluded.size_bytes,
-            downloaded_at=excluded.downloaded_at
-        """,
-        (repo_id, server_id, format, str(local_path), status, gguf_filename, size_bytes, downloaded_at),
-    )
+    if gguf_filename is None:
+        row = conn.execute(
+            "SELECT id FROM models WHERE repo_id=? AND server_id=? AND gguf_filename IS NULL",
+            (repo_id, server_id)).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT id FROM models WHERE repo_id=? AND server_id=? AND gguf_filename=?",
+            (repo_id, server_id, gguf_filename)).fetchone()
+    if row:
+        conn.execute(
+            "UPDATE models SET format=?, local_path=?, status=?, size_bytes=?, downloaded_at=? WHERE id=?",
+            (format, str(local_path), status, size_bytes, downloaded_at, row["id"]))
+    else:
+        conn.execute(
+            "INSERT INTO models(repo_id, server_id, format, local_path, status, "
+            "gguf_filename, size_bytes, downloaded_at) VALUES (?,?,?,?,?,?,?,?)",
+            (repo_id, server_id, format, str(local_path), status, gguf_filename, size_bytes, downloaded_at))
     conn.commit()
 
 
 def get_model(conn, repo_id, server_id):
-    return _row(conn, "SELECT * FROM models WHERE repo_id=? AND server_id=?", (repo_id, server_id))
+    return _row(
+        conn,
+        "SELECT * FROM models WHERE repo_id=? AND server_id=? ORDER BY gguf_filename",
+        (repo_id, server_id),
+    )
+
+
+def get_models(conn, repo_id, server_id=None, status=None):
+    if server_id is None:
+        rows = conn.execute(
+            "SELECT * FROM models WHERE repo_id=? ORDER BY server_id, gguf_filename",
+            (repo_id,)).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM models WHERE repo_id=? AND server_id=? ORDER BY gguf_filename",
+            (repo_id, server_id)).fetchall()
+    out = [dict(r) for r in rows]
+    if status is not None:
+        out = [m for m in out if m["status"] == status]
+    return out
 
 
 def list_models(conn, status=None):
@@ -95,6 +213,13 @@ def list_models(conn, status=None):
 
 def delete_model(conn, repo_id, server_id):
     conn.execute("DELETE FROM models WHERE repo_id=? AND server_id=?", (repo_id, server_id))
+    conn.commit()
+
+
+def delete_model_row(conn, repo_id, server_id, gguf_filename):
+    conn.execute(
+        "DELETE FROM models WHERE repo_id=? AND server_id=? AND gguf_filename=?",
+        (repo_id, server_id, gguf_filename))
     conn.commit()
 
 

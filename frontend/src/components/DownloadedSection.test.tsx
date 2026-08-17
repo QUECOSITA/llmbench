@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
 import { DownloadedSection } from "./DownloadedSection";
 
@@ -18,12 +18,12 @@ function renderSection(props?: Partial<Parameters<typeof DownloadedSection>[0]>)
   );
 }
 
-test("groups one model across servers into a single row with a file-qualified ref", () => {
+test("renders one row per downloaded gguf file", () => {
   renderSection();
+  const rows = screen.getAllByRole("button", { name: "LOAD" });
+  expect(rows).toHaveLength(2);
+  expect(screen.getByText("org/model")).toBeInTheDocument();
   expect(screen.getByText("org/model/model.gguf")).toBeInTheDocument();
-  expect(screen.getByText("llama.cpp")).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "LOAD" })).toHaveLength(1);
-  expect(screen.getAllByRole("button", { name: "REMOVE" })).toHaveLength(1);
 });
 
 test("renders separate rows for distinct models", () => {
@@ -41,7 +41,8 @@ test("renders separate rows for distinct models", () => {
 test("LOAD calls onLoad with the file-qualified ref when a gguf is present", () => {
   const onLoad = vi.fn();
   renderSection({ onLoad });
-  fireEvent.click(screen.getByRole("button", { name: "LOAD" }));
+  const row = screen.getByText("org/model/model.gguf").closest(".downloaded-row") as HTMLElement;
+  fireEvent.click(within(row).getByRole("button", { name: "LOAD" }));
   expect(onLoad).toHaveBeenCalledWith("org/model/model.gguf");
 });
 
@@ -55,19 +56,21 @@ test("LOAD calls onLoad with the repo id when no file is known", () => {
   expect(onLoad).toHaveBeenCalledWith("org/model");
 });
 
-test("REMOVE confirms then calls onRemove with the repo id", () => {
+test("REMOVE confirms then calls onRemove with the file-qualified ref", () => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
   const onRemove = vi.fn();
   renderSection({ onRemove });
-  fireEvent.click(screen.getByRole("button", { name: "REMOVE" }));
-  expect(onRemove).toHaveBeenCalledWith("org/model");
+  const row = screen.getByText("org/model/model.gguf").closest(".downloaded-row") as HTMLElement;
+  fireEvent.click(within(row).getByRole("button", { name: "REMOVE" }));
+  expect(onRemove).toHaveBeenCalledWith("org/model/model.gguf");
 });
 
 test("REMOVE without confirmation does not call onRemove", () => {
   vi.spyOn(window, "confirm").mockReturnValue(false);
   const onRemove = vi.fn();
   renderSection({ onRemove });
-  fireEvent.click(screen.getByRole("button", { name: "REMOVE" }));
+  const row = screen.getByText("org/model/model.gguf").closest(".downloaded-row") as HTMLElement;
+  fireEvent.click(within(row).getByRole("button", { name: "REMOVE" }));
   expect(onRemove).not.toHaveBeenCalled();
 });
 

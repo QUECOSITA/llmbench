@@ -58,9 +58,10 @@ test("download console renders with a CANCEL action", async ({ page }) => {
 
 test("LOAD fills the model input with the README-proposed downloaded model and analyzes it", async ({ page }) => {
   await page.goto("http://localhost:5173");
-  await expect(page.locator(".downloaded-server", { hasText: "llama.cpp" })).toBeVisible();
+  const modelRow = page.locator(".downloaded-row", { hasText: "org/model" });
+  await expect(modelRow).toBeVisible();
   await expect(page.getByText("org/model")).toBeVisible();
-  await page.getByRole("button", { name: "LOAD" }).click();
+  await modelRow.getByRole("button", { name: "LOAD" }).click();
   await expect(page.getByText(/server llama.cpp/i)).toBeVisible();
   await expect(page.getByPlaceholder(/huggingface/i)).toHaveValue("org/model/model.gguf");
 });
@@ -68,9 +69,9 @@ test("LOAD fills the model input with the README-proposed downloaded model and a
 test("REMOVE confirms and removes the downloaded row", async ({ page }) => {
   page.on("dialog", (dialog) => dialog.accept());
   await page.goto("http://localhost:5173");
-  await expect(page.locator(".downloaded-server", { hasText: "llama.cpp" })).toBeVisible();
+  await expect(page.locator(".downloaded-row", { hasText: "org/model" })).toBeVisible();
   await expect(page.getByText("org/model")).toHaveCount(1);
-  await page.getByRole("button", { name: "REMOVE" }).click();
+  await page.locator(".downloaded-row", { hasText: "org/model" }).getByRole("button", { name: "REMOVE" }).click();
   await expect(page.getByText("org/model")).toHaveCount(0);
 });
 
@@ -92,4 +93,47 @@ test("CLEAR HISTORY empties the results list", async ({ page }) => {
   await expect(page.getByText(/#1 · org\/model/i)).toBeVisible();
   await page.getByRole("button", { name: /clear history/i }).click();
   await expect(page.getByText(/no benchmark runs yet/i)).toBeVisible();
+});
+
+test("multi-gguf: analyze lists files as checkboxes and download only selected", async ({ page }) => {
+  await page.goto("http://localhost:5173");
+  await page.getByPlaceholder(/huggingface/i).fill("org/multi");
+  await page.getByRole("button", { name: /analyze/i }).click();
+  await expect(page.getByText(/File\(model\.Q4_K_M\.gguf\)/i)).toBeVisible();
+  await expect(page.getByText(/File\(model\.Q8_0\.gguf\)/i)).toBeVisible();
+  const downloadBtn = page.getByRole("button", { name: "Download" });
+  await expect(downloadBtn).toBeDisabled();
+  await page.getByRole("checkbox").first().check();
+  await expect(downloadBtn).toBeEnabled();
+  await downloadBtn.click();
+  await expect(page.locator(".dl-console")).toBeVisible();
+});
+
+test("multi-gguf: REMOVE deletes only the selected file's row", async ({ page }) => {
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto("http://localhost:5173");
+  await page.getByPlaceholder(/huggingface/i).fill("org/multi");
+  await page.getByRole("button", { name: /analyze/i }).click();
+  await expect(page.getByText(/File\(model\.Q4_K_M\.gguf\)/i)).toBeVisible();
+  await expect(page.getByText(/File\(model\.Q8_0\.gguf\)/i)).toBeVisible();
+  const downloadBtn = page.getByRole("button", { name: "Download" });
+  const q4Checkbox = page.getByRole("checkbox").nth(0);
+  const q8Checkbox = page.getByRole("checkbox").nth(1);
+  if (await q4Checkbox.isEnabled()) await q4Checkbox.check();
+  if (await q8Checkbox.isEnabled()) await q8Checkbox.check();
+  await expect(downloadBtn).toBeEnabled();
+  const downloadResponse = page.waitForResponse(
+    (r) => r.url().includes("/api/models/download") && r.request().method() === "POST",
+  );
+  await downloadBtn.click();
+  await expect(page.locator(".dl-console")).toBeVisible();
+  await downloadResponse;
+  await page.reload();
+  const q4Row = page.locator(".downloaded-row", { hasText: "org/multi/model.Q4_K_M.gguf" });
+  const q8Row = page.locator(".downloaded-row", { hasText: "org/multi/model.Q8_0.gguf" });
+  await expect(q4Row).toBeVisible();
+  await expect(q8Row).toBeVisible();
+  await q4Row.getByRole("button", { name: "REMOVE" }).click();
+  await expect(q4Row).toHaveCount(0);
+  await expect(q8Row).toBeVisible();
 });

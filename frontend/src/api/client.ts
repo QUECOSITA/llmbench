@@ -33,6 +33,12 @@ export interface FitVerdict {
   needed_gb: number;
 }
 
+export interface GgufFile {
+  path: string;
+  size: number;
+  fit?: FitVerdict;
+}
+
 export interface ModelArch {
   layers: number;
   heads: number;
@@ -62,7 +68,8 @@ export interface Analysis {
   auto_bench_tool?: string;
   readme_flags?: Record<string, string>;
   readme_flags_by_server?: Record<string, Record<string, string>>;
-  gguf_files?: Array<{ path: string; size: number }>;
+  gguf_files?: GgufFile[];
+  downloaded_ggufs?: Record<string, string[]>;
   weights_bytes?: number;
   downloaded?: Record<string, boolean>;
   fit_verdict?: FitVerdict;
@@ -167,7 +174,7 @@ export const api = {
   }),
   cancelBenchmark: () => request<{ ok: boolean }>("/benchmarks/cancel", { method: "POST" }),
   listModels: () => request<{ models: DownloadedModel[] }>("/models"),
-  downloadModel: (body: { repo_id: string; server_id: string; gguf_filename?: string }) =>
+  downloadModel: (body: { repo_id: string; server_id: string; gguf_filename?: string; gguf_filenames?: string[] }) =>
     request<{ ok: boolean }>("/models/download", {
       method: "POST",
       body: JSON.stringify(body),
@@ -181,6 +188,6 @@ export const api = {
   listRuns: () => request<{ runs: RunSummary[] }>("/benchmarks"),
   clearRuns: () => request<{ ok: boolean }>("/benchmarks", { method: "DELETE" }),
   getRun: (runId: number) => request<RunDetail>(`/benchmarks/${runId}`),
-  removeModel: (repoId: string) =>
-    request<{ ok: boolean }>(`/models/${encodeURIComponent(repoId)}`, { method: "DELETE" }),
+  removeModel: (modelRef: string) =>
+    request<{ ok: boolean }>(`/models/${encodeURIComponent(modelRef)}`, { method: "DELETE" }),
 };

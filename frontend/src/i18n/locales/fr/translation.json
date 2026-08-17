@@ -28,6 +28,7 @@
   },
   "model": {
     "analysisSummary": "→ {{repo}} · serveur {{server}} · {{count}} drapeaux",
+    "fileLabel": "Fichier",
     "serverManual": "manuel",
     "servingServer": "serveur de diffusion",
     "noServerProposed": "le README de ce dépôt ne propose aucun serveur de diffusion — modèle non pris en charge par llama.cpp",

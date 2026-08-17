@@ -94,9 +94,9 @@ def reconcile_models(conn, settings) -> None:
         if detected is None:
             continue
         if detected == "llama.cpp" and ggufs:
-            g = max(ggufs, key=lambda p: p.stat().st_size)
-            db_mod.upsert_model(conn, repo_id, "llama.cpp", "hf", str(g),
-                                "downloaded", gguf_filename=g.name, size_bytes=g.stat().st_size)
+            for g in {g.name: g for g in ggufs}.values():
+                db_mod.upsert_model(conn, repo_id, "llama.cpp", "hf", str(g),
+                                    "downloaded", gguf_filename=g.name, size_bytes=g.stat().st_size)
         _set_downloaded_servers(conn, repo_id, ("llama.cpp",))
 
     for m in db_mod.list_models(conn):
@@ -120,6 +120,19 @@ def rm_command(repo_id: str, cache_dir: str | None = None) -> list[str]:
     if cache_dir:
         cmd += ["--cache-dir", cache_dir]
     return cmd
+
+
+async def remove_gguf_file(conn, settings, repo_id: str, server_id: str, gguf_filename: str) -> None:
+    rows = [r for r in db_mod.get_models(conn, repo_id, server_id)
+            if r["gguf_filename"] == gguf_filename]
+    if not rows:
+        return
+    p = Path(rows[0]["local_path"] or "")
+    if p.suffix == ".gguf" and (
+        _path_under(p, settings.resolved_gguf_dir) or _path_under(p, _hf_cache_root(settings))
+    ) and p.exists():
+        p.unlink()
+    db_mod.delete_model_row(conn, repo_id, server_id, gguf_filename)
 
 
 async def remove_model(conn, settings, repo_id: str) -> None:

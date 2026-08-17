@@ -28,6 +28,7 @@
   },
   "model": {
     "analysisSummary": "→ {{repo}} · palvelin {{server}} · {{count}} lippua",
+    "fileLabel": "Tiedosto",
     "serverManual": "manuaalinen",
     "servingServer": "tarjoilupalvelin",
     "noServerProposed": "tämän repon README ei ehdota tarjoilupalvelinta — llama.cpp ei tue mallia",

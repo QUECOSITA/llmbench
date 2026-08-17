@@ -28,6 +28,7 @@
   },
   "model": {
     "analysisSummary": "→ {{repo}} · 服务器 {{server}} · {{count}} 个参数",
+    "fileLabel": "文件",
     "serverManual": "手动",
     "servingServer": "服务服务器",
     "noServerProposed": "此仓库的 README 未提供服务服务器 — llama.cpp 不支持该模型",

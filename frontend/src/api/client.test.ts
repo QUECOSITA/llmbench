@@ -25,6 +25,19 @@ test("api.removeModel deletes a repo with a single repo id arg", async () => {
   expect((init as RequestInit).method).toBe("DELETE");
 });
 
+test("api.removeModel deletes a single gguf file with a file-qualified ref", async () => {
+  const fetchMock = vi.fn(
+    (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) } as Response),
+  );
+  globalThis.fetch = fetchMock;
+  const data = await api.removeModel("org/model/model.Q4_K_M.gguf");
+  expect(data.ok).toBe(true);
+  const [url, init] = fetchMock.mock.calls[0];
+  expect(url).toBe("http://localhost:8000/api/models/org%2Fmodel%2Fmodel.Q4_K_M.gguf");
+  expect((init as RequestInit).method).toBe("DELETE");
+});
+
 test("ApiError parses structured error body with context", async () => {
   globalThis.fetch = vi.fn(() =>
     Promise.resolve({

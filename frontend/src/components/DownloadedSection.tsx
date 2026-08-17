@@ -9,65 +9,46 @@ export interface DownloadedModel {
 
 interface Props {
   models: DownloadedModel[];
-  onLoad: (repoId: string) => void;
-  onRemove: (repoId: string) => void;
+  onLoad: (modelRef: string) => void;
+  onRemove: (modelRef: string) => void;
 }
 
 const SERVER_DISPLAY: Record<string, string> = {
   "llama.cpp": "llama.cpp",
 };
 
-const SERVER_ORDER = ["llama.cpp"];
-
 export function DownloadedSection({ models, onLoad, onRemove }: Props) {
   const { t } = useTranslation();
-  const byRepo = new Map<string, string[]>();
-  const ggufByRepo = new Map<string, string>();
-  for (const m of models) {
-    if (m.status !== "downloaded") continue;
-    const servers = byRepo.get(m.repo_id) ?? [];
-    if (!servers.includes(m.server_id)) servers.push(m.server_id);
-    byRepo.set(m.repo_id, servers);
-    if (m.gguf_filename) ggufByRepo.set(m.repo_id, m.gguf_filename);
-  }
-  const repos = [...byRepo.keys()].sort();
+  const rows = models
+    .filter((m) => m.status === "downloaded")
+    .map((m) => ({ ...m, ref: m.gguf_filename ? `${m.repo_id}/${m.gguf_filename}` : m.repo_id }))
+    .sort((a, b) => a.ref.localeCompare(b.ref));
 
   return (
     <section className="panel">
       <span className="panel-cap">{t("panel.downloaded")}</span>
-      {repos.length === 0 && <p className="downloaded-empty">{t("downloaded.empty")}</p>}
-      {repos.map((repo) => {
-        const group = byRepo.get(repo)!;
-        const servers = [
-          ...SERVER_ORDER.filter((s) => group.includes(s)),
-          ...group.filter((s) => !SERVER_ORDER.includes(s)),
-        ];
-        const gguf = ggufByRepo.get(repo);
-        const modelRef = gguf ? `${repo}/${gguf}` : repo;
-        return (
-          <div key={repo} className="downloaded-row">
-            <span className="downloaded-server">
-              {servers.map((s) => SERVER_DISPLAY[s] ?? s).join(", ")}
-            </span>
-            <span className="downloaded-model">{modelRef}</span>
-            <span className="downloaded-actions">
-              <button className="btn-neutral" onClick={() => onLoad(modelRef)}>
-                {t("common.load")}
-              </button>
-              <button
-                className="btn-neutral"
-                onClick={() => {
-                  if (window.confirm(t("confirm.removeModel", { model: modelRef }))) {
-                    onRemove(repo);
-                  }
-                }}
-              >
-                {t("common.remove")}
-              </button>
-            </span>
-          </div>
-        );
-      })}
+      {rows.length === 0 && <p className="downloaded-empty">{t("downloaded.empty")}</p>}
+      {rows.map((row) => (
+        <div key={row.ref} className="downloaded-row">
+          <span className="downloaded-server">{SERVER_DISPLAY[row.server_id] ?? row.server_id}</span>
+          <span className="downloaded-model">{row.ref}</span>
+          <span className="downloaded-actions">
+            <button className="btn-neutral" onClick={() => onLoad(row.ref)}>
+              {t("common.load")}
+            </button>
+            <button
+              className="btn-neutral"
+              onClick={() => {
+                if (window.confirm(t("confirm.removeModel", { model: row.ref }))) {
+                  onRemove(row.ref);
+                }
+              }}
+            >
+              {t("common.remove")}
+            </button>
+          </span>
+        </div>
+      ))}
     </section>
   );
 }

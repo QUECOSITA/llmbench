@@ -28,6 +28,7 @@
   },
   "model": {
     "analysisSummary": "→ {{repo}} · サーバー {{server}} · フラグ {{count}} 個",
+    "fileLabel": "ファイル",
     "serverManual": "手動",
     "servingServer": "配信サーバー",
     "noServerProposed": "このリポジトリの README に配信サーバーが提案されていません — llama.cpp はこのモデルをサポートしていません",

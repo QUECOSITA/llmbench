@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from app.db import init_db, upsert_model, get_model, list_models, create_run, finish_run, save_result, list_runs, get_results_for_run, create_config, fail_stale_runs, get_run_status, set_run_status, get_active_run, clear_history, list_configs
+from app.db import init_db, upsert_model, get_model, get_models, list_models, create_run, finish_run, save_result, list_runs, get_results_for_run, create_config, fail_stale_runs, get_run_status, set_run_status, get_active_run, clear_history, list_configs, delete_model_row
 
 
 def test_model_crud(tmp_path):
@@ -15,6 +15,118 @@ def test_model_crud(tmp_path):
     assert m["status"] == "downloaded"
     assert len(list_models(conn)) == 1
     conn.close()
+
+
+def test_multiple_gguf_rows_for_same_repo_and_server(tmp_path):
+    conn = init_db(tmp_path / "test.db")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", "/x/a.gguf", "downloaded",
+                 gguf_filename="a.gguf", size_bytes=100)
+    upsert_model(conn, "org/model", "llama.cpp", "hf", "/x/b.gguf", "downloaded",
+                 gguf_filename="b.gguf", size_bytes=200)
+    rows = get_models(conn, "org/model", "llama.cpp", status="downloaded")
+    assert {r["gguf_filename"] for r in rows} == {"a.gguf", "b.gguf"}
+    conn.close()
+
+
+def test_delete_model_row_removes_only_targeted_gguf(tmp_path):
+    conn = init_db(tmp_path / "test.db")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", "/x/a.gguf", "downloaded",
+                 gguf_filename="a.gguf", size_bytes=100)
+    upsert_model(conn, "org/model", "llama.cpp", "hf", "/x/b.gguf", "downloaded",
+                 gguf_filename="b.gguf", size_bytes=200)
+    upsert_model(conn, "org/model", "llama.cpp", "hf", "/x", "downloaded")
+
+    delete_model_row(conn, "org/model", "llama.cpp", "a.gguf")
+
+    rows = get_models(conn, "org/model", "llama.cpp")
+    assert {r["gguf_filename"] for r in rows if r["gguf_filename"]} == {"b.gguf"}
+    assert any(r["gguf_filename"] is None for r in rows)
+    conn.close()
+
+
+def test_upsert_null_gguf_is_idempotent(tmp_path):
+    conn = init_db(tmp_path / "test.db")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", "/x", "downloaded")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", "/x", "missing")
+    assert len(list_models(conn)) == 1
+    conn.close()
+
+
+def test_migrate_legacy_models_table_preserves_history(tmp_path):
+    db_path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        """
+        CREATE TABLE models (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_id TEXT NOT NULL,
+            server_id TEXT NOT NULL,
+            format TEXT NOT NULL,
+            local_path TEXT NOT NULL,
+            status TEXT NOT NULL,
+            gguf_filename TEXT,
+            size_bytes INTEGER,
+            downloaded_at TEXT,
+            UNIQUE(repo_id, server_id)
+        );
+        CREATE TABLE runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_id TEXT NOT NULL,
+            requested_n INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            status TEXT NOT NULL DEFAULT 'queued'
+        );
+        CREATE TABLE configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL REFERENCES runs(id),
+            server_id TEXT NOT NULL,
+            model_id INTEGER REFERENCES models(id),
+            flag_conf_json TEXT NOT NULL,
+            serving_command TEXT NOT NULL,
+            bench_command TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO models(repo_id, server_id, format, local_path, status, gguf_filename, size_bytes) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("org/deleted", "llama.cpp", "hf", "/gone", "missing", None, None),
+    )
+    conn.execute("DELETE FROM models WHERE id = 1")
+    conn.execute(
+        "INSERT INTO models(repo_id, server_id, format, local_path, status, gguf_filename, size_bytes) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("org/legacy", "llama.cpp", "hf", "/x", "downloaded", "a.gguf", 100),
+    )
+    conn.execute("INSERT INTO runs(repo_id, requested_n) VALUES ('org/legacy', 2)")
+    conn.execute(
+        "INSERT INTO configs(run_id, server_id, model_id, flag_conf_json, serving_command, bench_command) "
+        "VALUES (1, 'llama.cpp', 2, '[]', 'serve', 'bench')"
+    )
+    conn.commit()
+    conn.close()
+
+    migrated = init_db(db_path)
+    models = list_models(migrated)
+    assert [m["gguf_filename"] for m in models] == ["a.gguf"]
+    assert models[0]["id"] == 2
+    config_row = migrated.execute(
+        "SELECT c.id, c.model_id, m.repo_id FROM configs c "
+        "LEFT JOIN models m ON m.id = c.model_id WHERE c.id = 1"
+    ).fetchone()
+    assert config_row is not None
+    assert config_row["model_id"] == 2
+    assert config_row["repo_id"] == "org/legacy"
+    upsert_model(migrated, "org/legacy", "llama.cpp", "hf", "/z", "downloaded",
+                 gguf_filename="c.gguf")
+    assert max(m["id"] for m in list_models(migrated)) > 2
+    index_names = [r[1] for r in migrated.execute("PRAGMA index_list('models')")]
+    assert "uq_models_repo_server" in index_names
+    assert "uq_models_repo_server_gguf" in index_names
+    upsert_model(migrated, "org/legacy", "llama.cpp", "hf", "/y", "downloaded",
+                 gguf_filename="b.gguf")
+    assert len(get_models(migrated, "org/legacy", "llama.cpp")) == 3
+    migrated.close()
 
 
 def test_run_and_results(tmp_path):
@@ -140,4 +252,89 @@ def test_clear_history_empties_runs_but_keeps_models(tmp_path):
     assert list_runs(conn) == []
     assert list_configs(conn, run_id) == []
     assert len(list_models(conn)) == 1
+    conn.close()
+
+
+def test_repair_dangling_configs_fk(tmp_path):
+    db_path = tmp_path / "corrupt.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        """
+        CREATE TABLE models (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_id TEXT NOT NULL,
+            server_id TEXT NOT NULL,
+            format TEXT NOT NULL,
+            local_path TEXT NOT NULL,
+            status TEXT NOT NULL,
+            gguf_filename TEXT,
+            size_bytes INTEGER,
+            downloaded_at TEXT
+        );
+        CREATE TABLE runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_id TEXT NOT NULL,
+            requested_n INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            status TEXT NOT NULL DEFAULT 'queued'
+        );
+        CREATE TABLE configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL REFERENCES runs(id),
+            server_id TEXT NOT NULL,
+            model_id INTEGER REFERENCES "models_old"(id),
+            flag_conf_json TEXT NOT NULL,
+            serving_command TEXT NOT NULL,
+            bench_command TEXT NOT NULL
+        );
+        CREATE TABLE results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            config_id INTEGER NOT NULL REFERENCES configs(id),
+            prompt_processing_tps REAL,
+            decode_tps REAL,
+            duration_s REAL,
+            output_snippet TEXT,
+            status TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO models(repo_id, server_id, format, local_path, status, gguf_filename) "
+        "VALUES (?,?,?,?,?,?)",
+        ("org/model", "llama.cpp", "hf", "/x/a.gguf", "downloaded", "a.gguf"),
+    )
+    conn.execute("INSERT INTO runs(repo_id, requested_n) VALUES ('org/model', 1)")
+    conn.execute(
+        "INSERT INTO configs(run_id, server_id, model_id, flag_conf_json, serving_command, bench_command) "
+        "VALUES (1, 'llama.cpp', NULL, '[]', 'serve', 'bench')"
+    )
+    conn.execute(
+        "INSERT INTO results(config_id, prompt_processing_tps, decode_tps, duration_s, output_snippet, status) "
+        "VALUES (1, 1200.0, 86.4, 30.0, '', 'ok')"
+    )
+    conn.commit()
+    conn.close()
+
+    conn = init_db(db_path)
+    fk_tables = {row[2] for row in conn.execute("PRAGMA foreign_key_list('configs')")}
+    assert fk_tables == {"runs", "models"}
+    model = conn.execute("SELECT repo_id FROM models WHERE id=1").fetchone()
+    assert model["repo_id"] == "org/model"
+    assert conn.execute("SELECT COUNT(*) FROM configs").fetchone()[0] == 1
+    results = get_results_for_run(conn, 1)
+    assert len(results) == 1
+    assert results[0]["decode_tps"] == 86.4
+    cfg_id = create_config(conn, run_id=1, server_id="llama.cpp", model_id=None,
+                           flag_conf_json=[], serving_command="x", bench_command="y")
+    assert cfg_id == 2
+    conn.close()
+
+
+def test_repair_configs_fk_noop_on_healthy_db(tmp_path):
+    db_path = tmp_path / "healthy.db"
+    conn = init_db(db_path)
+    conn.close()
+    conn = init_db(db_path)
+    fk_tables = {row[2] for row in conn.execute("PRAGMA foreign_key_list('configs')")}
+    assert fk_tables == {"runs", "models"}
     conn.close()

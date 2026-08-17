@@ -28,6 +28,7 @@
   },
   "model": {
     "analysisSummary": "→ {{repo}} · 서버 {{server}} · 플래그 {{count}}개",
+    "fileLabel": "파일",
     "serverManual": "수동",
     "servingServer": "서빙 서버",
     "noServerProposed": "이 저장소의 README에 서빙 서버가 제안되지 않았습니다 — llama.cpp가 이 모델을 지원하지 않습니다",

@@ -46,10 +46,12 @@ class ApiError(Exception):
 KNOWN_SERVERS = ("llama.cpp",)
 
 
-def _download_command(repo_id: str, server_id: str, gguf_filename: str | None = None,
+def _download_command(repo_id: str, server_id: str, gguf_filenames: list[str] | None = None,
                       cache_dir: str | None = None) -> list[str]:
     cmd = [hf_bin() or "hf", "download", "--format", "human", repo_id]
-    cmd += ["--include", gguf_filename or "*.gguf", "--include", "README.md"]
+    for name in gguf_filenames or ["*.gguf"]:
+        cmd += ["--include", name]
+    cmd += ["--include", "README.md"]
     if cache_dir:
         cmd += ["--cache-dir", cache_dir]
     return cmd
@@ -162,6 +164,8 @@ async def analyze(payload: dict):
         except Exception:
             arch = None
     verdict = fit_verdict(weights, hw["gpu_vram_gb"], hw["ram_total_gb"], arch=arch)
+    for g in gguf:
+        g["fit"] = fit_verdict(g["size"], hw["gpu_vram_gb"], hw["ram_total_gb"], arch=arch)
     first_gguf_basename = os.path.basename(gguf[0]["path"]) if gguf else None
     auto_bench_tool = (
         "speed-bench"
@@ -179,6 +183,7 @@ async def analyze(payload: dict):
         "gguf_files": gguf,
         "weights_bytes": weights,
         "downloaded": _model_status(s, repo_id),
+        "downloaded_ggufs": _model_ggufs(s, repo_id),
         "fit_verdict": verdict,
         "model_arch": arch,
         "hardware": {
@@ -192,8 +197,17 @@ async def analyze(payload: dict):
 def _model_status(s: AppState, repo_id: str) -> dict[str, bool]:
     out = {}
     for server_id in ("llama.cpp",):
-        m = db_mod.get_model(s.conn, repo_id, server_id)
-        out[server_id] = bool(m and m["status"] == "downloaded")
+        out[server_id] = bool(db_mod.get_models(s.conn, repo_id, server_id, status="downloaded"))
+    return out
+
+
+def _model_ggufs(s: AppState, repo_id: str) -> dict[str, list[str]]:
+    out = {}
+    for server_id in ("llama.cpp",):
+        out[server_id] = [
+            m["gguf_filename"] for m in db_mod.get_models(s.conn, repo_id, server_id, status="downloaded")
+            if m["gguf_filename"]
+        ]
     return out
 
 
@@ -201,24 +215,41 @@ def _hf_snapshot_dir(settings: Settings, repo_id: str) -> Path:
     return sync_mod.snapshot_dir_for(settings, repo_id)
 
 
+def _resolve_download_paths(s: AppState, repo_id: str, server_id: str,
+                            gguf_filenames: list[str] | None) -> list[tuple[str, str, int]]:
+    gguf_dir = s.settings.resolved_gguf_dir
+    snapshot = _hf_snapshot_dir(s.settings, repo_id)
+    snapshot_ggufs = {g.name: g for g in sync_mod._ggufs_in_snapshot(snapshot)}
+    candidates: list[Path] = []
+    if gguf_filenames:
+        for name in gguf_filenames:
+            p = gguf_dir / name
+            if not p.exists():
+                p = snapshot_ggufs.get(name)
+            if p is not None:
+                candidates.append(p)
+    else:
+        candidates = sorted(snapshot_ggufs.values(), key=lambda p: p.name)
+        candidates += [p for p in sorted(gguf_dir.glob("*.gguf"))
+                       if p.name not in snapshot_ggufs]
+    return [(str(p), p.name, p.stat().st_size) for p in candidates if p.exists()]
+
+
 def _resolve_download_path(s: AppState, repo_id: str, server_id: str,
                            gguf_filename: str | None) -> tuple[str | None, str | None, int | None]:
-    gguf_dir = s.settings.resolved_gguf_dir
-    if gguf_filename and (gguf_dir / gguf_filename).exists():
-        p = gguf_dir / gguf_filename
-        return str(p), gguf_filename, p.stat().st_size
-    for p in sorted(gguf_dir.glob("*.gguf")):
-        return str(p), p.name, p.stat().st_size
-    snapshot = _hf_snapshot_dir(s.settings, repo_id)
-    ggufs = sync_mod._ggufs_in_snapshot(snapshot)
-    if ggufs:
-        g = max(ggufs, key=lambda p: p.stat().st_size)
-        return str(g), g.name, g.stat().st_size
-    return None, None, None
+    """Single-file convenience for callers that only need one resolved gguf.
+
+    The generate endpoint still relies on this wrapper.
+    Note: when both gguf_dir and the HF snapshot hold ggufs, this returns the
+    smallest-named snapshot file first — interim behavior to be revisited when
+    generate migrates to per-file selection."""
+    results = _resolve_download_paths(s, repo_id, server_id,
+                                      [gguf_filename] if gguf_filename else None)
+    return results[0] if results else (None, None, None)
 
 
 async def _download_job(s: AppState, repo_id: str, server_id: str,
-                        cmd: list[str], gguf_filename: str | None):
+                        cmd: list[str], gguf_filenames: list[str] | None):
     pty = None
     try:
         await broadcast(s, {"type": "download_started", "server_id": server_id,
@@ -247,19 +278,20 @@ async def _download_job(s: AppState, repo_id: str, server_id: str,
                                 "repo_id": repo_id,
                                 "message": f"download exited with code {rc} (see the download log for details)"})
             return
-        local_path, gguf_resolved, size = _resolve_download_path(s, repo_id, server_id, gguf_filename)
-        if local_path is None:
+        local = _resolve_download_paths(s, repo_id, server_id, gguf_filenames)
+        if not local:
             db_mod.upsert_model(s.conn, repo_id=repo_id, server_id=server_id,
                                 format="hf", local_path="", status="missing")
             await broadcast(s, {"type": "download_error", "server_id": server_id,
                                 "repo_id": repo_id, "message": "download finished but no artifact was found"})
             return
-        db_mod.upsert_model(s.conn, repo_id=repo_id, server_id=server_id, format="hf",
-                            local_path=local_path, status="downloaded",
-                            gguf_filename=gguf_resolved, size_bytes=size,
-                            downloaded_at=datetime.now(timezone.utc).isoformat())
+        for path, name, size in local:
+            db_mod.upsert_model(s.conn, repo_id=repo_id, server_id=server_id, format="hf",
+                                local_path=path, status="downloaded",
+                                gguf_filename=name, size_bytes=size,
+                                downloaded_at=datetime.now(timezone.utc).isoformat())
         await broadcast(s, {"type": "download_done", "server_id": server_id,
-                            "repo_id": repo_id, "status": "downloaded", "local_path": local_path})
+                            "repo_id": repo_id, "status": "downloaded", "local_path": local[0][0]})
     except Exception as e:
         await broadcast(s, {"type": "download_error", "server_id": server_id,
                             "repo_id": repo_id, "message": str(e)})
@@ -283,7 +315,14 @@ async def models():
 async def delete_model(model_ref: str):
     s = _require_state()
     try:
-        await sync_mod.remove_model(s.conn, s.settings, model_ref)
+        repo_id, file_path = parse_input(model_ref)
+    except InvalidModelInput as e:
+        raise HTTPException(422, str(e))
+    try:
+        if file_path:
+            await sync_mod.remove_gguf_file(s.conn, s.settings, repo_id, "llama.cpp", file_path)
+        else:
+            await sync_mod.remove_model(s.conn, s.settings, repo_id)
     except RuntimeError as e:
         raise HTTPException(500, str(e))
     return {"ok": True}
@@ -299,7 +338,17 @@ async def start_download(payload: dict):
     if server_id not in KNOWN_SERVERS:
         raise HTTPException(422, f"'server_id' must be one of {list(KNOWN_SERVERS)}.")
     cache_dir = str(s.settings.hf_cache_dir) if s.settings.hf_cache_dir else None
-    cmd = _download_command(repo_id, server_id, payload.get("gguf_filename"), cache_dir=cache_dir)
+    gguf_filenames = payload.get("gguf_filenames")
+    if gguf_filenames is None:
+        single = payload.get("gguf_filename")
+        gguf_filenames = [single] if single else None
+    if gguf_filenames is not None:
+        if not isinstance(gguf_filenames, list) or not gguf_filenames:
+            raise HTTPException(422, "'gguf_filenames' must be a non-empty list of .gguf filenames.")
+        for name in gguf_filenames:
+            if not isinstance(name, str) or not name or os.path.basename(name) != name:
+                raise HTTPException(422, "'gguf_filenames' entries must be plain .gguf filenames.")
+    cmd = _download_command(repo_id, server_id, gguf_filenames, cache_dir=cache_dir)
     if hf_bin() is None:
         raise HTTPException(400, f"HF CLI not found. Run: {' '.join(cmd)}")
     with s._state_lock:
@@ -307,7 +356,7 @@ async def start_download(payload: dict):
             raise HTTPException(409, "A download is already running")
         s._download_active = True
     try:
-        asyncio.create_task(_download_job(s, repo_id, server_id, cmd, payload.get("gguf_filename")))
+        asyncio.create_task(_download_job(s, repo_id, server_id, cmd, gguf_filenames))
     except Exception:
         with s._state_lock:
             s._download_active = False
@@ -405,6 +454,8 @@ async def generate(payload: dict):
         raise HTTPException(422, "Missing required field 'server_id'.")
     if repo_id is None:
         raise HTTPException(422, "Missing required field 'repo_id'.")
+    if not isinstance(repo_id, str) or "/" not in repo_id:
+        raise HTTPException(422, "'repo_id' must be 'org/model'.")
     if n is None:
         raise HTTPException(422, "Missing required field 'n'.")
     try:
@@ -425,11 +476,49 @@ async def generate(payload: dict):
         raise HTTPException(422, str(e))
     weights = payload.get("weights_bytes")
     resolved_gguf = payload.get("gguf_path")
+    if resolved_gguf is not None and not isinstance(resolved_gguf, str):
+        raise HTTPException(422, "gguf_path must be a string.")
     gguf_filename = os.path.basename(resolved_gguf) if resolved_gguf else None
     if resolved_gguf is None and server_id == "llama.cpp":
-        local_path, name, _size = _resolve_download_path(s, repo_id, "llama.cpp", None)
+        local_path, name, size = _resolve_download_path(s, repo_id, "llama.cpp", None)
         resolved_gguf = local_path
         gguf_filename = name
+        if size is not None:
+            weights = size
+    elif resolved_gguf:
+        resolved = os.path.realpath(resolved_gguf)
+        gguf_dir = os.path.realpath(str(s.settings.resolved_gguf_dir))
+        snap_dir = os.path.realpath(str(_hf_snapshot_dir(s.settings, repo_id)))
+        if resolved.startswith(gguf_dir + os.sep):
+            p = Path(resolved)
+            if not (p.suffix == ".gguf" and p.exists()):
+                raise HTTPException(
+                    422,
+                    "gguf_path must be a .gguf file under the models/gguf directory "
+                    "or the HF cache for this repo",
+                )
+            try:
+                weights = p.stat().st_size
+            except OSError:
+                pass
+        elif resolved.startswith(snap_dir + os.sep):
+            p = Path(resolved)
+            if not (p.suffix == ".gguf" and p.exists()):
+                raise HTTPException(
+                    422,
+                    "gguf_path must be a .gguf file under the models/gguf directory "
+                    "or the HF cache for this repo",
+                )
+            try:
+                weights = p.stat().st_size
+            except OSError:
+                pass
+        else:
+            raise HTTPException(
+                422,
+                "gguf_path must be a .gguf file under the models/gguf directory "
+                "or the HF cache for this repo",
+            )
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
     requested_bench_tool = payload.get("bench_tool")
     if requested_bench_tool not in (None, "llama-bench", "speed-bench"):

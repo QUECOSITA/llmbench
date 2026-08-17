@@ -28,6 +28,7 @@
   },
   "model": {
     "analysisSummary": "→ {{repo}} · servidor {{server}} · {{count}} flags",
+    "fileLabel": "Arquivo",
     "serverManual": "manual",
     "servingServer": "servidor de serviço",
     "noServerProposed": "o README deste repositório não propõe um servidor de serviço — modelo não suportado pelo llama.cpp",
