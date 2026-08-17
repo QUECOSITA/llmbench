@@ -304,6 +304,16 @@ def test_generate_configs_rejects_unsafe_gguf_path(client):
     assert r.status_code == 422
 
 
+def test_generate_configs_rejects_non_string_gguf_path(client):
+    for bad in ({"evil": 1}, [1, 2], 42):
+        r = client.post("/api/configs/generate", json={
+            "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
+            "gguf_path": bad,
+            "readme_flags": {"-c": "4096"},
+        })
+        assert r.status_code == 422, f"gguf_path={bad!r}"
+
+
 def test_generate_configs_accepts_snapshot_gguf_path(client):
     from app.api import state
     gguf_path = _make_snapshot_gguf(state.settings, "org/model")

@@ -474,6 +474,8 @@ async def generate(payload: dict):
         raise HTTPException(422, str(e))
     weights = payload.get("weights_bytes")
     resolved_gguf = payload.get("gguf_path")
+    if resolved_gguf is not None and not isinstance(resolved_gguf, str):
+        raise HTTPException(422, "gguf_path must be a string.")
     gguf_filename = os.path.basename(resolved_gguf) if resolved_gguf else None
     if resolved_gguf is None and server_id == "llama.cpp":
         local_path, name, size = _resolve_download_path(s, repo_id, "llama.cpp", None)
