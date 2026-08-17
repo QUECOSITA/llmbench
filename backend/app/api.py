@@ -489,7 +489,19 @@ async def generate(payload: dict):
         resolved = os.path.realpath(resolved_gguf)
         gguf_dir = os.path.realpath(str(s.settings.resolved_gguf_dir))
         snap_dir = os.path.realpath(str(_hf_snapshot_dir(s.settings, repo_id)))
-        if resolved.startswith(gguf_dir + os.sep) or resolved.startswith(snap_dir + os.sep):
+        if resolved.startswith(gguf_dir + os.sep):
+            p = Path(resolved)
+            if not (p.suffix == ".gguf" and p.exists()):
+                raise HTTPException(
+                    422,
+                    "gguf_path must be a .gguf file under the models/gguf directory "
+                    "or the HF cache for this repo",
+                )
+            try:
+                weights = p.stat().st_size
+            except OSError:
+                pass
+        elif resolved.startswith(snap_dir + os.sep):
             p = Path(resolved)
             if not (p.suffix == ".gguf" and p.exists()):
                 raise HTTPException(
