@@ -275,9 +275,13 @@ def test_generate_configs_endpoint(client):
 
 
 def test_generate_configs_llama_uses_gguf_path(client):
+    from app.api import state
+    state.settings.resolved_gguf_dir.mkdir(parents=True, exist_ok=True)
+    gguf = state.settings.resolved_gguf_dir / "model.Q4_K_M.gguf"
+    gguf.write_bytes(b"dummy")
     r = client.post("/api/configs/generate", json={
         "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
-        "gguf_path": "/tmp/models/model.Q4_K_M.gguf",
+        "gguf_path": str(gguf),
         "readme_flags": {"-c": "4096"},
     })
     assert r.status_code == 200
@@ -288,7 +292,27 @@ def test_generate_configs_llama_uses_gguf_path(client):
         assert cmd[cmd.index("-hff") + 1] == "model.Q4_K_M.gguf"
         assert "--hf-repo org/model" in cfg["serving_command"]
         assert "--hf-file model.Q4_K_M.gguf" in cfg["serving_command"]
-        assert "/tmp/models/model.Q4_K_M.gguf" not in cfg["serving_command"]
+        assert str(gguf) not in cfg["serving_command"]
+
+
+def test_generate_configs_rejects_unsafe_gguf_path(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
+        "gguf_path": "/etc/shadow",
+        "readme_flags": {"-c": "4096"},
+    })
+    assert r.status_code == 422
+
+
+def test_generate_configs_accepts_snapshot_gguf_path(client):
+    from app.api import state
+    gguf_path = _make_snapshot_gguf(state.settings, "org/model")
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
+        "gguf_path": gguf_path,
+        "readme_flags": {"--ctx-size": "4096"},
+    })
+    assert r.status_code == 200
 
 
 def _make_snapshot_gguf(settings, repo_id: str) -> str:
