@@ -322,6 +322,22 @@ def test_generate_configs_rejects_symlink_escape_gguf_path(client, tmp_path):
     assert r.status_code == 422
 
 
+def test_generate_configs_rejects_sibling_gguf_dir(client):
+    from app.api import state
+    state.settings.resolved_gguf_dir.mkdir(parents=True, exist_ok=True)
+    sibling = state.settings.resolved_gguf_dir.parent / (
+        state.settings.resolved_gguf_dir.name + ".evil"
+    )
+    sibling.mkdir(parents=True, exist_ok=True)
+    gguf = sibling / "model.gguf"
+    gguf.write_bytes(b"dummy")
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1,
+        "gguf_path": str(gguf), "readme_flags": {},
+    })
+    assert r.status_code == 422
+
+
 def test_generate_configs_rejects_non_string_gguf_path(client):
     for bad in ({"evil": 1}, [1, 2], 42):
         r = client.post("/api/configs/generate", json={

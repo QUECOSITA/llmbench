@@ -486,24 +486,27 @@ async def generate(payload: dict):
         if size is not None:
             weights = size
     elif resolved_gguf:
-        p = Path(resolved_gguf).resolve(strict=False)
-        if not (
-            p.suffix == ".gguf"
-            and (
-                sync_mod._path_under(p, s.settings.resolved_gguf_dir)
-                or sync_mod._path_under(p, _hf_snapshot_dir(s.settings, repo_id))
-            )
-            and p.exists()
-        ):
+        resolved = os.path.realpath(resolved_gguf)
+        gguf_dir = os.path.realpath(str(s.settings.resolved_gguf_dir))
+        snap_dir = os.path.realpath(str(_hf_snapshot_dir(s.settings, repo_id)))
+        if resolved.startswith(gguf_dir + os.sep) or resolved.startswith(snap_dir + os.sep):
+            p = Path(resolved)
+            if not (p.suffix == ".gguf" and p.exists()):
+                raise HTTPException(
+                    422,
+                    "gguf_path must be a .gguf file under the models/gguf directory "
+                    "or the HF cache for this repo",
+                )
+            try:
+                weights = p.stat().st_size
+            except OSError:
+                pass
+        else:
             raise HTTPException(
                 422,
                 "gguf_path must be a .gguf file under the models/gguf directory "
                 "or the HF cache for this repo",
             )
-        try:
-            weights = p.stat().st_size
-        except OSError:
-            pass
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
     requested_bench_tool = payload.get("bench_tool")
     if requested_bench_tool not in (None, "llama-bench", "speed-bench"):
