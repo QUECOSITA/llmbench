@@ -486,7 +486,7 @@ async def generate(payload: dict):
         if size is not None:
             weights = size
     elif resolved_gguf:
-        p = Path(resolved_gguf)
+        p = Path(resolved_gguf).resolve(strict=False)
         if not (
             p.suffix == ".gguf"
             and (

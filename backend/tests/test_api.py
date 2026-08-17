@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import time
 
@@ -300,6 +301,23 @@ def test_generate_configs_rejects_unsafe_gguf_path(client):
         "repo_id": "org/model", "server_id": "llama.cpp", "n": 2,
         "gguf_path": "/etc/shadow",
         "readme_flags": {"-c": "4096"},
+    })
+    assert r.status_code == 422
+
+
+def test_generate_configs_rejects_symlink_escape_gguf_path(client, tmp_path):
+    from app.api import state
+    state.settings.resolved_gguf_dir.mkdir(parents=True, exist_ok=True)
+    evil = tmp_path / "evil.gguf"
+    evil.write_bytes(b"dummy")
+    link = state.settings.resolved_gguf_dir / "evil_link.gguf"
+    try:
+        os.symlink(evil, link)
+    except OSError:
+        pytest.skip("symlinks unsupported on this platform")
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1,
+        "gguf_path": str(link), "readme_flags": {},
     })
     assert r.status_code == 422
 
