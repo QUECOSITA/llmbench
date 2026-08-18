@@ -16,8 +16,23 @@ VALUE_POOLS = {
     },
 }
 
+# Pinned flags applied to every generated llama-server command, emitted first
+# (right after the model reference). --load-mode none avoids mmap; --no-mmproj
+# disables the mmproj auto-download that is on by default when using -hf.
+LLAMA_PINNED_FLAGS = {"--load-mode": "none", "--no-mmproj": ""}
+
+# README flags dropped during _baseline merge. Deprecated memory-mode flags and
+# --defrag-thold/-dt are superseded by the pinned --load-mode none; the mmproj
+# auto variants are superseded by the pinned --no-mmproj. Emitting these
+# alongside --load-mode is itself deprecated (arg.cpp:883).
+LLAMA_DROPPED_FLAGS = {
+    "--mlock", "--mmap", "--no-mmap", "--direct-io", "--no-direct-io",
+    "--defrag-thold", "-dt", "--mmproj-auto", "--no-mmproj-auto",
+}
+
 DEFAULTS = {
-    "llama.cpp": {"--ctx-size": 4096, "--n-gpu-layers": 999, "--batch-size": 512,
+    "llama.cpp": {"--load-mode": "none", "--no-mmproj": "",
+                  "--ctx-size": 4096, "--n-gpu-layers": 999, "--batch-size": 512,
                   "--spec-type": "draft-mtp", "--spec-draft-n-max": 2},
 }
 
@@ -34,6 +49,8 @@ def _baseline(server_id: str, readme_flags: dict[str, str], vram_gb: float) -> d
     mapping = README_FLAG_MAP.get(server_id, {})
     canon_from_readme: set[str] = set()
     for flag, value in readme_flags.items():
+        if flag in LLAMA_DROPPED_FLAGS:
+            continue
         canon = mapping.get(flag, flag)
         # Only canonical long-form README entries override the defaults directly.
         if canon == flag:
@@ -43,6 +60,8 @@ def _baseline(server_id: str, readme_flags: dict[str, str], vram_gb: float) -> d
                 flags[canon] = value
                 canon_from_readme.add(canon)
     for flag, value in readme_flags.items():
+        if flag in LLAMA_DROPPED_FLAGS:
+            continue
         canon = mapping.get(flag, flag)
         # Aliases (e.g. -c) map to their canonical long form; the long form
         # wins if the README also provided it explicitly.
@@ -51,6 +70,9 @@ def _baseline(server_id: str, readme_flags: dict[str, str], vram_gb: float) -> d
                 value = _SPEC_TYPE_ALIASES.get(value, value)
             if flag in KEY_FLAGS[server_id] or flag not in DEFAULTS[server_id]:
                 flags[canon] = value
+    # The pins are non-negotiable: a README may not override load-mode/mmproj.
+    for flag, value in LLAMA_PINNED_FLAGS.items():
+        flags[flag] = value
     return flags
 
 

@@ -5,34 +5,34 @@ import { ConfigBank, ConfigRow, SpeedBenchFlagInfo } from "./ConfigBank";
 test("renders editable config rows and calls onGenerate with N", () => {
   const onGenerate = vi.fn();
   const configs = [
-    { flags: { "--max-model-len": "8192" }, serving_command: "llama-server --hf-repo m --hf-file model.gguf --ctx-size 8192" },
-    { flags: { "--max-model-len": "4096" }, serving_command: "llama-server --hf-repo m --hf-file model.gguf --ctx-size 4096" },
+    { flags: { "--max-model-len": "8192", "--load-mode": "none", "--no-mmproj": "" }, serving_command: "llama-server --hf-repo m --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192" },
+    { flags: { "--max-model-len": "4096", "--load-mode": "none", "--no-mmproj": "" }, serving_command: "llama-server --hf-repo m --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 4096" },
   ];
   render(<ConfigBank n={4} onNChange={() => {}} onGenerate={onGenerate} configs={configs} />);
-  expect(screen.getByText(/llama-server --hf-repo m --hf-file model.gguf --ctx-size 8192/i)).toBeInTheDocument();
+  expect(screen.getByText(/llama-server --hf-repo m --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192/i)).toBeInTheDocument();
   fireEvent.click(screen.getByText(/generate/i));
   expect(onGenerate).toHaveBeenCalledWith(4);
 });
 
 test("edits a serving command", () => {
   const onEdit = vi.fn();
-  const configs = [{ flags: {}, serving_command: "llama-server --hf-repo m --hf-file model.gguf" }];
+  const configs = [{ flags: {}, serving_command: "llama-server --hf-repo m --hf-file model.gguf --load-mode none --no-mmproj" }];
   render(<ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={configs} onEdit={onEdit} />);
-  const textarea = screen.getByDisplayValue("llama-server --hf-repo m --hf-file model.gguf");
-  fireEvent.change(textarea, { target: { value: "llama-server --hf-repo m --hf-file model.gguf --ctx-size 16384" } });
+  const textarea = screen.getByDisplayValue("llama-server --hf-repo m --hf-file model.gguf --load-mode none --no-mmproj");
+  fireEvent.change(textarea, { target: { value: "llama-server --hf-repo m --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 16384" } });
   expect(onEdit).toHaveBeenCalled();
 });
 
 test("renders fit badge per config row", () => {
   const configs: ConfigRow[] = [
     {
-      flags: { "--max-model-len": "8192" },
-      serving_command: "llama-server --hf-repo m --hf-file model.gguf --ctx-size 8192",
+      flags: { "--max-model-len": "8192", "--load-mode": "none", "--no-mmproj": "" },
+      serving_command: "llama-server --hf-repo m --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
       fit: { stage: "gpu", label: "FITS VRAM", fits_vram: true, offloaded: false, needed_gb: 14.3, kv_gb: 4.3, weights_gb: 10 },
     },
     {
-      flags: { "--max-model-len": "16384" },
-      serving_command: "llama-server --hf-repo m --hf-file model.gguf --ctx-size 16384",
+      flags: { "--max-model-len": "16384", "--load-mode": "none", "--no-mmproj": "" },
+      serving_command: "llama-server --hf-repo m --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 16384",
       fit: { stage: "no_fit", label: "NO FIT", fits_vram: false, offloaded: false, needed_gb: 22.0, kv_gb: 8.6, weights_gb: 10 },
     },
   ];
@@ -42,15 +42,15 @@ test("renders fit badge per config row", () => {
 });
 
 test("renders no badge when config has no fit data", () => {
-  const configs = [{ flags: {}, serving_command: "llama-server --hf-repo m --hf-file model.gguf" }];
+  const configs = [{ flags: {}, serving_command: "llama-server --hf-repo m --hf-file model.gguf --load-mode none --no-mmproj" }];
   render(<ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={configs} />);
   expect(screen.queryByText(/FITS VRAM|NO FIT|OFFLOADED|CPU ONLY/)).not.toBeInTheDocument();
 });
 
 test("renders a SPEED-BENCH badge for speed-bench configs", () => {
   const configs: ConfigRow[] = [
-    { flags: {}, serving_command: "llama-server --spec-type draft-mtp", bench_tool: "speed-bench" },
-    { flags: {}, serving_command: "llama-server -m x", bench_tool: "llama-bench" },
+    { flags: {}, serving_command: "llama-server --load-mode none --no-mmproj --spec-type draft-mtp", bench_tool: "speed-bench" },
+    { flags: {}, serving_command: "llama-server --load-mode none --no-mmproj -m x", bench_tool: "llama-bench" },
   ];
   const { container } = render(<ConfigBank n={2} onNChange={() => {}} onGenerate={() => {}} configs={configs} />);
   expect(container.textContent).toContain("SPEED-BENCH");
@@ -61,7 +61,7 @@ test("renders and edits a SPEED-BENCH FLAGS textarea for speed-bench configs", (
   const configs: ConfigRow[] = [
     {
       flags: {},
-      serving_command: "llama-server --spec-type draft-mtp",
+      serving_command: "llama-server --load-mode none --no-mmproj --spec-type draft-mtp",
       bench_tool: "speed-bench",
       bench_flags: "--bench qualitative --category all --limit 1 --osl 528",
     },
@@ -75,7 +75,7 @@ test("renders and edits a SPEED-BENCH FLAGS textarea for speed-bench configs", (
 });
 
 test("does not render the flags textarea for non-speed-bench configs", () => {
-  const configs: ConfigRow[] = [{ flags: {}, serving_command: "llama-server --hf-repo m --hf-file model.gguf", bench_tool: "llama-bench" }];
+  const configs: ConfigRow[] = [{ flags: {}, serving_command: "llama-server --hf-repo m --hf-file model.gguf --load-mode none --no-mmproj", bench_tool: "llama-bench" }];
   render(<ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={configs} />);
   expect(screen.queryByDisplayValue(/--bench/)).not.toBeInTheDocument();
 });

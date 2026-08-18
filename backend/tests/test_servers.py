@@ -565,3 +565,16 @@ def test_ensure_speed_bench_script_downloads_at_most_once(tmp_path, monkeypatch)
     second = ensure_speed_bench_script(data_dir=str(data_dir))
     assert first is not None and second is not None
     assert len(calls) == 1
+
+
+def test_build_bench_command_excludes_load_mode_and_no_mmproj(tmp_path):
+    workload = tmp_path / "p.jsonl"
+    workload.write_text('{"prompt": "hello world"}\n')
+    cmd = build_bench_command(
+        "llama.cpp", "/models/x.gguf",
+        {"--ctx-size": "4096", "--load-mode": "none", "--no-mmproj": ""},
+        workload=str(workload), timeout_s=60,
+    )
+    assert "--load-mode" not in cmd
+    assert "--no-mmproj" not in cmd
+    assert cmd[cmd.index("--fit-ctx") + 1] == "4096"

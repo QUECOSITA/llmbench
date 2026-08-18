@@ -261,7 +261,7 @@ test("completed run populates ranked results and re-enables RUN", async () => {
         config_id: 1,
         server_id: "llama.cpp",
         flag_conf: { "--max-model-len": "8192" },
-        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --ctx-size 8192",
+        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
         prompt_processing_tps: 100.0,
         decode_tps: 42.0,
       },
@@ -307,7 +307,7 @@ test("409 already-running switches into watch mode showing the live run", async 
         config_id: 1,
         server_id: "llama.cpp",
         flag_conf: { "--max-model-len": "8192" },
-        serving_command: "llama-server --hf-repo org/other --hf-file model.gguf --ctx-size 8192",
+        serving_command: "llama-server --hf-repo org/other --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
         prompt_processing_tps: 100.0,
         decode_tps: 42.0,
       },
@@ -579,7 +579,7 @@ test("run payload round-trips bench_tool", async () => {
   const startSpy = vi.spyOn(api, "startBenchmark").mockResolvedValue({ run_id: 1 });
   vi.mocked(api.generateConfigs).mockResolvedValue({
     configs: [
-      { flags: {}, serving_command: "llama-server --spec-type draft-mtp", bench_command: [], bench_tool: "speed-bench", fit: null },
+      { flags: {}, serving_command: "llama-server --load-mode none --no-mmproj --spec-type draft-mtp", bench_command: [], bench_tool: "speed-bench", fit: null },
     ],
   });
 
@@ -594,7 +594,7 @@ test("run payload round-trips bench_tool", async () => {
   fireEvent.click(screen.getByText(/analyze/i));
   await screen.findByText(/org\/model/i);
   fireEvent.click(screen.getByText(/generate/i));
-  await screen.findByText(/llama-server --spec-type/i);
+  await screen.findByText(/llama-server.*--spec-type/i);
   fireEvent.click(screen.getByText(/run benchmark/i));
   await waitFor(() => expect(startSpy).toHaveBeenCalled());
   const body = startSpy.mock.calls[0][0] as { configs: Array<{ bench_tool?: string }> };
@@ -604,7 +604,7 @@ test("run payload round-trips bench_tool", async () => {
 test("shows the bench tool selector only when README proposes no serving config and passes bench_tool to generate", async () => {
   const { api } = await import("./api/client");
   const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({
-    configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf", bench_command: [], bench_tool: "llama-bench", fit: null }],
+    configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj", bench_command: [], bench_tool: "llama-bench", fit: null }],
   });
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValueOnce({
@@ -659,7 +659,7 @@ test("defaults the selector to auto_bench_tool=speed-bench from analyze", async 
 test("no bench tool selector and no bench_tool in generate payload when README proposes a serving config", async () => {
   const { api } = await import("./api/client");
   const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({
-    configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf", bench_command: [], bench_tool: "llama-bench", fit: null }],
+    configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj", bench_command: [], bench_tool: "llama-bench", fit: null }],
   });
   const analyzeSpy = vi.spyOn(api, "analyze");
   analyzeSpy.mockResolvedValueOnce({
@@ -688,7 +688,7 @@ test("run payload round-trips edited bench_flags", async () => {
   const startSpy = vi.spyOn(api, "startBenchmark").mockResolvedValue({ run_id: 1 });
   vi.mocked(api.generateConfigs).mockResolvedValue({
     configs: [
-      { flags: {}, serving_command: "llama-server --spec-type draft-mtp", bench_command: [], bench_tool: "speed-bench", bench_flags: "--bench qualitative --category all --limit 1 --osl 528", fit: null },
+      { flags: {}, serving_command: "llama-server --load-mode none --no-mmproj --spec-type draft-mtp", bench_command: [], bench_tool: "speed-bench", bench_flags: "--bench qualitative --category all --limit 1 --osl 528", fit: null },
     ],
   });
 
@@ -703,7 +703,7 @@ test("run payload round-trips edited bench_flags", async () => {
   fireEvent.click(screen.getByText(/analyze/i));
   await screen.findByText(/org\/model/i);
   fireEvent.click(screen.getByText(/generate/i));
-  await screen.findByText(/llama-server --spec-type/i);
+  await screen.findByText(/llama-server.*--spec-type/i);
 
   const textarea = screen.getByDisplayValue("--bench qualitative --category all --limit 1 --osl 528");
   fireEvent.change(textarea, { target: { value: "--bench qualitative --category coding" } });
@@ -999,7 +999,7 @@ test("CLEAR empties the ranked results table", async () => {
         config_id: 1,
         server_id: "llama.cpp",
         flag_conf: { "--max-model-len": "8192" },
-        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --ctx-size 8192",
+        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
         prompt_processing_tps: 100.0,
         decode_tps: 42.0,
       },
@@ -1048,7 +1048,7 @@ test("restores the latest completed run's results on load and shows CLEAR", asyn
       config_id: 1,
       server_id: "llama.cpp",
       flag_conf: { "--max-model-len": "8192" },
-      serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --ctx-size 8192",
+      serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
       prompt_processing_tps: 100.0,
       decode_tps: 42.0,
     }],

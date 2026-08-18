@@ -152,3 +152,62 @@ def test_build_serving_command_strips_duplicate_alias():
     tokens = cmd.split()
     assert "-c" not in tokens
     assert "--ctx-size 4096" in cmd
+
+
+def test_baseline_pins_load_mode_and_no_mmproj():
+    cfg = generate_configs("llama.cpp", {}, 1, 24)[0]["flags"]
+    assert cfg["--load-mode"] == "none"
+    assert cfg["--no-mmproj"] == ""
+
+
+def test_pinned_flags_present_in_every_generated_config():
+    for cfg in generate_configs("llama.cpp", {}, 12, 24):
+        assert cfg["flags"]["--load-mode"] == "none"
+        assert cfg["flags"]["--no-mmproj"] == ""
+
+
+def test_serving_command_prioritizes_pinned_flags():
+    cfg = generate_configs("llama.cpp", {}, 1, 24)[0]
+    cmd = build_serving_command("llama.cpp", "org/model", cfg["flags"], gguf_filename="x.gguf")
+    assert "--load-mode none" in cmd
+    assert "--no-mmproj" in cmd
+    assert cmd.index("--load-mode") < cmd.index("--ctx-size")
+    assert cmd.index("--no-mmproj") < cmd.index("--ctx-size")
+
+
+def test_readme_deprecated_memory_flags_dropped():
+    cfg = generate_configs(
+        "llama.cpp",
+        {"--no-mmap": "", "--mlock": "", "--direct-io": "", "--defrag-thold": "0", "-dt": "0"},
+        1, 24,
+    )[0]["flags"]
+    for bad in ("--no-mmap", "--mlock", "--direct-io", "--defrag-thold", "-dt"):
+        assert bad not in cfg
+    assert cfg["--load-mode"] == "none"
+
+
+def test_readme_mmproj_auto_flags_dropped():
+    cfg = generate_configs("llama.cpp", {"--mmproj-auto": "", "--no-mmproj-auto": ""}, 1, 24)[0]["flags"]
+    assert "--mmproj-auto" not in cfg
+    assert "--no-mmproj-auto" not in cfg
+    assert cfg["--no-mmproj"] == ""
+
+
+def test_readme_modern_load_mode_overridden():
+    cfg = generate_configs("llama.cpp", {"--load-mode": "mlock"}, 1, 24)[0]["flags"]
+    assert cfg["--load-mode"] == "none"
+
+
+def test_readme_removed_draft_flags_mapped():
+    cfg = generate_configs("llama.cpp", {"--draft-max": "3", "--draft-min": "1"}, 1, 24)[0]["flags"]
+    assert cfg["--spec-draft-n-max"] == "3"
+    assert cfg["--spec-draft-n-min"] == "1"
+    assert "--draft-max" not in cfg
+    assert "--draft-min" not in cfg
+
+
+def test_readme_removed_draft_short_aliases_mapped():
+    for alias, val in (("--draft", "2"), ("--draft-n", "4")):
+        cfg = generate_configs("llama.cpp", {alias: val}, 1, 24)[0]["flags"]
+        assert cfg["--spec-draft-n-max"] == val
+        assert alias not in cfg
