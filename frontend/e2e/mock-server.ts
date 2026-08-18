@@ -91,8 +91,8 @@ const server = createServer(async (req, res) => {
   } else if (req.url?.startsWith("/api/configs/generate")) {
     Object.assign(body, {
       configs: [{
-        flags: { "--ctx-size": "8192" },
-        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --ctx-size 8192",
+        flags: { "--ctx-size": "8192", "--load-mode": "none", "--no-mmproj": "" },
+        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
         bench_tool: "llama-bench",
         fit: { stage: "gpu", label: "FITS VRAM", fits_vram: true, offloaded: false, needed_gb: 3.8, kv_gb: 4.3, weights_gb: 4 },
       }],
@@ -113,8 +113,8 @@ const server = createServer(async (req, res) => {
       results: [{
         config_id: 1,
         server_id: "llama.cpp",
-        flag_conf: { "--ctx-size": "8192" },
-        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --ctx-size 8192",
+        flag_conf: { "--ctx-size": "8192", "--load-mode": "none", "--no-mmproj": "" },
+        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
         prompt_processing_tps: 100.0,
         decode_tps: 42.0,
       }],
