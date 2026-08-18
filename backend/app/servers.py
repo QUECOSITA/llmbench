@@ -25,6 +25,11 @@ README_FLAG_MAP = {
     "llama.cpp": {
         "-c": "--ctx-size", "-n": "--predict", "-t": "--threads", "-b": "--batch-size",
         "-ngl": "--n-gpu-layers", "-m": "-m",
+        # Removed speculative-decoding aliases (llama.cpp b10472) map to the
+        # modern --spec-draft-n-* flags, preserving their values.
+        "--draft": "--spec-draft-n-max", "--draft-n": "--spec-draft-n-max",
+        "--draft-max": "--spec-draft-n-max", "--draft-n-max": "--spec-draft-n-max",
+        "--draft-min": "--spec-draft-n-min", "--draft-n-min": "--spec-draft-n-min",
     },
 }
 
@@ -73,7 +78,7 @@ _SPEED_BENCH_DEPS = ("requests", "datasets", "tqdm")
 
 _SPEC_DECODING_FLAGS = {
     "--spec-type", "-md", "--model-draft", "--model-mtp", "-mtmd",
-    "--draft-max", "--draft-min", "--draft-p-min",
+    "--draft", "--draft-n", "--draft-max", "--draft-min", "--draft-p-min",
     "--spec-draft-n-max", "--spec-draft-n-min", "--spec-raw-logits",
     "--spec-heuristics", "--spec-heuristic-acc", "--spec-heuristic-min-tokens",
 }
