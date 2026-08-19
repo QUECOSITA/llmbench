@@ -263,7 +263,7 @@ export function App() {
       weights_bytes: analysis.weights_bytes,
       ram_gb: (hardware.ram_total_gb as number) ?? 0,
       model_arch: analysis.model_arch,
-      bench_tool: analysis.readme_has_serving_command === false ? benchTool : undefined,
+      bench_tool: benchTool,
     });
     setConfigs(data.configs);
   }, [analysis, hardware, server, benchTool]);
@@ -627,7 +627,6 @@ export function App() {
                 speedBenchInfo={speedBenchInfo}
                 benchTool={benchTool}
                 onBenchToolChange={setBenchTool}
-                showBenchToolSelector={!hasServingCommand}
               />
 
               <RunPanel

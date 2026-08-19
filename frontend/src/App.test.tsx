@@ -658,7 +658,7 @@ test("defaults the selector to auto_bench_tool=speed-bench from analyze", async 
   expect(select.value).toBe("speed-bench");
 });
 
-test("no bench tool selector and no bench_tool in generate payload when README proposes a serving config", async () => {
+test("shows the bench tool selector and passes bench_tool even when README proposes a serving config", async () => {
   const { api } = await import("./api/client");
   const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({
     configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj", bench_command: [], bench_tool: "llama-bench", fit: null }],
@@ -669,6 +669,7 @@ test("no bench tool selector and no bench_tool in generate payload when README p
     detected_server: "llama.cpp",
     readme_has_serving_command: true,
     readme_flags: {},
+    auto_bench_tool: "llama-bench",
     downloaded: { "llama.cpp": true },
   });
 
@@ -678,11 +679,14 @@ test("no bench tool selector and no bench_tool in generate payload when README p
   fireEvent.click(screen.getByText(/analyze/i));
   await screen.findByText(/org\/model/i);
 
-  expect(screen.queryByLabelText(/bench tool/i)).not.toBeInTheDocument();
+  const select = screen.getByLabelText(/bench tool/i) as HTMLSelectElement;
+  expect(select.value).toBe("llama-bench");
+
+  fireEvent.change(select, { target: { value: "speed-bench" } });
   fireEvent.click(screen.getByText(/generate/i));
   await waitFor(() => expect(generateSpy).toHaveBeenCalled());
   const body = generateSpy.mock.calls[0][0] as { bench_tool?: string };
-  expect(body.bench_tool).toBeUndefined();
+  expect(body.bench_tool).toBe("speed-bench");
 });
 
 test("run payload round-trips edited bench_flags", async () => {
