@@ -56,6 +56,18 @@ test("agentic flow: pick agentic bench tool, generate, run, and see AGENTIC t/s"
   await expect(page.getByRole("cell", { name: "25.0" })).toBeVisible();
 });
 
+test("bench tool selector is available even when README proposes a serving config", async ({ page }) => {
+  await page.goto("http://localhost:5173");
+  await page.getByPlaceholder(/huggingface/i).fill("org/model");
+  await page.getByRole("button", { name: /analyze/i }).click();
+  await expect(page.getByText(/server llama.cpp/i)).toBeVisible();
+  const selector = page.getByRole("combobox", { name: /bench tool/i });
+  await expect(selector).toBeVisible();
+  await selector.selectOption("agentic");
+  await page.getByRole("button", { name: /generate/i }).click();
+  await expect(page.getByText("AGENTIC", { exact: true })).toBeVisible();
+});
+
 test("RUN toggles to CANCEL and back after cancelling", async ({ page }) => {
   await page.goto("http://localhost:5173");
   await page.getByPlaceholder(/huggingface/i).fill("org/model");
