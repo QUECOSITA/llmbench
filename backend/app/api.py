@@ -18,12 +18,13 @@ from app.hf import HfClient, InvalidModelInput, hf_bin, normalize_input, parse_i
 from app.pty_stream import DownloadPty, open_download_pty
 from app.readme_parser import (detect_serving_programs, extract_flags,
                                has_serving_command, top_serving_program)
-from app.servers import (build_bench_command, build_server_command, build_speed_bench_command,
+from app.servers import (agentic_default_flags, build_agentic_command,
+                         build_bench_command, build_server_command, build_speed_bench_command,
                          detect_binaries, ensure_speed_bench_script, is_spec_decoding_model,
-                         model_ref_from_flags, parse_serving_command,
-                         serving_command_display_flags,
-                         speed_bench_deps_available, parse_speed_bench_flags,
-                         speed_bench_default_flags, validate_speed_bench_flags,
+                         model_ref_from_flags, parse_agentic_flags, parse_serving_command,
+                         serving_command_display_flags, speed_bench_deps_available,
+                         parse_speed_bench_flags, speed_bench_default_flags,
+                         validate_agentic_flags, validate_speed_bench_flags,
                          SPEED_BENCH_BENCHES, SPEED_BENCH_CATEGORIES)
 from app.spawn import spawn_env
 
@@ -521,8 +522,8 @@ async def generate(payload: dict):
             )
     bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
     requested_bench_tool = payload.get("bench_tool")
-    if requested_bench_tool not in (None, "llama-bench", "speed-bench"):
-        raise HTTPException(422, "'bench_tool' must be 'llama-bench' or 'speed-bench'.")
+    if requested_bench_tool not in (None, "llama-bench", "speed-bench", "agentic"):
+        raise HTTPException(422, "'bench_tool' must be 'llama-bench', 'speed-bench' or 'agentic'.")
     uses_speed_bench = (
         server_id == "llama.cpp"
         and (
@@ -531,14 +532,28 @@ async def generate(payload: dict):
             else is_spec_decoding_model(repo_id, gguf_filename, payload.get("readme_flags", {}))
         )
     )
+    uses_agentic = requested_bench_tool == "agentic"
     for cfg in configs:
         cfg["serving_command"] = build_serving_command(
             server_id, repo_id, cfg["flags"],
             gguf_filename=gguf_filename,
             gguf_path=resolved_gguf,
         )
-        cfg["bench_tool"] = "speed-bench" if uses_speed_bench else "llama-bench"
-        if uses_speed_bench:
+        cfg["bench_tool"] = ("agentic" if uses_agentic else
+                             ("speed-bench" if uses_speed_bench else "llama-bench"))
+        if uses_agentic:
+            flags_text = (payload.get("bench_flags")
+                          or agentic_default_flags(s.settings.agentic_turns,
+                                                   s.settings.agentic_max_tokens))
+            flags = parse_agentic_flags(flags_text)
+            error = validate_agentic_flags(flags)
+            if error:
+                cfg["bench_command"] = []
+                cfg["bench_error"] = error
+            else:
+                cfg["bench_flags"] = flags_text
+                cfg["bench_command"] = build_agentic_command(repo_id, flags)
+        elif uses_speed_bench:
             script = await asyncio.to_thread(
                 ensure_speed_bench_script,
                 bin_dir,
@@ -588,6 +603,36 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
     need both a server command (llama-server) and a client command
     (speed_bench.py); llama-bench keeps the single bench command."""
     if not cfg.get("server_id"):
+        return
+    if cfg.get("bench_tool") == "agentic":
+        bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
+        try:
+            cfg["server_command"] = build_server_command(cfg.get("serving_command", ""), bin_dir)
+        except ValueError as exc:
+            cfg["server_command"] = []
+            cfg["bench_command"] = []
+            cfg["bench_error"] = f"invalid serving command: {exc}"
+            return
+        flags_text = (cfg.get("bench_flags")
+                      or agentic_default_flags(s.settings.agentic_turns,
+                                               s.settings.agentic_max_tokens))
+        flags = parse_agentic_flags(flags_text)
+        error = validate_agentic_flags(flags)
+        if error:
+            cfg["bench_command"] = []
+            cfg["bench_error"] = error
+            return
+        parsed = parse_serving_command(cfg["server_id"], cfg.get("serving_command", ""))
+        model_ref, gguf_filename = model_ref_from_flags(cfg["server_id"], parsed, repo_id)
+        cfg["bench_command"] = build_agentic_command(gguf_filename or model_ref, flags)
+        cfg["agentic_params"] = {
+            "model": gguf_filename or model_ref,
+            "turns": flags[flags.index("--turns") + 1],
+            "max_tokens": flags[flags.index("--max-tokens") + 1],
+        }
+        cfg["flags"] = serving_command_display_flags(
+            cfg["server_id"], cfg.get("serving_command", "")) or cfg.get("flags", {})
+        cfg.pop("bench_error", None)
         return
     if cfg.get("bench_tool") == "speed-bench":
         bin_dir = str(s.settings.llama_cpp_bin_dir) if s.settings.llama_cpp_bin_dir else None
@@ -696,7 +741,15 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                         break
                     await broadcast(s, {"type": "config_start", "run_id": run_id, "index": i,
                                         "total": len(configs), "config": cfg})
-                    if cfg.get("bench_tool") == "speed-bench":
+                    if cfg.get("bench_tool") == "agentic":
+                        runner = benchmark_mod.AgenticRunner(
+                            server_command=cfg.get("server_command", []),
+                            params=cfg.get("agentic_params", {}),
+                            timeout_s=s.settings.agentic_timeout_s,
+                            startup_timeout_s=s.settings.agentic_timeout_s,
+                            workload_file=str(s.settings.workload_file),
+                        )
+                    elif cfg.get("bench_tool") == "speed-bench":
                         runner = benchmark_mod.SpeedBenchRunner(
                             server_command=cfg.get("server_command", []),
                             bench_command=cfg.get("bench_command", []),
@@ -724,7 +777,8 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                     )
                     db_mod.save_result(s.conn, cfg_id, result["prompt_processing_tps"],
                                        result["decode_tps"], result["duration_s"],
-                                       result["output"], result["status"])
+                                       result["output"], result["status"],
+                                       agentic_tps=result.get("agentic_tps"))
                     await broadcast(s, {"type": "config_done", "run_id": run_id, "index": i,
                                         "result": result, "flag_conf": cfg.get("flags", {})})
                     if result["status"] == "aborted":
