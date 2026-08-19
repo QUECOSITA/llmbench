@@ -569,3 +569,30 @@ async def test_agentic_runner_session_raises(monkeypatch, tmp_path):
         workload_file=str(tmp_path / "p.jsonl"))
     result = await runner.run()
     assert result["status"] == "failed"
+
+
+async def test_agentic_runner_abort_mid_session_reports_aborted(monkeypatch, tmp_path):
+    async def fake_health(*a, **k):
+        return True
+
+    async def fake_create(*a, **k):
+        return FakeProc(b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+    monkeypatch.setattr(agentic_mod, "load_workload_prompts", lambda path: ["t"])
+    runner = AgenticRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf"],
+        params={}, timeout_s=60, startup_timeout_s=5,
+        workload_file=str(tmp_path / "p.jsonl"))
+
+    async def aborting_session(base_url, model, turns, max_tokens, prompts,
+                               on_output=None, request_timeout=120.0, transport=None):
+        runner.abort()
+        raise RuntimeError("server killed by abort")
+
+    monkeypatch.setattr(agentic_mod, "run_agentic_session", aborting_session)
+    result = await runner.run()
+    assert result["status"] == "aborted"
+    assert result["agentic_tps"] is None

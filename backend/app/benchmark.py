@@ -515,12 +515,22 @@ class AgenticRunner:
                     timeout=self.timeout_s,
                 )
             except asyncio.TimeoutError:
+                if self._aborted.is_set():
+                    return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,
+                            "agentic_tps": None,
+                            "duration_s": asyncio.get_event_loop().time() - start,
+                            "output": _decode_parts(parts)}
                 return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
                         "agentic_tps": None,
                         "duration_s": asyncio.get_event_loop().time() - start,
                         "output": f"agentic session timed out after {self.timeout_s}s\n"
                                   + _decode_parts(parts)}
             except Exception:
+                if self._aborted.is_set():
+                    return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,
+                            "agentic_tps": None,
+                            "duration_s": asyncio.get_event_loop().time() - start,
+                            "output": _decode_parts(parts)}
                 return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
                         "agentic_tps": None,
                         "duration_s": asyncio.get_event_loop().time() - start,
