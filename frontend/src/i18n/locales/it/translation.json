@@ -7,7 +7,8 @@
     "run": "03 · ESECUZIONE",
     "resultsRanked": "05 · RISULTATI — CLASSIFICATI",
     "downloaded": "SCARICATI",
-    "resultsAllRuns": "RISULTATI · TUTTE LE ESECUZIONI"
+    "resultsAllRuns": "RISULTATI · TUTTE LE ESECUZIONI",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "ANALIZZA",

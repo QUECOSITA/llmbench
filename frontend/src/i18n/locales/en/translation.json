@@ -5,7 +5,8 @@
     "run": "03 · RUN",
     "resultsRanked": "05 · RESULTS — RANKED",
     "downloaded": "DOWNLOADED",
-    "resultsAllRuns": "RESULTS · ALL RUNS"
+    "resultsAllRuns": "RESULTS · ALL RUNS",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "ANALYZE",

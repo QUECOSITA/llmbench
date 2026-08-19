@@ -7,7 +7,8 @@
     "run": "03 · AUSFÜHRUNG",
     "resultsRanked": "05 · ERGEBNISSE — RANGLISTE",
     "downloaded": "HERUNTERGELADEN",
-    "resultsAllRuns": "ERGEBNISSE · ALLE AUSFÜHRUNGEN"
+    "resultsAllRuns": "ERGEBNISSE · ALLE AUSFÜHRUNGEN",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "ANALYSIEREN",

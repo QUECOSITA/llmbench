@@ -7,7 +7,8 @@
     "run": "03 · 実行",
     "resultsRanked": "05 · 結果 — ランキング",
     "downloaded": "ダウンロード済み",
-    "resultsAllRuns": "結果 · 全実行"
+    "resultsAllRuns": "結果 · 全実行",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "分析",

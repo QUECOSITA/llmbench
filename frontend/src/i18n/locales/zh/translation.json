@@ -7,7 +7,8 @@
     "run": "03 · 运行",
     "resultsRanked": "05 · 结果 — 排名",
     "downloaded": "已下载",
-    "resultsAllRuns": "结果 · 全部运行"
+    "resultsAllRuns": "结果 · 全部运行",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "分析",

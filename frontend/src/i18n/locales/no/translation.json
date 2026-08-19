@@ -7,7 +7,8 @@
     "run": "03 · KJØRING",
     "resultsRanked": "05 · RESULTATER — RANGERT",
     "downloaded": "NEDLASTET",
-    "resultsAllRuns": "RESULTATER · ALLE KJØRINGER"
+    "resultsAllRuns": "RESULTATER · ALLE KJØRINGER",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "ANALYSER",

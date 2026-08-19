@@ -7,7 +7,8 @@
     "run": "03 · KØRSEL",
     "resultsRanked": "05 · RESULTATER — RANGERET",
     "downloaded": "DOWNLOADET",
-    "resultsAllRuns": "RESULTATER · ALLE KØRSLER"
+    "resultsAllRuns": "RESULTATER · ALLE KØRSLER",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "ANALYSÉR",
