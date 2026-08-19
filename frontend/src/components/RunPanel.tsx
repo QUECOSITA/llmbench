@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { MetricsBanks } from "./MetricsBanks";
+import { AgenticDetailStrip, AgenticDetail } from "./AgenticDetailStrip";
 
 interface Progress {
   index: number;
@@ -8,6 +9,7 @@ interface Progress {
   promptTps?: number | null;
   decodeTps?: number | null;
   agenticTps?: number | null;
+  agenticDetail?: AgenticDetail | null;
 }
 
 interface Props {
@@ -55,6 +57,15 @@ export function RunPanel({
         promptTps={progress?.promptTps ?? null}
         decodeTps={progress?.decodeTps ?? null}
         agenticTps={progress?.agenticTps ?? null}
+      />
+      <AgenticDetailStrip
+        steps={progress?.agenticDetail?.steps ?? null}
+        toolCalls={progress?.agenticDetail?.toolCalls ?? null}
+        planRevisions={progress?.agenticDetail?.planRevisions ?? null}
+        avgMs={progress?.agenticDetail?.avgMs ?? null}
+        p95Ms={progress?.agenticDetail?.p95Ms ?? null}
+        totalPromptTokens={progress?.agenticDetail?.totalPromptTokens ?? null}
+        totalCompletionTokens={progress?.agenticDetail?.totalCompletionTokens ?? null}
       />
       {lines.length > 0 && (
         <div className="dl-console">

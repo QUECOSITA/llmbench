@@ -649,6 +649,7 @@ export function App() {
                         promptTps: progressState.promptTps,
                         decodeTps: progressState.decodeTps,
                         agenticTps: progressState.agenticTps,
+                        agenticDetail: progressState.agenticDetail,
                       }
                     : null
                 }

@@ -66,3 +66,26 @@ test("highlights the decode cell as best when agentic_tps is absent", () => {
   const best = container.querySelector(".digit-best");
   expect(best?.textContent).toBe("50.0");
 });
+
+test("renders agentic detail strip when agentic metrics present", () => {
+  render(
+    <ResultsTable
+      rows={[{
+        server_id: "llama.cpp",
+        flag_conf: {},
+        prompt_processing_tps: 100.0,
+        decode_tps: 50.0,
+        agentic_tps: 12.3,
+        agentic_steps: 10,
+        agentic_tool_calls: 14,
+        agentic_plan_revisions: 2,
+        agentic_avg_ms: 1200.0,
+        agentic_p95_ms: 3400.0,
+        total_prompt_tokens: 9000,
+        total_completion_tokens: 1600,
+      }]}
+    />
+  );
+  expect(screen.getByText(/10 steps/i)).toBeInTheDocument();
+  expect(screen.getByText(/14 tool calls/i)).toBeInTheDocument();
+});
