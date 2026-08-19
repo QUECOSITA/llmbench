@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { MetricsBanks } from "./MetricsBanks";
 import { AgenticDetailStrip, AgenticDetail } from "./AgenticDetailStrip";
+import { AgenticSessionPanel } from "./AgenticSessionPanel";
 
 interface Progress {
   index: number;
@@ -67,6 +68,7 @@ export function RunPanel({
         totalPromptTokens={progress?.agenticDetail?.totalPromptTokens ?? null}
         totalCompletionTokens={progress?.agenticDetail?.totalCompletionTokens ?? null}
       />
+      <AgenticSessionPanel lines={lines} />
       {lines.length > 0 && (
         <div className="dl-console">
           <div className="dl-console-head">$ {currentCommand}</div>
