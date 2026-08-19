@@ -402,21 +402,20 @@ class SpeedBenchRunner:
 
 
 class AgenticRunner:
-    """Benchmark a llama.cpp model over a multi-turn agentic session: start
-    llama-server, wait for /health, run the in-process agentic driver against
-    the OpenAI-compatible API, and kill the server. Effective tokens/sec is
-    total completion tokens divided by total session wall time (every turn's
-    prefill included)."""
+    """Benchmark a llama.cpp model over a real plan→act agentic session: start
+    llama-server, wait for /health, run the in-process agent harness against the
+    OpenAI-compatible API, and kill the server. Effective tokens/sec is total
+    processing tokens (prompt + completion) divided by total session wall time."""
 
     def __init__(self, server_command: list[str], params: dict,
                  timeout_s: float, startup_timeout_s: float, workload_file: str):
-        from app.agentic import AGENTIC_DEFAULT_MAX_TOKENS, AGENTIC_DEFAULT_TURNS
+        from app.agentic import AGENTIC_DEFAULT_MAX_TOKENS, AGENTIC_DEFAULT_STEPS
         self.server_command = list(server_command)
         self.params = dict(params)
         self.timeout_s = timeout_s
         self.startup_timeout_s = startup_timeout_s
         self.workload_file = workload_file
-        self._default_turns = AGENTIC_DEFAULT_TURNS
+        self._default_steps = AGENTIC_DEFAULT_STEPS
         self._default_max_tokens = AGENTIC_DEFAULT_MAX_TOKENS
         self._aborted = asyncio.Event()
         self._procs: list[asyncio.subprocess.Process] = []
@@ -457,7 +456,7 @@ class AgenticRunner:
         return rc
 
     async def run(self, on_output=None) -> dict:
-        from app.agentic import load_workload_prompts, run_agentic_session
+        from app.agentic import run_agent_session
         start = asyncio.get_event_loop().time()
         if not self.server_command:
             return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
@@ -500,15 +499,30 @@ class AgenticRunner:
                         "duration_s": asyncio.get_event_loop().time() - start,
                         "output": f"llama-server did not become ready on port {port} "
                                   f"within {self.startup_timeout_s}s\n{_decode_parts(parts)}"}
-            prompts = load_workload_prompts(self.workload_file)
+            from app.agentic import probe_tool_calling
+            try:
+                supported = await asyncio.wait_for(
+                    probe_tool_calling(base_url=f"http://127.0.0.1:{port}",
+                                       model=self.params.get("model", "default"),
+                                       request_timeout=min(self.timeout_s, 60.0)),
+                    timeout=min(self.timeout_s, 60.0),
+                )
+            except Exception:
+                supported = False
+            if not supported:
+                return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
+                        "agentic_tps": None,
+                        "duration_s": asyncio.get_event_loop().time() - start,
+                        "output": "served model does not support function/tool calling; "
+                                  "agentic bench requires it.\n" + _decode_parts(parts)}
             try:
                 session = await asyncio.wait_for(
-                    run_agentic_session(
+                    run_agent_session(
                         base_url=f"http://127.0.0.1:{port}",
                         model=self.params.get("model", "default"),
-                        turns=int(self.params.get("turns", self._default_turns)),
+                        steps=int(self.params.get("steps", self._default_steps)),
                         max_tokens=int(self.params.get("max_tokens", self._default_max_tokens)),
-                        prompts=prompts,
+                        task=self.params.get("task", "codebase_refactor"),
                         on_output=on_output,
                         request_timeout=self.timeout_s,
                     ),
