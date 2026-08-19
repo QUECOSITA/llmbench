@@ -87,7 +87,6 @@ test("shows an agentic option in the bench tool selector", () => {
       onNChange={() => {}}
       onGenerate={() => {}}
       configs={[]}
-      showBenchToolSelector
       benchTool="llama-bench"
       onBenchToolChange={() => {}}
     />,
@@ -151,24 +150,18 @@ test("supports --bench=value form", () => {
   expect(screen.getByText(/--category:/)).toHaveTextContent("low_entropy");
 });
 
-test("renders the bench tool selector when showBenchToolSelector is true", () => {
+test("renders the bench tool selector even without showBenchToolSelector", () => {
   render(
     <ConfigBank
       n={1}
       onNChange={() => {}}
       onGenerate={() => {}}
       configs={[]}
-      showBenchToolSelector
       benchTool="llama-bench"
       onBenchToolChange={() => {}}
     />,
   );
   expect(screen.getByLabelText(/bench tool/i)).toBeInTheDocument();
-});
-
-test("hides the bench tool selector when showBenchToolSelector is false", () => {
-  render(<ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={[]} />);
-  expect(screen.queryByLabelText(/bench tool/i)).not.toBeInTheDocument();
 });
 
 test("fires onBenchToolChange on selection", () => {
@@ -179,7 +172,6 @@ test("fires onBenchToolChange on selection", () => {
       onNChange={() => {}}
       onGenerate={() => {}}
       configs={[]}
-      showBenchToolSelector
       benchTool="llama-bench"
       onBenchToolChange={onBenchToolChange}
     />,
@@ -196,7 +188,6 @@ test("disables the bench tool selector when canGenerate is false", () => {
       onGenerate={() => {}}
       configs={[]}
       canGenerate={false}
-      showBenchToolSelector
       benchTool="llama-bench"
       onBenchToolChange={() => {}}
     />,
