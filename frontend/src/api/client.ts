@@ -114,6 +114,13 @@ export interface RunDetail {
     prompt_processing_tps: number | null;
     decode_tps: number | null;
     agentic_tps: number | null;
+    agentic_steps?: number | null;
+    agentic_tool_calls?: number | null;
+    agentic_plan_revisions?: number | null;
+    agentic_avg_ms?: number | null;
+    agentic_p95_ms?: number | null;
+    total_prompt_tokens?: number | null;
+    total_completion_tokens?: number | null;
     duration_s?: number | null;
     result_status?: string;
   }>;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { AgenticDetail } from "../components/AgenticDetailStrip";
 
 export interface ProgressEvent {
   type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "results_clear";
@@ -8,7 +9,19 @@ export interface ProgressEvent {
   config?: unknown;
   kind?: "line" | "progress";
   text?: string;
-  result?: { status: string; decode_tps: number | null; prompt_processing_tps: number | null; agentic_tps: number | null };
+  result?: {
+    status: string;
+    decode_tps: number | null;
+    prompt_processing_tps: number | null;
+    agentic_tps: number | null;
+    agentic_steps?: number | null;
+    agentic_tool_calls?: number | null;
+    agentic_plan_revisions?: number | null;
+    agentic_avg_ms?: number | null;
+    agentic_p95_ms?: number | null;
+    total_prompt_tokens?: number | null;
+    total_completion_tokens?: number | null;
+  };
   flag_conf?: Record<string, string>;
   status?: string;
   results?: ResultRow[];
@@ -20,6 +33,13 @@ export interface ResultRow {
   prompt_processing_tps: number | null;
   decode_tps: number | null;
   agentic_tps: number | null;
+  agentic_steps?: number | null;
+  agentic_tool_calls?: number | null;
+  agentic_plan_revisions?: number | null;
+  agentic_avg_ms?: number | null;
+  agentic_p95_ms?: number | null;
+  total_prompt_tokens?: number | null;
+  total_completion_tokens?: number | null;
   result_status?: string | null;
 }
 
@@ -31,6 +51,7 @@ export interface ProgressState {
   promptTps: number | null;
   decodeTps: number | null;
   agenticTps: number | null;
+  agenticDetail: AgenticDetail | null;
   results: ResultRow[];
   lines: string[];
   currentCommand: string;
@@ -44,6 +65,7 @@ export const INITIAL_STATE: ProgressState = {
   promptTps: null,
   decodeTps: null,
   agenticTps: null,
+  agenticDetail: null,
   results: [],
   lines: [],
   currentCommand: "",
@@ -59,6 +81,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       promptTps: null,
       decodeTps: null,
       agenticTps: null,
+      agenticDetail: null,
       results: [],
       lines: [],
       currentCommand: "",
@@ -66,7 +89,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
   }
 
   if (event.type === "results_clear") {
-    return { ...state, results: [], promptTps: null, decodeTps: null, agenticTps: null };
+    return { ...state, results: [], promptTps: null, decodeTps: null, agenticTps: null, agenticDetail: null };
   }
 
   if (event.type === "config_start" && event.run_id === state.runId) {
@@ -96,12 +119,28 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
     const promptTps = event.result?.prompt_processing_tps ?? null;
     const decodeTps = event.result?.decode_tps ?? null;
     const agenticTps = event.result?.agentic_tps ?? null;
+    const detail: AgenticDetail = {
+      steps: event.result?.agentic_steps ?? null,
+      toolCalls: event.result?.agentic_tool_calls ?? null,
+      planRevisions: event.result?.agentic_plan_revisions ?? null,
+      avgMs: event.result?.agentic_avg_ms ?? null,
+      p95Ms: event.result?.agentic_p95_ms ?? null,
+      totalPromptTokens: event.result?.total_prompt_tokens ?? null,
+      totalCompletionTokens: event.result?.total_completion_tokens ?? null,
+    };
     const newResult: ResultRow = {
       server_id: "",
       flag_conf: event.flag_conf ?? {},
       prompt_processing_tps: promptTps,
       decode_tps: decodeTps,
       agentic_tps: agenticTps,
+      agentic_steps: detail.steps,
+      agentic_tool_calls: detail.toolCalls,
+      agentic_plan_revisions: detail.planRevisions,
+      agentic_avg_ms: detail.avgMs,
+      agentic_p95_ms: detail.p95Ms,
+      total_prompt_tokens: detail.totalPromptTokens,
+      total_completion_tokens: detail.totalCompletionTokens,
       result_status: event.result?.status ?? null,
     };
     const results = [...state.results];
@@ -115,6 +154,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       promptTps,
       decodeTps,
       agenticTps,
+      agenticDetail: detail,
       results,
       lines: [...state.lines, resultLine],
     };
@@ -136,6 +176,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       promptTps: last?.prompt_processing_tps ?? null,
       decodeTps: last?.decode_tps ?? null,
       agenticTps: last?.agentic_tps ?? null,
+      agenticDetail: last ? rowDetail(last) : null,
       results,
     };
   }
@@ -151,6 +192,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       promptTps: last?.prompt_processing_tps ?? null,
       decodeTps: last?.decode_tps ?? null,
       agenticTps: last?.agentic_tps ?? null,
+      agenticDetail: last ? rowDetail(last) : null,
       results,
       lines: state.lines,
       currentCommand: state.currentCommand,
@@ -158,6 +200,18 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
   }
 
   return state;
+}
+
+function rowDetail(row: ResultRow): AgenticDetail {
+  return {
+    steps: row.agentic_steps ?? null,
+    toolCalls: row.agentic_tool_calls ?? null,
+    planRevisions: row.agentic_plan_revisions ?? null,
+    avgMs: row.agentic_avg_ms ?? null,
+    p95Ms: row.agentic_p95_ms ?? null,
+    totalPromptTokens: row.total_prompt_tokens ?? null,
+    totalCompletionTokens: row.total_completion_tokens ?? null,
+  };
 }
 
 export function useBenchmarkProgress() {

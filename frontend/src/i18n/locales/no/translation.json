@@ -1,5 +1,7 @@
 {
-  "nav": { "results": "RESULTATER" },
+  "nav": {
+    "results": "RESULTATER"
+  },
   "panel": {
     "modelInput": "01 · MODELLINNDATA",
     "run": "03 · KJØRING",
@@ -92,7 +94,13 @@
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
     "decodeStage": "DECODE STAGE · t/s",
-    "agentic": "AGENTIC · t/s"
+    "agentic": "AGENTIC · t/s",
+    "agenticSteps": "{{count}} steps",
+    "agenticToolCalls": "{{count}} tool calls",
+    "agenticPlanRevs": "{{count}} plan revs",
+    "agenticAvg": "avg {{s}}s",
+    "agenticP95": "p95 {{s}}s",
+    "agenticCtx": "ctx {{k}}k"
   },
   "confirm": {
     "removeModel": "Fjerne {{model}} fra HF-bufferen?",
