@@ -206,6 +206,15 @@ def _tool_result(name: str, args: dict, corpus: dict) -> str:
     return "ok"
 
 
+async def _emit_lines(on_output, *lines: str) -> None:
+    """Await on_output for each line, skipping empty/None entries."""
+    if on_output is None:
+        return
+    for line in lines:
+        if line:
+            await on_output("line", line)
+
+
 async def probe_tool_calling(base_url: str, model: str, request_timeout: float = 60.0,
                              transport=None) -> bool:
     """Return True if the served model can return tool_calls."""
@@ -251,6 +260,9 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
     if transport is not None:
         kwargs["transport"] = transport
 
+    async def emit(*lines: str) -> None:
+        await _emit_lines(on_output, *lines)
+
     async with httpx.AsyncClient(**kwargs) as client:
         step = 0
         while step < steps:
@@ -276,6 +288,10 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
                     "stream": False,
                 }
             start = time.monotonic()
+            choice = "forced submit_plan" if step == 1 else "auto"
+            await emit(f"── step {step}/{steps} ──",
+                 f"CHOICE {choice}",
+                 f"PROMPT {messages[-1]['content']}")
             resp = await client.post("/v1/chat/completions", json=body)
             resp.raise_for_status()
             data = resp.json()
@@ -305,22 +321,36 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
                 tool_calls += 1
                 if name == "finish":
                     finished = True
+                    await emit("FINISH " + str(args.get("answer", "")))
                     transcript.append(f"step {step}: finish")
                     messages.append({"role": "tool", "tool_call_id": call.get("id", "call_0"),
                                      "content": "finished"})
                     break
-                if name == "submit_plan" and step > 1:
-                    plan_revisions += 1
                 result = _tool_result(name, args, corpus)
+                if name == "submit_plan":
+                    if step > 1:
+                        plan_revisions += 1
+                        await emit(f"PLAN revised: {json.dumps(args.get('steps', []))}")
+                    else:
+                        await emit(f"PLAN submitted: {json.dumps(args.get('steps', []))}")
+                else:
+                    await emit(f"TOOL {name}({json.dumps(args)})",
+                         f"RESULT {result[:200]}")
                 transcript.append(f"step {step}: {name}({json.dumps(args)}) -> {result[:80]}")
                 messages.append({"role": "tool", "tool_call_id": call.get("id", "call_0"),
                                  "content": result})
-            if on_output is not None:
-                await on_output("line", (
-                    f"step {step}/{steps}: prompt {p_tok} tok + {c_tok} tok in {elapsed:.1f}s"
-                ))
+            if content:
+                await emit("THINK " + content[:200])
+            if calls:
+                branch = calls[0].get("function") or {}
+                await emit(f"BRANCH → {branch.get('name', '?')}")
+            else:
+                await emit("THINK (tool call only)")
+            await emit(f"step {step}/{steps}: prompt {p_tok} tok + {c_tok} tok in {elapsed:.1f}s")
             if finished:
                 break
+    if not finished:
+        await emit(f"BUDGET exhausted after {step} steps")
     if latencies_ms:
         latencies_ms.sort()
         avg_latency_ms = sum(latencies_ms) / len(latencies_ms)

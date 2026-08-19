@@ -118,3 +118,73 @@ def test_calculate_is_guarded():
     from app.agentic import execute_calculate
     assert execute_calculate("2 + 3 * 4") == "14"
     assert execute_calculate("__import__('os').system('x')") == "error: unsupported expression"
+
+
+def _capture_output():
+    lines = []
+
+    async def on_output(kind, text):
+        lines.append(text)
+
+    return lines, on_output
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_emits_structured_step_lines(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+    lines, on_output = _capture_output()
+    transport = httpx.MockTransport(_plan_handler([]))
+    await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=10, max_tokens=4096,
+        task="codebase_refactor", on_output=on_output, transport=transport)
+    joined = "\n".join(lines)
+    assert "── step 1/10 ──" in joined
+    assert "CHOICE forced submit_plan" in joined
+    assert "PLAN submitted" in joined
+    assert "BRANCH → read_file" in joined
+    assert "TOOL read_file" in joined
+    assert "RESULT" in joined
+    assert "FINISH" in joined
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_emits_budget_exhausted(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+
+    def handler(request):
+        return httpx.Response(200, json=_resp(
+            {"role": "assistant", "content": None,
+             "tool_calls": [_tool_call("read_file", {"path": "a.py"})]}))
+
+    lines, on_output = _capture_output()
+    transport = httpx.MockTransport(handler)
+    await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=2, max_tokens=4096,
+        task="codebase_refactor", on_output=on_output, transport=transport)
+    joined = "\n".join(lines)
+    assert "BUDGET exhausted after 2 steps" in joined
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_emits_thinking_and_branch(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+
+    def handler(request):
+        body = json.loads(request.content)
+        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+            msg = {"role": "assistant", "content": "I will make a plan",
+                   "tool_calls": [_tool_call("submit_plan", {"steps": ["a"]})]}
+        else:
+            msg = {"role": "assistant", "content": "Let me read a file",
+                   "tool_calls": [_tool_call("read_file", {"path": "/repo/main.py"})]}
+        return httpx.Response(200, json=_resp(msg))
+
+    lines, on_output = _capture_output()
+    transport = httpx.MockTransport(handler)
+    await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=3, max_tokens=4096,
+        task="codebase_refactor", on_output=on_output, transport=transport)
+    joined = "\n".join(lines)
+    assert "THINK I will make a plan" in joined
+    assert "THINK Let me read a file" in joined
+    assert "BRANCH → read_file" in joined
