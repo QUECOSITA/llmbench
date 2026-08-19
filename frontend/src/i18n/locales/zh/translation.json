@@ -40,6 +40,7 @@
     "bankTitle": "02 · 配置库 · N = {{n}}",
     "benchTool": "BENCH 工具",
     "speedBenchFlags": "SPEED-BENCH 参数",
+    "agenticFlags": "AGENTIC 参数",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all，或（对于 {{bench}} 基准）: {{cats}}",
     "limitLine": "--limit: 可选整数 — 每个类别的最大样本数"
@@ -74,6 +75,7 @@
     "program": "程序",
     "promptTps": "PROMPT t/s",
     "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
     "status": "状态",
     "viewAll": "查看全部运行 →",
     "backToBench": "← 返回基准",
@@ -89,7 +91,8 @@
   },
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
-    "decodeStage": "DECODE STAGE · t/s"
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s"
   },
   "confirm": {
     "removeModel": "从 HF 缓存中移除 {{model}}？",

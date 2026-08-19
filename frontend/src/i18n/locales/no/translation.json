@@ -40,6 +40,7 @@
     "bankTitle": "02 · KONFIGURASJONSBANK · N = {{n}}",
     "benchTool": "BENCH-VERKTØY",
     "speedBenchFlags": "SPEED-BENCH-FLAGG",
+    "agenticFlags": "AGENTIC-FLAGG",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all, eller (for bench {{bench}}): {{cats}}",
     "limitLine": "--limit: valgfritt heltall — maks prøver per kategori"
@@ -74,6 +75,7 @@
     "program": "Program",
     "promptTps": "PROMPT t/s",
     "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
     "status": "STATUS",
     "viewAll": "vis alle kjøringer →",
     "backToBench": "← tilbake til bench",
@@ -89,7 +91,8 @@
   },
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
-    "decodeStage": "DECODE STAGE · t/s"
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s"
   },
   "confirm": {
     "removeModel": "Fjerne {{model}} fra HF-bufferen?",

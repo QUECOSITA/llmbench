@@ -103,7 +103,7 @@ The `/results` page shows the full benchmark history.
 - Generates N distinct configs by sweeping key performance flags (context size, GPU layers, batch size, spec flags) over per-server value pools.
 - Every generated serving command is **editable before running** — edits take effect in the executed benchmark.
 - Per-config **fit badge** (fits VRAM / offload / CPU / no fit, with needed GB).
-- **Manual bench-tool selection**: `llama-bench` (default) or `speed-bench` per run.
+- **Manual bench-tool selection**: `llama-bench` (default), `speed-bench`, or `agentic` per run.
 - GENERATE is disabled until the model is downloaded.
 
 ### Benchmarking
@@ -113,6 +113,7 @@ The `/results` page shows the full benchmark history.
 - Each config runs the server's native bench tool with mapped flags, averaged over a window capped at one minute.
 - **Cancel** any active run at any time.
 - Speculative-decoding / MTP models (README proposes `--spec-type`/spec flags, or the name contains `MTP`) are benchmarked with **speed-bench** (llama-server + `speed_bench.py`) instead of `llama-bench`, so MTP configs are actually measured.
+- The **agentic** bench tool measures effective multi-turn tokens/sec: it drives a real multi-turn agentic session against the serving model and reports the throughput across the whole exchange (including every prefill), giving a throughput number closer to real interactive use than a single-shot decode.
 
 ### Results & Persistence
 
@@ -142,6 +143,7 @@ External tools the backend spawns:
 - **`llama-bench`** — native benchmark for standard configs (`-o csv`, prompt from a coding-prompt workload, `-n 128 -r 2`).
 - **`llama-server`** — serving side for speed-bench.
 - **`speed_bench.py`** — speculative-decoding / MTP client; auto-discovered next to `llama-server`, honored via `LLMBENCH_SPEED_BENCH_SCRIPT`, or downloaded into `~/.llmbench/speed-bench/` on first use (best-effort). Always runs with `--limit 1 --category all --bench qualitative --osl 528`.
+- **agentic** — in-process multi-turn session driver; runs a conversational benchmark against a live `llama-server` and reports effective AGENTIC t/s across the whole session (`--turns 4 --max-tokens 16384` by default).
 - **`nvidia-smi`** — GPU name / VRAM / driver detection.
 
 ## Data & Configuration
