@@ -399,3 +399,149 @@ class SpeedBenchRunner:
                     os.unlink(output_path)
             except OSError:
                 pass
+
+
+class AgenticRunner:
+    """Benchmark a llama.cpp model over a multi-turn agentic session: start
+    llama-server, wait for /health, run the in-process agentic driver against
+    the OpenAI-compatible API, and kill the server. Effective tokens/sec is
+    total completion tokens divided by total session wall time (every turn's
+    prefill included)."""
+
+    def __init__(self, server_command: list[str], params: dict,
+                 timeout_s: float, startup_timeout_s: float, workload_file: str):
+        from app.agentic import AGENTIC_DEFAULT_MAX_TOKENS, AGENTIC_DEFAULT_TURNS
+        self.server_command = list(server_command)
+        self.params = dict(params)
+        self.timeout_s = timeout_s
+        self.startup_timeout_s = startup_timeout_s
+        self.workload_file = workload_file
+        self._default_turns = AGENTIC_DEFAULT_TURNS
+        self._default_max_tokens = AGENTIC_DEFAULT_MAX_TOKENS
+        self._aborted = asyncio.Event()
+        self._procs: list[asyncio.subprocess.Process] = []
+
+    def abort(self) -> None:
+        self._aborted.set()
+        for proc in self._procs:
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+
+    async def _pump(self, proc, parts: list[bytes], on_output) -> int:
+        out_tty = TtyStream()
+        err_tty = TtyStream()
+
+        async def pump(stream, tty):
+            while True:
+                chunk = await stream.read(4096)
+                if not chunk:
+                    break
+                if self._aborted.is_set():
+                    proc.kill()
+                    break
+                parts.append(chunk)
+                if on_output is not None:
+                    for kind, text in tty.feed(chunk):
+                        await on_output(kind, text)
+            if on_output is not None:
+                for kind, text in tty.flush():
+                    await on_output(kind, text)
+
+        await asyncio.gather(pump(proc.stdout, out_tty), pump(proc.stderr, err_tty))
+        rc = proc.returncode
+        if rc is None:
+            rc = await proc.wait()
+        return rc
+
+    async def run(self, on_output=None) -> dict:
+        from app.agentic import load_workload_prompts, run_agentic_session
+        start = asyncio.get_event_loop().time()
+        if not self.server_command:
+            return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
+                    "agentic_tps": None, "duration_s": 0.0,
+                    "output": "agentic is not configured: missing server command"}
+        port = _free_port()
+        server_cmd = list(self.server_command) + ["--port", str(port), "--host", "127.0.0.1"]
+        server_proc = None
+        server_pump: asyncio.Task | None = None
+        parts: list[bytes] = []
+        try:
+            server_proc = await asyncio.create_subprocess_exec(
+                *server_cmd, stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE, env=spawn_env())
+            self._procs.append(server_proc)
+            server_pump = asyncio.create_task(self._pump(server_proc, parts, on_output))
+
+            watchdog = None
+            if on_output is not None:
+                watchdog = asyncio.create_task(
+                    _startup_watchdog(port, self.startup_timeout_s, parts, on_output,
+                                      report_every_s=_STARTUP_REPORT_S))
+            try:
+                ready = await _wait_health(port, self.startup_timeout_s)
+            finally:
+                if watchdog is not None:
+                    watchdog.cancel()
+                    try:
+                        await watchdog
+                    except (asyncio.CancelledError, Exception):
+                        pass
+            if self._aborted.is_set():
+                return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,
+                        "agentic_tps": None,
+                        "duration_s": asyncio.get_event_loop().time() - start,
+                        "output": _decode_parts(parts)}
+            if not ready:
+                return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
+                        "agentic_tps": None,
+                        "duration_s": asyncio.get_event_loop().time() - start,
+                        "output": f"llama-server did not become ready on port {port} "
+                                  f"within {self.startup_timeout_s}s\n{_decode_parts(parts)}"}
+            prompts = load_workload_prompts(self.workload_file)
+            try:
+                session = await asyncio.wait_for(
+                    run_agentic_session(
+                        base_url=f"http://127.0.0.1:{port}",
+                        model=self.params.get("model", "default"),
+                        turns=int(self.params.get("turns", self._default_turns)),
+                        max_tokens=int(self.params.get("max_tokens", self._default_max_tokens)),
+                        prompts=prompts,
+                        on_output=on_output,
+                        request_timeout=self.timeout_s,
+                    ),
+                    timeout=self.timeout_s,
+                )
+            except asyncio.TimeoutError:
+                return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
+                        "agentic_tps": None,
+                        "duration_s": asyncio.get_event_loop().time() - start,
+                        "output": f"agentic session timed out after {self.timeout_s}s\n"
+                                  + _decode_parts(parts)}
+            except Exception:
+                return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
+                        "agentic_tps": None,
+                        "duration_s": asyncio.get_event_loop().time() - start,
+                        "output": _decode_parts(parts)}
+            duration = asyncio.get_event_loop().time() - start
+            if self._aborted.is_set():
+                return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,
+                        "agentic_tps": None, "duration_s": duration,
+                        "output": _decode_parts(parts)}
+            return {"status": "ok", **session, "duration_s": duration,
+                    "output": _decode_parts(parts)}
+        finally:
+            if server_proc is not None and server_proc.returncode is None:
+                try:
+                    server_proc.kill()
+                except ProcessLookupError:
+                    pass
+            if server_pump is not None:
+                server_pump.cancel()
+                try:
+                    await server_pump
+                except (asyncio.CancelledError, Exception):
+                    pass
+            self._procs.clear()
