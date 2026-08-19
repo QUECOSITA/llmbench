@@ -80,6 +80,42 @@ test("does not render the flags textarea for non-speed-bench configs", () => {
   expect(screen.queryByDisplayValue(/--bench/)).not.toBeInTheDocument();
 });
 
+test("shows an agentic option in the bench tool selector", () => {
+  render(
+    <ConfigBank
+      n={1}
+      onNChange={() => {}}
+      onGenerate={() => {}}
+      configs={[]}
+      showBenchToolSelector
+      benchTool="llama-bench"
+      onBenchToolChange={() => {}}
+    />,
+  );
+  const select = screen.getByLabelText(/bench tool/i) as HTMLSelectElement;
+  expect([...select.options].map((o) => o.value)).toEqual(["llama-bench", "speed-bench", "agentic"]);
+});
+
+test("renders an AGENTIC FLAGS textarea and an AGENTIC badge for agentic configs", () => {
+  const onEditFlags = vi.fn();
+  const configs: ConfigRow[] = [
+    {
+      flags: {},
+      serving_command: "llama-server --load-mode none --no-mmproj",
+      bench_tool: "agentic",
+      bench_flags: "--turns 3 --max-tokens 512",
+    },
+  ];
+  const { container } = render(
+    <ConfigBank n={1} onNChange={() => {}} onGenerate={() => {}} configs={configs} onEditFlags={onEditFlags} />,
+  );
+  expect(screen.getByText("AGENTIC FLAGS")).toBeInTheDocument();
+  const textarea = screen.getByDisplayValue("--turns 3 --max-tokens 512");
+  fireEvent.change(textarea, { target: { value: "--turns 5 --max-tokens 1024" } });
+  expect(onEditFlags).toHaveBeenCalledWith(0, "--turns 5 --max-tokens 1024");
+  expect(container.textContent).toContain("AGENTIC");
+});
+
 const INFO: SpeedBenchInfo = {
   benches: ["qualitative", "throughput_1k", "throughput_2k", "throughput_8k", "throughput_16k", "throughput_32k"],
   categories: {
