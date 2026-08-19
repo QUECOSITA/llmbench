@@ -7,6 +7,7 @@ interface Progress {
   total: number;
   promptTps?: number | null;
   decodeTps?: number | null;
+  agenticTps?: number | null;
 }
 
 interface Props {
@@ -53,6 +54,7 @@ export function RunPanel({
       <MetricsBanks
         promptTps={progress?.promptTps ?? null}
         decodeTps={progress?.decodeTps ?? null}
+        agenticTps={progress?.agenticTps ?? null}
       />
       {lines.length > 0 && (
         <div className="dl-console">

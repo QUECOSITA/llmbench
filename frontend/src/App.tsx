@@ -73,6 +73,7 @@ function toResultRow(r: RunDetail["results"][number]): ResultRow {
     flag_conf: r.flag_conf ?? {},
     prompt_processing_tps: r.prompt_processing_tps ?? null,
     decode_tps: r.decode_tps ?? null,
+    agentic_tps: r.agentic_tps ?? null,
     result_status: r.result_status ?? null,
   };
 }
@@ -641,6 +642,7 @@ export function App() {
                         total: progressState.total,
                         promptTps: progressState.promptTps,
                         decodeTps: progressState.decodeTps,
+                        agenticTps: progressState.agenticTps,
                       }
                     : null
                 }
