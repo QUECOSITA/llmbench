@@ -603,7 +603,7 @@ test("run payload round-trips bench_tool", async () => {
   expect(body.configs[0].bench_tool).toBe("speed-bench");
 });
 
-test("shows the bench tool selector only when README proposes no serving config and passes bench_tool to generate", async () => {
+test("shows the bench tool selector and passes bench_tool to generate", async () => {
   const { api } = await import("./api/client");
   const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({
     configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj", bench_command: [], bench_tool: "llama-bench", fit: null }],
