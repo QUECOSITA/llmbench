@@ -103,7 +103,7 @@ The `/results` page shows the full benchmark history.
 - Generates N distinct configs by sweeping key performance flags (context size, GPU layers, batch size, spec flags) over per-server value pools.
 - Every generated serving command is **editable before running** — edits take effect in the executed benchmark.
 - Per-config **fit badge** (fits VRAM / offload / CPU / no fit, with needed GB).
-- **Manual bench-tool selection**: `llama-bench` (default), `speed-bench`, or `agentic` per run.
+- **Manual bench-tool selection**: the bench tool (`llama-bench` default, `speed-bench`, or `agentic`) is always selectable in the CONFIG BANK, per run.
 - GENERATE is disabled until the model is downloaded.
 
 ### Benchmarking
