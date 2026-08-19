@@ -106,8 +106,8 @@ const server = createServer(async (req, res) => {
         configs: [{
           ...base,
           bench_tool: "agentic",
-          bench_flags: "--turns 4 --max-tokens 16384",
-          bench_command: ["agentic", "--model", "org/model", "--turns", "4", "--max-tokens", "16384"],
+          bench_flags: "--steps 10 --max-tokens 4096 --task codebase_refactor",
+          bench_command: ["agentic", "--model", "org/model", "--steps", "10", "--max-tokens", "4096", "--task", "codebase_refactor"],
         }],
       });
     } else {
@@ -136,6 +136,13 @@ const server = createServer(async (req, res) => {
         prompt_processing_tps: 100.0,
         decode_tps: 42.0,
         agentic_tps: 25.0,
+        agentic_steps: 10,
+        agentic_tool_calls: 14,
+        agentic_plan_revisions: 2,
+        agentic_avg_ms: 1200.0,
+        agentic_p95_ms: 3400.0,
+        total_prompt_tokens: 9000,
+        total_completion_tokens: 1600,
       }],
     });
   } else if (req.url?.startsWith("/api/models")) {
