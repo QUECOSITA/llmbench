@@ -312,11 +312,13 @@ def build_speed_bench_command(script: str, flags: list[str], url: str = "localho
     return [sys.executable, script, *flags, "--url", url, "--output", output]
 
 
-AGENTIC_CLI_FLAGS = ("--turns", "--max-tokens")
+AGENTIC_CLI_FLAGS = ("--steps", "--max-tokens", "--task")
+AGENTIC_TASKS = ("codebase_refactor", "data_pipeline", "research")
 
 
-def agentic_default_flags(turns: int = 4, max_tokens: int = 16384) -> str:
-    return f"--turns {turns} --max-tokens {max_tokens}"
+def agentic_default_flags(steps: int = 10, max_tokens: int = 4096,
+                          task: str = "codebase_refactor") -> str:
+    return f"--steps {steps} --max-tokens {max_tokens} --task {task}"
 
 
 def parse_agentic_flags(text: str) -> list[str]:
@@ -340,7 +342,7 @@ def parse_agentic_flags(text: str) -> list[str]:
 
 def validate_agentic_flags(flags: list[str]) -> str | None:
     """Return an error message for invalid agentic flags, or None if valid."""
-    parsed: dict[str, int] = {}
+    parsed: dict[str, str] = {}
     i = 0
     while i < len(flags):
         tok = flags[i]
@@ -358,15 +360,20 @@ def validate_agentic_flags(flags: list[str]) -> str | None:
                     + ", ".join(AGENTIC_CLI_FLAGS))
         if value is None:
             return f"flag '{name}' requires a value"
-        try:
-            parsed[name] = int(value)
-        except (TypeError, ValueError):
-            return f"flag '{name}' requires an integer value"
-        if name == "--turns" and not (1 <= parsed[name] <= 20):
-            return "'--turns' must be between 1 and 20"
-        if name == "--max-tokens" and not (1 <= parsed[name] <= 32768):
-            return "'--max-tokens' must be between 1 and 32768"
+        if name in ("--steps", "--max-tokens"):
+            try:
+                parsed[name] = int(value)
+            except (TypeError, ValueError):
+                return f"flag '{name}' requires an integer value"
+        else:
+            parsed[name] = value
         i += 1
+    if "--steps" in parsed and not (1 <= parsed["--steps"] <= 20):
+        return "'--steps' must be between 1 and 20"
+    if "--max-tokens" in parsed and not (1 <= parsed["--max-tokens"] <= 32768):
+        return "'--max-tokens' must be between 1 and 32768"
+    if "--task" in parsed and parsed["--task"] not in AGENTIC_TASKS:
+        return ("unknown --task; available: " + ", ".join(AGENTIC_TASKS))
     return None
 
 

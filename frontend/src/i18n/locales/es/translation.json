@@ -1,11 +1,14 @@
 {
-  "nav": { "results": "RESULTADOS" },
+  "nav": {
+    "results": "RESULTADOS"
+  },
   "panel": {
     "modelInput": "01 · ENTRADA DE MODELO",
     "run": "03 · EJECUCIÓN",
     "resultsRanked": "05 · RESULTADOS — CLASIFICADOS",
     "downloaded": "DESCARGADOS",
-    "resultsAllRuns": "RESULTADOS · TODAS LAS EJECUCIONES"
+    "resultsAllRuns": "RESULTADOS · TODAS LAS EJECUCIONES",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "ANALIZAR",
@@ -92,7 +95,13 @@
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
     "decodeStage": "DECODE STAGE · t/s",
-    "agentic": "AGENTIC · t/s"
+    "agentic": "AGENTIC · t/s",
+    "agenticSteps": "{{count}} steps",
+    "agenticToolCalls": "{{count}} tool calls",
+    "agenticPlanRevs": "{{count}} plan revs",
+    "agenticAvg": "avg {{s}}s",
+    "agenticP95": "p95 {{s}}s",
+    "agenticCtx": "ctx {{k}}k"
   },
   "confirm": {
     "removeModel": "¿Eliminar {{model}} de la caché de HF?",

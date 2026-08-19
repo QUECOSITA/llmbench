@@ -3,9 +3,21 @@ import json
 import httpx
 import pytest
 
-from app.agentic import (AGENTIC_DEFAULT_MAX_TOKENS, AGENTIC_DEFAULT_TURNS,
-                         AGENTIC_SYSTEM_PROMPT, DEFAULT_USER_PROMPT,
-                         load_workload_prompts, run_agentic_session)
+from app.agentic import (AGENTIC_DEFAULT_MAX_TOKENS, AGENTIC_DEFAULT_STEPS,
+                         AGENTIC_TASKS, AGENTIC_TOOL_SCHEMAS, DEFAULT_USER_PROMPT,
+                         probe_tool_calling, run_agent_session)
+
+
+def _tool_call(name, args):
+    return {"id": "call_1", "type": "function",
+            "function": {"name": name, "arguments": json.dumps(args)}}
+
+
+def _resp(messages, usage_prompt=10, usage_comp=4):
+    return {"id": "x", "object": "chat.completion", "created": 1, "model": "m",
+            "choices": [{"index": 0, "message": messages, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": usage_prompt, "completion_tokens": usage_comp,
+                      "total_tokens": usage_prompt + usage_comp}}
 
 
 class FakeClock:
@@ -17,87 +29,162 @@ class FakeClock:
         return self.t
 
 
-def _handler(requests):
+def _plan_handler(requests):
     def handler(request):
         body = json.loads(request.content)
         requests.append(body)
-        n_msgs = len(body["messages"])
-        return httpx.Response(200, json={
-            "id": "x",
-            "object": "chat.completion",
-            "created": 1,
-            "model": body.get("model"),
-            "choices": [{"index": 0,
-                         "message": {"role": "assistant", "content": f"step {n_msgs}"},
-                         "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": n_msgs * 10, "completion_tokens": 4,
-                      "total_tokens": n_msgs * 10 + 4},
-        })
+        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("submit_plan", {"steps": ["a", "b"]})]}
+        elif len(body["messages"]) >= 6:
+            msg = {"role": "assistant", "content": "done",
+                   "tool_calls": [_tool_call("finish", {"answer": "ok"})]}
+        else:
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("read_file", {"path": "a.py"})]}
+        return httpx.Response(200, json=_resp(msg))
     return handler
 
 
 @pytest.mark.asyncio
-async def test_run_agentic_session_reports_effective_tps(monkeypatch):
+async def test_run_agent_session_plan_then_act_then_finish(monkeypatch):
     monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
     requests = []
-    transport = httpx.MockTransport(_handler(requests))
-    result = await run_agentic_session(
-        base_url="http://127.0.0.1:9", model="model.gguf",
-        turns=4, max_tokens=16384, prompts=["task a", "task b"],
-        transport=transport)
-    assert result["agentic_tps"] == 4.0
-    assert result["total_completion_tokens"] == 16
-    assert result["total_wall_s"] == 4.0
-    assert result["turns"] == 4
-    assert result["prompt_processing_tps"] is None
-    assert result["decode_tps"] is None
-    assert len(requests) == 4
+    transport = httpx.MockTransport(_plan_handler(requests))
+    result = await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=10, max_tokens=4096,
+        task="codebase_refactor", transport=transport)
+    assert result["status"] == "ok"
+    assert result["finished"] is True
+    assert result["steps"] == 3
+    assert result["tool_calls"] >= 3
+    assert result["agentic_tps"] == (10 * 3 + 4 * 3) / 3.0
+    assert result["total_wall_s"] == 3.0
+    assert requests[0]["tool_choice"] == {"type": "function", "function": {"name": "submit_plan"}}
 
 
 @pytest.mark.asyncio
-async def test_run_agentic_session_grows_conversation(monkeypatch):
-    requests = []
-    transport = httpx.MockTransport(_handler(requests))
-    await run_agentic_session("http://x", "m", 3, 128,
-                              ["t1", "t2", "t3"], transport=transport)
-    assert requests[0]["messages"][0]["role"] == "system"
-    assert requests[0]["messages"][0]["content"] == AGENTIC_SYSTEM_PROMPT
-    assert len(requests[0]["messages"]) == 2
-    assert len(requests[1]["messages"]) == 4
-    assert len(requests[2]["messages"]) == 6
-    assert requests[1]["messages"][-1]["role"] == "user"
+async def test_run_agent_session_budget_exhausted(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+
+    def handler(request):
+        body = json.loads(request.content)
+        return httpx.Response(200, json=_resp(
+            {"role": "assistant", "content": None,
+             "tool_calls": [_tool_call("read_file", {"path": "a.py"})]}))
+
+    transport = httpx.MockTransport(handler)
+    result = await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=2, max_tokens=4096,
+        task="codebase_refactor", transport=transport)
+    assert result["status"] == "ok"
+    assert result["finished"] is False
+    assert result["steps"] == 2
 
 
 @pytest.mark.asyncio
-async def test_run_agentic_session_empty_workload_uses_default(monkeypatch):
-    requests = []
-    transport = httpx.MockTransport(_handler(requests))
-    await run_agentic_session("http://x", "m", 1, 128, [], transport=transport)
-    assert requests[0]["messages"][-1]["content"] == DEFAULT_USER_PROMPT
-    assert requests[0]["max_tokens"] == 128
+async def test_probe_tool_calling_ok(monkeypatch):
+    def handler(request):
+        return httpx.Response(200, json=_resp(
+            {"role": "assistant", "content": None,
+             "tool_calls": [_tool_call("read_file", {"path": "x"})]}))
+
+    transport = httpx.MockTransport(handler)
+    assert await probe_tool_calling("http://x", "m", transport=transport) is True
 
 
 @pytest.mark.asyncio
-async def test_run_agentic_session_emits_per_turn_output(monkeypatch):
+async def test_probe_tool_calling_missing_tool_calls():
+    def handler(request):
+        return httpx.Response(200, json=_resp({"role": "assistant", "content": "hi"}))
+
+    transport = httpx.MockTransport(handler)
+    assert await probe_tool_calling("http://x", "m", transport=transport) is False
+
+
+def test_tasks_have_expected_keys():
+    assert set(AGENTIC_TASKS) == {"codebase_refactor", "data_pipeline", "research"}
+    for task in AGENTIC_TASKS.values():
+        assert task["prompt"]
+        assert isinstance(task["corpus"], dict)
+
+
+def test_agentic_tool_schemas_expose_control_and_workload_tools():
+    names = {s["function"]["name"] for s in AGENTIC_TOOL_SCHEMAS}
+    assert {"submit_plan", "finish", "read_file", "list_dir", "search", "calculate"} <= names
+
+
+def test_calculate_is_guarded():
+    from app.agentic import execute_calculate
+    assert execute_calculate("2 + 3 * 4") == "14"
+    assert execute_calculate("__import__('os').system('x')") == "error: unsupported expression"
+
+
+def _capture_output():
     lines = []
-    transport = httpx.MockTransport(_handler([]))
 
     async def on_output(kind, text):
-        lines.append((kind, text))
+        lines.append(text)
 
-    await run_agentic_session("http://x", "m", 4, 128,
-                              ["a", "b", "c", "d"], on_output=on_output,
-                              transport=transport)
-    assert len(lines) == 4
-    assert lines[0][0] == "line"
-    assert "turn 1/4" in lines[0][1]
+    return lines, on_output
 
 
-def test_load_workload_prompts_reads_jsonl(tmp_path):
-    p = tmp_path / "p.jsonl"
-    p.write_text('{"prompt": "a"}\n\n{"prompt": "b"}\nnot-json\n{"other": "x"}\n')
-    assert load_workload_prompts(p) == ["a", "b"]
+@pytest.mark.asyncio
+async def test_run_agent_session_emits_structured_step_lines(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+    lines, on_output = _capture_output()
+    transport = httpx.MockTransport(_plan_handler([]))
+    await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=10, max_tokens=4096,
+        task="codebase_refactor", on_output=on_output, transport=transport)
+    joined = "\n".join(lines)
+    assert "── step 1/10 ──" in joined
+    assert "CHOICE forced submit_plan" in joined
+    assert "PLAN submitted" in joined
+    assert "BRANCH → read_file" in joined
+    assert "TOOL read_file" in joined
+    assert "RESULT" in joined
+    assert "FINISH" in joined
 
 
-def test_load_workload_prompts_missing_file_returns_empty(tmp_path):
-    assert load_workload_prompts(tmp_path / "nope.jsonl") == []
+@pytest.mark.asyncio
+async def test_run_agent_session_emits_budget_exhausted(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+
+    def handler(request):
+        return httpx.Response(200, json=_resp(
+            {"role": "assistant", "content": None,
+             "tool_calls": [_tool_call("read_file", {"path": "a.py"})]}))
+
+    lines, on_output = _capture_output()
+    transport = httpx.MockTransport(handler)
+    await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=2, max_tokens=4096,
+        task="codebase_refactor", on_output=on_output, transport=transport)
+    joined = "\n".join(lines)
+    assert "BUDGET exhausted after 2 steps" in joined
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_emits_thinking_and_branch(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+
+    def handler(request):
+        body = json.loads(request.content)
+        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+            msg = {"role": "assistant", "content": "I will make a plan",
+                   "tool_calls": [_tool_call("submit_plan", {"steps": ["a"]})]}
+        else:
+            msg = {"role": "assistant", "content": "Let me read a file",
+                   "tool_calls": [_tool_call("read_file", {"path": "/repo/main.py"})]}
+        return httpx.Response(200, json=_resp(msg))
+
+    lines, on_output = _capture_output()
+    transport = httpx.MockTransport(handler)
+    await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=3, max_tokens=4096,
+        task="codebase_refactor", on_output=on_output, transport=transport)
+    joined = "\n".join(lines)
+    assert "THINK I will make a plan" in joined
+    assert "THINK Let me read a file" in joined
+    assert "BRANCH → read_file" in joined

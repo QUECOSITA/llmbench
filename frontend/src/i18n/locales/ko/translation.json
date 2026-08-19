@@ -1,11 +1,14 @@
 {
-  "nav": { "results": "결과" },
+  "nav": {
+    "results": "결과"
+  },
   "panel": {
     "modelInput": "01 · 모델 입력",
     "run": "03 · 실행",
     "resultsRanked": "05 · 결과 — 순위",
     "downloaded": "다운로드됨",
-    "resultsAllRuns": "결과 · 전체 실행"
+    "resultsAllRuns": "결과 · 전체 실행",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "분석",
@@ -92,7 +95,13 @@
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
     "decodeStage": "DECODE STAGE · t/s",
-    "agentic": "AGENTIC · t/s"
+    "agentic": "AGENTIC · t/s",
+    "agenticSteps": "{{count}} steps",
+    "agenticToolCalls": "{{count}} tool calls",
+    "agenticPlanRevs": "{{count}} plan revs",
+    "agenticAvg": "avg {{s}}s",
+    "agenticP95": "p95 {{s}}s",
+    "agenticCtx": "ctx {{k}}k"
   },
   "confirm": {
     "removeModel": "HF 캐시에서 {{model}}을(를) 제거할까요?",

@@ -1,11 +1,14 @@
 {
-  "nav": { "results": "النتائج" },
+  "nav": {
+    "results": "النتائج"
+  },
   "panel": {
     "modelInput": "01 · إدخال النموذج",
     "run": "03 · التشغيل",
     "resultsRanked": "05 · النتائج — مرتبة",
     "downloaded": "تم التنزيل",
-    "resultsAllRuns": "النتائج · جميع التشغيلات"
+    "resultsAllRuns": "النتائج · جميع التشغيلات",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "تحليل",
@@ -92,7 +95,13 @@
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
     "decodeStage": "DECODE STAGE · t/s",
-    "agentic": "AGENTIC · t/s"
+    "agentic": "AGENTIC · t/s",
+    "agenticSteps": "{{count}} steps",
+    "agenticToolCalls": "{{count}} tool calls",
+    "agenticPlanRevs": "{{count}} plan revs",
+    "agenticAvg": "avg {{s}}s",
+    "agenticP95": "p95 {{s}}s",
+    "agenticCtx": "ctx {{k}}k"
   },
   "confirm": {
     "removeModel": "إزالة {{model}} من ذاكرة التخزين المؤقت لـ HF؟",

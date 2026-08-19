@@ -47,10 +47,9 @@ interface Props {
   speedBenchInfo?: SpeedBenchInfo | null;
   benchTool?: "llama-bench" | "speed-bench" | "agentic";
   onBenchToolChange?: (tool: "llama-bench" | "speed-bench" | "agentic") => void;
-  showBenchToolSelector?: boolean;
 }
 
-export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = true, onEdit, onEditFlags, speedBenchInfo, benchTool, onBenchToolChange, showBenchToolSelector }: Props) {
+export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = true, onEdit, onEditFlags, speedBenchInfo, benchTool, onBenchToolChange }: Props) {
   const { t } = useTranslation();
   return (
     <section className="panel">
@@ -65,20 +64,18 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = tr
           onChange={(e) => onNChange(Number(e.target.value))}
           style={{ width: 80 }}
         />
-        {showBenchToolSelector && (
-          <label style={{ color: "var(--anode)", fontSize: 12 }}>
-            {t("config.benchTool")}
-            <select
-              value={benchTool ?? "llama-bench"}
-              onChange={(e) => onBenchToolChange?.(e.target.value as "llama-bench" | "speed-bench" | "agentic")}
-              disabled={!canGenerate}
-            >
-              <option value="llama-bench">llama-bench</option>
-              <option value="speed-bench">speed-bench</option>
-              <option value="agentic">agentic</option>
-            </select>
-          </label>
-        )}
+        <label style={{ color: "var(--anode)", fontSize: 12 }}>
+          {t("config.benchTool")}
+          <select
+            value={benchTool ?? "llama-bench"}
+            onChange={(e) => onBenchToolChange?.(e.target.value as "llama-bench" | "speed-bench" | "agentic")}
+            disabled={!canGenerate}
+          >
+            <option value="llama-bench">llama-bench</option>
+            <option value="speed-bench">speed-bench</option>
+            <option value="agentic">agentic</option>
+          </select>
+        </label>
         <button onClick={() => onGenerate(n)} disabled={!canGenerate}>{t("common.generate")}</button>
       </div>
       {configs.map((cfg, i) => (

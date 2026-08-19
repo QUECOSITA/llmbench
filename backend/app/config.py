@@ -16,8 +16,9 @@ class Settings(BaseSettings):
     speed_bench_script: Path | None = None
     speed_bench_timeout_s: int = 300
     speed_bench_osl: int = 528
-    agentic_turns: int = 4
-    agentic_max_tokens: int = 16384
+    agentic_steps: int = 10
+    agentic_max_tokens: int = 4096
+    agentic_task: str = "codebase_refactor"
     agentic_timeout_s: int = 300
 
     @model_validator(mode="after")

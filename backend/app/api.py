@@ -543,8 +543,9 @@ async def generate(payload: dict):
                              ("speed-bench" if uses_speed_bench else "llama-bench"))
         if uses_agentic:
             flags_text = (payload.get("bench_flags")
-                          or agentic_default_flags(s.settings.agentic_turns,
-                                                   s.settings.agentic_max_tokens))
+                          or agentic_default_flags(s.settings.agentic_steps,
+                                                   s.settings.agentic_max_tokens,
+                                                   s.settings.agentic_task))
             flags = parse_agentic_flags(flags_text)
             error = validate_agentic_flags(flags)
             if error:
@@ -614,8 +615,9 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
             cfg["bench_error"] = f"invalid serving command: {exc}"
             return
         flags_text = (cfg.get("bench_flags")
-                      or agentic_default_flags(s.settings.agentic_turns,
-                                               s.settings.agentic_max_tokens))
+                      or agentic_default_flags(s.settings.agentic_steps,
+                                               s.settings.agentic_max_tokens,
+                                               s.settings.agentic_task))
         flags = parse_agentic_flags(flags_text)
         error = validate_agentic_flags(flags)
         if error:
@@ -628,8 +630,9 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
         _flag_map = dict(zip(flags[::2], flags[1::2]))
         cfg["agentic_params"] = {
             "model": gguf_filename or model_ref,
-            "turns": _flag_map.get("--turns", str(s.settings.agentic_turns)),
+            "steps": _flag_map.get("--steps", str(s.settings.agentic_steps)),
             "max_tokens": _flag_map.get("--max-tokens", str(s.settings.agentic_max_tokens)),
+            "task": _flag_map.get("--task", s.settings.agentic_task),
         }
         cfg["flags"] = serving_command_display_flags(
             cfg["server_id"], cfg.get("serving_command", "")) or cfg.get("flags", {})
@@ -779,7 +782,14 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                     db_mod.save_result(s.conn, cfg_id, result["prompt_processing_tps"],
                                        result["decode_tps"], result["duration_s"],
                                        result["output"], result["status"],
-                                       agentic_tps=result.get("agentic_tps"))
+                                       agentic_tps=result.get("agentic_tps"),
+                                       agentic_steps=result.get("steps"),
+                                       agentic_tool_calls=result.get("tool_calls"),
+                                       agentic_plan_revisions=result.get("plan_revisions"),
+                                       agentic_avg_ms=result.get("avg_latency_ms"),
+                                       agentic_p95_ms=result.get("p95_latency_ms"),
+                                       total_prompt_tokens=result.get("total_prompt_tokens"),
+                                       total_completion_tokens=result.get("total_completion_tokens"))
                     await broadcast(s, {"type": "config_done", "run_id": run_id, "index": i,
                                         "result": result, "flag_conf": cfg.get("flags", {})})
                     if result["status"] == "aborted":

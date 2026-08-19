@@ -74,6 +74,13 @@ function toResultRow(r: RunDetail["results"][number]): ResultRow {
     prompt_processing_tps: r.prompt_processing_tps ?? null,
     decode_tps: r.decode_tps ?? null,
     agentic_tps: r.agentic_tps ?? null,
+    agentic_steps: r.agentic_steps ?? null,
+    agentic_tool_calls: r.agentic_tool_calls ?? null,
+    agentic_plan_revisions: r.agentic_plan_revisions ?? null,
+    agentic_avg_ms: r.agentic_avg_ms ?? null,
+    agentic_p95_ms: r.agentic_p95_ms ?? null,
+    total_prompt_tokens: r.total_prompt_tokens ?? null,
+    total_completion_tokens: r.total_completion_tokens ?? null,
     result_status: r.result_status ?? null,
   };
 }
@@ -263,7 +270,7 @@ export function App() {
       weights_bytes: analysis.weights_bytes,
       ram_gb: (hardware.ram_total_gb as number) ?? 0,
       model_arch: analysis.model_arch,
-      bench_tool: analysis.readme_has_serving_command === false ? benchTool : undefined,
+      bench_tool: benchTool,
     });
     setConfigs(data.configs);
   }, [analysis, hardware, server, benchTool]);
@@ -627,7 +634,6 @@ export function App() {
                 speedBenchInfo={speedBenchInfo}
                 benchTool={benchTool}
                 onBenchToolChange={setBenchTool}
-                showBenchToolSelector={!hasServingCommand}
               />
 
               <RunPanel
@@ -643,6 +649,7 @@ export function App() {
                         promptTps: progressState.promptTps,
                         decodeTps: progressState.decodeTps,
                         agenticTps: progressState.agenticTps,
+                        agenticDetail: progressState.agenticDetail,
                       }
                     : null
                 }

@@ -5,7 +5,8 @@
     "run": "03 · RUN",
     "resultsRanked": "05 · RESULTS — RANKED",
     "downloaded": "DOWNLOADED",
-    "resultsAllRuns": "RESULTS · ALL RUNS"
+    "resultsAllRuns": "RESULTS · ALL RUNS",
+    "agenticSession": "AGENTIC SESSION"
   },
   "common": {
     "analyze": "ANALYZE",
@@ -92,7 +93,13 @@
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
     "decodeStage": "DECODE STAGE · t/s",
-    "agentic": "AGENTIC · t/s"
+    "agentic": "AGENTIC · t/s",
+    "agenticSteps": "{{count}} steps",
+    "agenticToolCalls": "{{count}} tool calls",
+    "agenticPlanRevs": "{{count}} plan revs",
+    "agenticAvg": "avg {{s}}s",
+    "agenticP95": "p95 {{s}}s",
+    "agenticCtx": "ctx {{k}}k"
   },
   "confirm": {
     "removeModel": "Remove {{model}} from the HF cache?",
