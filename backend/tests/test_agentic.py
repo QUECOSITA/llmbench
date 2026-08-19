@@ -29,6 +29,19 @@ class FakeClock:
         return self.t
 
 
+class StepClock:
+    """Monotonic clock that advances by a fixed increment each call, so a
+    cooperative session budget can be exercised deterministically."""
+
+    def __init__(self, inc=1.0):
+        self.inc = inc
+        self.t = 0.0
+
+    def __call__(self):
+        self.t += self.inc
+        return self.t
+
+
 def _plan_handler(requests):
     def handler(request):
         body = json.loads(request.content)
@@ -80,6 +93,29 @@ async def test_run_agent_session_budget_exhausted(monkeypatch):
     assert result["status"] == "ok"
     assert result["finished"] is False
     assert result["steps"] == 2
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_returns_partial_metrics_on_timeout(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", StepClock(inc=1.0))
+
+    def handler(request):
+        return httpx.Response(200, json=_resp(
+            {"role": "assistant", "content": None,
+             "tool_calls": [_tool_call("read_file", {"path": "a.py"})]}))
+
+    transport = httpx.MockTransport(handler)
+    result = await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=10, max_tokens=4096,
+        task="codebase_refactor", timeout_s=3.0, transport=transport)
+    assert result["status"] == "ok"
+    assert result["finished"] is False
+    assert result["timed_out"] is True
+    assert result["steps"] == 1
+    assert result["tool_calls"] == 1
+    assert result["total_prompt_tokens"] == 10
+    assert result["total_completion_tokens"] == 4
+    assert result["agentic_tps"] is not None
 
 
 @pytest.mark.asyncio

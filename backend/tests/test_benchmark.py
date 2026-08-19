@@ -211,6 +211,8 @@ async def test_runner_abort_mid_run_kills_proc(monkeypatch):
 
 import json
 
+import pytest
+
 import app.benchmark as bench_mod
 from app.benchmark import parse_speed_bench_json, SpeedBenchRunner, AgenticRunner
 
@@ -513,7 +515,8 @@ async def test_agentic_runner_ok(monkeypatch, tmp_path):
     monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
 
     async def fake_session(base_url, model, steps, max_tokens, task,
-                           on_output=None, request_timeout=120.0, transport=None):
+                           on_output=None, request_timeout=120.0, transport=None,
+                           timeout_s=None):
         return dict(AGENTIC_SESSION_RESULT)
 
     monkeypatch.setattr(agentic_mod, "run_agent_session", fake_session)
@@ -619,7 +622,8 @@ async def test_agentic_runner_abort_mid_session_reports_aborted(monkeypatch, tmp
         workload_file=str(tmp_path / "p.jsonl"))
 
     async def aborting_session(base_url, model, steps, max_tokens, task,
-                               on_output=None, request_timeout=120.0, transport=None):
+                               on_output=None, request_timeout=120.0, transport=None,
+                               timeout_s=None):
         runner.abort()
         raise RuntimeError("server killed by abort")
 
@@ -631,3 +635,74 @@ async def test_agentic_runner_abort_mid_session_reports_aborted(monkeypatch, tmp
     result = await runner.run()
     assert result["status"] == "aborted"
     assert result["agentic_tps"] is None
+
+
+def _agentic_runner(server_command, params, timeout_s=300.0):
+    return AgenticRunner(
+        server_command=server_command,
+        params=params,
+        timeout_s=timeout_s,
+        startup_timeout_s=60,
+        workload_file="/tmp/does-not-matter.jsonl",
+    )
+
+
+def test_agentic_session_budget_scales_with_workload():
+    default = _agentic_runner(["llama-server", "-m", "/models/x.gguf"], {})
+    small = _agentic_runner(
+        ["llama-server", "-m", "/models/x.gguf", "--ctx-size", "4096"],
+        {"steps": "2", "max_tokens": "512"})
+    large = _agentic_runner(
+        ["llama-server", "-m", "/models/x.gguf", "--ctx-size", "131072"],
+        {"steps": "10", "max_tokens": "4096"})
+    assert small.session_budget_s < default.session_budget_s < large.session_budget_s
+
+
+def test_agentic_session_budget_never_below_base_and_bounded():
+    runner = _agentic_runner(
+        ["llama-server", "-m", "/models/x.gguf", "--ctx-size", "131072"],
+        {"steps": "10", "max_tokens": "4096"}, timeout_s=120.0)
+    assert runner.session_budget_s >= 120.0
+    assert runner.session_budget_s <= bench_mod._AGENTIC_ABSOLUTE_MAX_S
+
+
+def test_agentic_session_budget_default_without_ctx_size():
+    runner = _agentic_runner(["llama-server", "-m", "/models/x.gguf"], {})
+    expected = 120.0 + (10 * 4096) / (10.0 * 4.0)
+    assert runner.session_budget_s == pytest.approx(expected)
+
+
+async def test_agentic_runner_surfaces_partial_timed_out_session_as_ok(monkeypatch, tmp_path):
+    async def fake_health(*a, **k):
+        return True
+
+    async def fake_create(*a, **k):
+        return FakeProc(b"")
+
+    async def fake_probe(**kwargs):
+        return True
+
+    partial = dict(AGENTIC_SESSION_RESULT)
+    partial["finished"] = False
+    partial["timed_out"] = True
+
+    async def partial_session(base_url, model, steps, max_tokens, task,
+                              on_output=None, request_timeout=120.0, transport=None,
+                              timeout_s=None):
+        return partial
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+    monkeypatch.setattr(agentic_mod, "run_agent_session", partial_session)
+    monkeypatch.setattr(agentic_mod, "probe_tool_calling", fake_probe)
+
+    runner = AgenticRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf"],
+        params={"model": "x.gguf"}, timeout_s=60, startup_timeout_s=5,
+        workload_file=str(tmp_path / "p.jsonl"))
+    result = await runner.run()
+    assert result["status"] == "ok"
+    assert result["agentic_tps"] == 25.0
+    assert result["timed_out"] is True
+    assert result["steps"] == 6

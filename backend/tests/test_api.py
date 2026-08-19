@@ -1983,12 +1983,13 @@ def test_start_run_agentic_persists_agentic_tps(client, monkeypatch, tmp_path):
         return True
 
     async def fake_session(base_url, model, steps, max_tokens, task,
-                           on_output=None, request_timeout=120.0, transport=None):
+                           on_output=None, request_timeout=120.0, transport=None,
+                           timeout_s=None):
         return {"agentic_tps": 25.0, "prompt_processing_tps": None, "decode_tps": None,
                 "total_prompt_tokens": 9000, "total_completion_tokens": 1600,
                 "total_wall_s": 64.0, "steps": 6, "tool_calls": 9,
                 "plan_revisions": 1, "avg_latency_ms": 1200.0, "p95_latency_ms": 3400.0,
-                "finished": True, "transcript": []}
+                "finished": True, "timed_out": False, "transcript": []}
 
     async def fake_probe(**kwargs):
         return True

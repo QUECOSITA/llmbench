@@ -239,9 +239,16 @@ async def probe_tool_calling(base_url: str, model: str, request_timeout: float =
 
 
 async def run_agent_session(base_url, model, steps, max_tokens, task,
-                            on_output=None, request_timeout=120.0, transport=None):
+                            on_output=None, request_timeout=120.0, transport=None,
+                            timeout_s=None):
     """Run a plan→act agent session. Returns serving-throughput metrics plus a
-    transcript of the whole exchange."""
+    transcript of the whole exchange.
+
+    ``timeout_s`` is a cooperative wall-clock budget for the whole session. When
+    the budget is exhausted before the agent calls ``finish``, the session stops
+    cleanly and returns the metrics gathered so far (with ``finished=False`` and
+    ``timed_out=True``) instead of raising, so a slow model still yields a
+    measurable partial result."""
     scenario = AGENTIC_TASKS.get(task, AGENTIC_TASKS["codebase_refactor"])
     corpus = scenario["corpus"]
     messages = [
@@ -255,10 +262,13 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
     tool_calls = 0
     plan_revisions = 0
     finished = False
+    timed_out = False
     transcript = []
     kwargs = {"base_url": base_url, "timeout": request_timeout}
     if transport is not None:
         kwargs["transport"] = transport
+
+    session_start = time.monotonic()
 
     async def emit(*lines: str) -> None:
         await _emit_lines(on_output, *lines)
@@ -266,6 +276,9 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
     async with httpx.AsyncClient(**kwargs) as client:
         step = 0
         while step < steps:
+            if timeout_s is not None and (time.monotonic() - session_start) >= timeout_s:
+                timed_out = True
+                break
             step += 1
             if step == 1:
                 body = {
@@ -350,7 +363,10 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
             if finished:
                 break
     if not finished:
-        await emit(f"BUDGET exhausted after {step} steps")
+        if timed_out:
+            await emit(f"BUDGET exhausted after {step} steps (session timeout)")
+        else:
+            await emit(f"BUDGET exhausted after {step} steps")
     if latencies_ms:
         latencies_ms.sort()
         avg_latency_ms = sum(latencies_ms) / len(latencies_ms)
@@ -374,5 +390,6 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
         "total_completion_tokens": total_completion_tokens,
         "total_wall_s": total_wall,
         "finished": finished,
+        "timed_out": timed_out,
         "transcript": transcript,
     }

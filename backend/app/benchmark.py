@@ -196,11 +196,24 @@ def _substitute_speed_bench_command(cmd: list[str], port: int, output_path: str)
     return out
 
 
+def _flag_value(cmd: list[str], name: str, default=None):
+    """Return the value following the given --flag in a command token list, or
+    the default if absent. Supports both `--flag value` and `--flag=value`."""
+    for i, tok in enumerate(cmd):
+        if tok == name and i + 1 < len(cmd):
+            return cmd[i + 1]
+        if tok.startswith(name + "="):
+            return tok.partition("=")[2]
+    return default
+
+
 def _decode_parts(parts: list[bytes]) -> str:
     return "\n".join(p.decode(errors="replace") for p in parts if p)
 
 
 _STARTUP_REPORT_S = 10.0
+
+_AGENTIC_ABSOLUTE_MAX_S = 3600.0
 
 
 async def _startup_watchdog(port: int, allowed_s: float, parts: list[bytes],
@@ -420,6 +433,27 @@ class AgenticRunner:
         self._aborted = asyncio.Event()
         self._procs: list[asyncio.subprocess.Process] = []
 
+    @property
+    def session_budget_s(self) -> float:
+        """Wall-clock budget for the agent session, derived from the workload so
+        a large context / large max-tokens / many-step run gets enough time to
+        finish. Never drops below the configured base timeout (self.timeout_s)
+        and never exceeds an absolute cap, so a pathological workload cannot run
+        forever."""
+        from app.agentic import AGENTIC_DEFAULT_MAX_TOKENS, AGENTIC_DEFAULT_STEPS
+        raw_ctx = _flag_value(self.server_command, "--ctx-size", default=None)
+        try:
+            ctx_size = int(raw_ctx) if raw_ctx else 0
+        except (TypeError, ValueError):
+            ctx_size = 0
+        max_tokens = int(self.params.get("max_tokens", AGENTIC_DEFAULT_MAX_TOKENS))
+        steps = int(self.params.get("steps", AGENTIC_DEFAULT_STEPS))
+        floor_tps = 10.0
+        est_decode = steps * max_tokens / (floor_tps * 4.0)
+        est_prompt = steps * ctx_size / (floor_tps * 200.0)
+        derived = 120.0 + est_decode + est_prompt
+        return min(_AGENTIC_ABSOLUTE_MAX_S, max(self.timeout_s, derived))
+
     def abort(self) -> None:
         self._aborted.set()
         for proc in self._procs:
@@ -515,6 +549,7 @@ class AgenticRunner:
                         "duration_s": asyncio.get_event_loop().time() - start,
                         "output": "served model does not support function/tool calling; "
                                   "agentic bench requires it.\n" + _decode_parts(parts)}
+            budget_s = self.session_budget_s
             try:
                 session = await asyncio.wait_for(
                     run_agent_session(
@@ -525,8 +560,9 @@ class AgenticRunner:
                         task=self.params.get("task", "codebase_refactor"),
                         on_output=on_output,
                         request_timeout=self.timeout_s,
+                        timeout_s=budget_s,
                     ),
-                    timeout=self.timeout_s,
+                    timeout=budget_s,
                 )
             except asyncio.TimeoutError:
                 if self._aborted.is_set():
