@@ -40,6 +40,7 @@
     "bankTitle": "02 · KOKOONPANOPANKKI · N = {{n}}",
     "benchTool": "BENCH-TYÖKALU",
     "speedBenchFlags": "SPEED-BENCH-LIPUT",
+    "agenticFlags": "AGENTIC-LIPUT",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all, tai (bench {{bench}}): {{cats}}",
     "limitLine": "--limit: valinnainen kokonaisluku — enintään näytteitä luokkaa kohden"
@@ -74,6 +75,7 @@
     "program": "Ohjelma",
     "promptTps": "PROMPT t/s",
     "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
     "status": "TILA",
     "viewAll": "näytä kaikki ajot →",
     "backToBench": "← takaisin benchiin",
@@ -89,7 +91,8 @@
   },
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
-    "decodeStage": "DECODE STAGE · t/s"
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s"
   },
   "confirm": {
     "removeModel": "Poista {{model}} HF-välimuistista?",

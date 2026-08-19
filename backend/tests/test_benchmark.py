@@ -1,3 +1,5 @@
+import app.agentic as agentic_mod
+
 from app.benchmark import parse_llama_bench_csv
 
 LLAMA_CSV = """\
@@ -210,7 +212,7 @@ async def test_runner_abort_mid_run_kills_proc(monkeypatch):
 import json
 
 import app.benchmark as bench_mod
-from app.benchmark import parse_speed_bench_json, SpeedBenchRunner
+from app.benchmark import parse_speed_bench_json, SpeedBenchRunner, AgenticRunner
 
 SPEED_JSON = json.dumps({
     "summary": [
@@ -464,3 +466,133 @@ async def test_speed_bench_runner_warns_while_server_not_ready(monkeypatch, tmp_
 
     assert result["status"] == "failed"
     assert any("waiting for llama-server" in text for _, text in seen)
+
+
+AGENTIC_SESSION_RESULT = {
+    "agentic_tps": 25.0,
+    "prompt_processing_tps": None,
+    "decode_tps": None,
+    "total_prompt_tokens": 9000,
+    "total_completion_tokens": 1600,
+    "total_wall_s": 64.0,
+    "turns": 4,
+    "per_turn": [],
+}
+
+
+async def test_agentic_runner_ok(monkeypatch, tmp_path):
+    spawned = []
+    procs = []
+    spawn_count = {"n": 0}
+
+    def new_proc(out=b"", rc=0):
+        p = FakeProc(out, rc=rc)
+        procs.append(p)
+        return p
+
+    async def fake_create(*a, **k):
+        spawned.append(a)
+        spawn_count["n"] += 1
+        if spawn_count["n"] == 1:
+            p = new_proc(out=b"")
+            p.returncode = None
+            return p
+        return new_proc(out=b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+
+    async def fake_health(*a, **k):
+        return True
+
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+
+    async def fake_session(base_url, model, turns, max_tokens, prompts,
+                           on_output=None, request_timeout=120.0, transport=None):
+        return dict(AGENTIC_SESSION_RESULT)
+
+    monkeypatch.setattr(agentic_mod, "run_agentic_session", fake_session)
+    monkeypatch.setattr(agentic_mod, "load_workload_prompts", lambda path: ["t"])
+
+    runner = AgenticRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf"],
+        params={"model": "x.gguf", "turns": "4", "max_tokens": "16384"},
+        timeout_s=60, startup_timeout_s=60,
+        workload_file=str(tmp_path / "p.jsonl"))
+    result = await runner.run()
+    assert result["status"] == "ok"
+    assert result["agentic_tps"] == 25.0
+    assert len(spawned) == 1
+    assert "--port" in spawned[0] and "9123" in spawned[0]
+    assert procs[0].killed is True
+
+
+async def test_agentic_runner_server_not_ready(monkeypatch, tmp_path):
+    async def fake_create(*a, **k):
+        return FakeProc(b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+
+    async def fake_health(*a, **k):
+        return False
+
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+
+    runner = AgenticRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf"],
+        params={}, timeout_s=60, startup_timeout_s=5,
+        workload_file=str(tmp_path / "p.jsonl"))
+    result = await runner.run()
+    assert result["status"] == "failed"
+    assert "not become ready" in result["output"]
+
+
+async def test_agentic_runner_session_raises(monkeypatch, tmp_path):
+    async def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    async def fake_health(*a, **k):
+        return True
+
+    async def fake_create(*a, **k):
+        return FakeProc(b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+    monkeypatch.setattr(agentic_mod, "run_agentic_session", boom)
+    monkeypatch.setattr(agentic_mod, "load_workload_prompts", lambda path: ["t"])
+    runner = AgenticRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf"],
+        params={}, timeout_s=60, startup_timeout_s=5,
+        workload_file=str(tmp_path / "p.jsonl"))
+    result = await runner.run()
+    assert result["status"] == "failed"
+
+
+async def test_agentic_runner_abort_mid_session_reports_aborted(monkeypatch, tmp_path):
+    async def fake_health(*a, **k):
+        return True
+
+    async def fake_create(*a, **k):
+        return FakeProc(b"")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+    monkeypatch.setattr(agentic_mod, "load_workload_prompts", lambda path: ["t"])
+    runner = AgenticRunner(
+        server_command=["llama-server", "-m", "/models/x.gguf"],
+        params={}, timeout_s=60, startup_timeout_s=5,
+        workload_file=str(tmp_path / "p.jsonl"))
+
+    async def aborting_session(base_url, model, turns, max_tokens, prompts,
+                               on_output=None, request_timeout=120.0, transport=None):
+        runner.abort()
+        raise RuntimeError("server killed by abort")
+
+    monkeypatch.setattr(agentic_mod, "run_agentic_session", aborting_session)
+    result = await runner.run()
+    assert result["status"] == "aborted"
+    assert result["agentic_tps"] is None

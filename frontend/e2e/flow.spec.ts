@@ -30,6 +30,32 @@ test("full flow: analyze, generate, run, see ranked results", async ({ page }) =
   await expect(page.getByRole("button", { name: /run benchmark/i })).toBeEnabled();
 });
 
+test("agentic flow: pick agentic bench tool, generate, run, and see AGENTIC t/s", async ({ page }) => {
+  await page.goto("http://localhost:5173");
+  await page.getByPlaceholder(/huggingface/i).fill("org/noserve");
+  await page.getByRole("button", { name: /analyze/i }).click();
+  await page.getByRole("button", { name: /YES — DOWNLOAD ANYWAY/i }).waitFor();
+  await page.getByRole("button", { name: /YES — DOWNLOAD ANYWAY/i }).click();
+  const downloadResponse = page.waitForResponse(
+    (r) => r.url().includes("/api/models/download") && r.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await downloadResponse;
+  await page.reload();
+  await expect(page.locator(".downloaded-row", { hasText: "org/noserve" })).toBeVisible();
+
+  await page.getByPlaceholder(/huggingface/i).fill("org/noserve");
+  await page.getByRole("button", { name: /analyze/i }).click();
+  await expect(page.getByText(/may not be loadable by LLMBENCH/i)).toBeVisible();
+  await page.getByRole("combobox", { name: /bench tool/i }).selectOption("agentic");
+  await page.getByRole("button", { name: /generate/i }).click();
+  await expect(page.getByText("AGENTIC", { exact: true })).toBeVisible();
+  await expect(page.getByText(/--turns 4 --max-tokens 16384/i)).toBeVisible();
+
+  await page.getByRole("button", { name: /run benchmark/i }).click();
+  await expect(page.getByRole("cell", { name: "25.0" })).toBeVisible();
+});
+
 test("RUN toggles to CANCEL and back after cancelling", async ({ page }) => {
   await page.goto("http://localhost:5173");
   await page.getByPlaceholder(/huggingface/i).fill("org/model");

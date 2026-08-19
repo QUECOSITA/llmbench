@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS results (
     config_id INTEGER NOT NULL REFERENCES configs(id),
     prompt_processing_tps REAL,
     decode_tps REAL,
+    agentic_tps REAL,
     duration_s REAL,
     output_snippet TEXT,
     status TEXT NOT NULL
@@ -138,6 +139,13 @@ def _repair_configs_fk(conn):
         conn.commit()
 
 
+def _migrate_results_agentic(conn):
+    cols = [row[1] for row in conn.execute("PRAGMA table_info('results')")]
+    if "agentic_tps" not in cols:
+        conn.execute("ALTER TABLE results ADD COLUMN agentic_tps REAL")
+        conn.commit()
+
+
 def init_db(path: str | Path) -> sqlite3.Connection:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
@@ -146,6 +154,7 @@ def init_db(path: str | Path) -> sqlite3.Connection:
     conn.executescript(SCHEMA)
     _migrate_models_table(conn)
     _repair_configs_fk(conn)
+    _migrate_results_agentic(conn)
     conn.executescript(
         "INSERT OR IGNORE INTO servers(id, display_name) VALUES "
         "('llama.cpp','llama.cpp');"
@@ -257,10 +266,13 @@ def list_configs(conn, run_id):
     return out
 
 
-def save_result(conn, config_id, prompt_processing_tps, decode_tps, duration_s, output_snippet, status):
+def save_result(conn, config_id, prompt_processing_tps, decode_tps, duration_s,
+                output_snippet, status, agentic_tps=None):
     conn.execute(
-        "INSERT INTO results(config_id, prompt_processing_tps, decode_tps, duration_s, output_snippet, status) VALUES (?,?,?,?,?,?)",
-        (config_id, prompt_processing_tps, decode_tps, duration_s, output_snippet, status),
+        "INSERT INTO results(config_id, prompt_processing_tps, decode_tps, agentic_tps, "
+        "duration_s, output_snippet, status) VALUES (?,?,?,?,?,?,?)",
+        (config_id, prompt_processing_tps, decode_tps, agentic_tps,
+         duration_s, output_snippet, status),
     )
     conn.commit()
 
@@ -270,9 +282,9 @@ def get_results_for_run(conn, run_id):
         """
         SELECT c.id AS config_id, c.server_id, c.flag_conf_json,
                c.serving_command, r.prompt_processing_tps, r.decode_tps,
-               r.duration_s, r.status AS result_status
+               r.agentic_tps, r.duration_s, r.status AS result_status
         FROM configs c LEFT JOIN results r ON r.config_id = c.id
-        WHERE c.run_id=? ORDER BY r.decode_tps DESC, c.id
+        WHERE c.run_id=? ORDER BY COALESCE(r.agentic_tps, r.decode_tps) DESC, c.id
         """, (run_id,)).fetchall()
     out = []
     for r in rows:

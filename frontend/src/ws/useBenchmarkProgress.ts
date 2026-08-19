@@ -8,7 +8,7 @@ export interface ProgressEvent {
   config?: unknown;
   kind?: "line" | "progress";
   text?: string;
-  result?: { status: string; decode_tps: number | null; prompt_processing_tps: number | null };
+  result?: { status: string; decode_tps: number | null; prompt_processing_tps: number | null; agentic_tps: number | null };
   flag_conf?: Record<string, string>;
   status?: string;
   results?: ResultRow[];
@@ -19,6 +19,7 @@ export interface ResultRow {
   flag_conf: Record<string, string>;
   prompt_processing_tps: number | null;
   decode_tps: number | null;
+  agentic_tps: number | null;
   result_status?: string | null;
 }
 
@@ -29,6 +30,7 @@ export interface ProgressState {
   total: number;
   promptTps: number | null;
   decodeTps: number | null;
+  agenticTps: number | null;
   results: ResultRow[];
   lines: string[];
   currentCommand: string;
@@ -41,6 +43,7 @@ export const INITIAL_STATE: ProgressState = {
   total: 0,
   promptTps: null,
   decodeTps: null,
+  agenticTps: null,
   results: [],
   lines: [],
   currentCommand: "",
@@ -55,6 +58,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       total: event.total ?? 0,
       promptTps: null,
       decodeTps: null,
+      agenticTps: null,
       results: [],
       lines: [],
       currentCommand: "",
@@ -62,7 +66,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
   }
 
   if (event.type === "results_clear") {
-    return { ...state, results: [], promptTps: null, decodeTps: null };
+    return { ...state, results: [], promptTps: null, decodeTps: null, agenticTps: null };
   }
 
   if (event.type === "config_start" && event.run_id === state.runId) {
@@ -91,23 +95,26 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
     const idx = event.index ?? state.index;
     const promptTps = event.result?.prompt_processing_tps ?? null;
     const decodeTps = event.result?.decode_tps ?? null;
+    const agenticTps = event.result?.agentic_tps ?? null;
     const newResult: ResultRow = {
       server_id: "",
       flag_conf: event.flag_conf ?? {},
       prompt_processing_tps: promptTps,
       decode_tps: decodeTps,
+      agentic_tps: agenticTps,
       result_status: event.result?.status ?? null,
     };
     const results = [...state.results];
     results[idx] = newResult;
     const fmt = (v: number | null) => (v == null ? "—" : v.toFixed(1));
-    const resultLine = `PROMPT ${fmt(promptTps)} · DECODE ${fmt(decodeTps)} · ${event.result?.status ?? ""}`;
+    const resultLine = `PROMPT ${fmt(promptTps)} · DECODE ${fmt(decodeTps)} · AGENTIC ${fmt(agenticTps)} · ${event.result?.status ?? ""}`;
     return {
       ...state,
       index: idx,
       total: event.total ?? state.total,
       promptTps,
       decodeTps,
+      agenticTps,
       results,
       lines: [...state.lines, resultLine],
     };
@@ -128,6 +135,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       total: event.total ?? state.total,
       promptTps: last?.prompt_processing_tps ?? null,
       decodeTps: last?.decode_tps ?? null,
+      agenticTps: last?.agentic_tps ?? null,
       results,
     };
   }
@@ -142,6 +150,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       total: event.total ?? state.total,
       promptTps: last?.prompt_processing_tps ?? null,
       decodeTps: last?.decode_tps ?? null,
+      agenticTps: last?.agentic_tps ?? null,
       results,
       lines: state.lines,
       currentCommand: state.currentCommand,

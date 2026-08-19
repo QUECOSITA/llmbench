@@ -40,6 +40,7 @@
     "bankTitle": "02 · KONFIGURATIONSBANK · N = {{n}}",
     "benchTool": "BENCH-VERKTYG",
     "speedBenchFlags": "SPEED-BENCH-FLAGGOR",
+    "agenticFlags": "AGENTIC-FLAGGOR",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all, eller (för bench {{bench}}): {{cats}}",
     "limitLine": "--limit: valfritt heltal — max prover per kategori"
@@ -74,6 +75,7 @@
     "program": "Program",
     "promptTps": "PROMPT t/s",
     "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
     "status": "STATUS",
     "viewAll": "visa alla körningar →",
     "backToBench": "← tillbaka till bench",
@@ -89,7 +91,8 @@
   },
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
-    "decodeStage": "DECODE STAGE · t/s"
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s"
   },
   "confirm": {
     "removeModel": "Ta bort {{model}} från HF-cachen?",

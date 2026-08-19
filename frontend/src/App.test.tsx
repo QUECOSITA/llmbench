@@ -264,6 +264,7 @@ test("completed run populates ranked results and re-enables RUN", async () => {
         serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
         prompt_processing_tps: 100.0,
         decode_tps: 42.0,
+        agentic_tps: null,
       },
     ],
   });
@@ -310,6 +311,7 @@ test("409 already-running switches into watch mode showing the live run", async 
         serving_command: "llama-server --hf-repo org/other --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
         prompt_processing_tps: 100.0,
         decode_tps: 42.0,
+        agentic_tps: null,
       },
     ],
   });
@@ -1002,6 +1004,7 @@ test("CLEAR empties the ranked results table", async () => {
         serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
         prompt_processing_tps: 100.0,
         decode_tps: 42.0,
+        agentic_tps: null,
       },
     ],
   });
@@ -1051,6 +1054,7 @@ test("restores the latest completed run's results on load and shows CLEAR", asyn
       serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
       prompt_processing_tps: 100.0,
       decode_tps: 42.0,
+      agentic_tps: null,
     }],
   });
 

@@ -338,3 +338,71 @@ def test_repair_configs_fk_noop_on_healthy_db(tmp_path):
     fk_tables = {row[2] for row in conn.execute("PRAGMA foreign_key_list('configs')")}
     assert fk_tables == {"runs", "models"}
     conn.close()
+
+
+def test_migrate_results_adds_agentic_tps(tmp_path):
+    db_path = tmp_path / "legacy-results.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        """
+        CREATE TABLE servers (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
+        CREATE TABLE models (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id TEXT NOT NULL,
+            server_id TEXT NOT NULL, format TEXT NOT NULL, local_path TEXT NOT NULL,
+            status TEXT NOT NULL, gguf_filename TEXT, size_bytes INTEGER, downloaded_at TEXT);
+        CREATE TABLE runs (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id TEXT NOT NULL,
+            requested_n INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            status TEXT NOT NULL DEFAULT 'queued');
+        CREATE TABLE configs (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL REFERENCES runs(id), server_id TEXT NOT NULL,
+            model_id INTEGER REFERENCES models(id), flag_conf_json TEXT NOT NULL,
+            serving_command TEXT NOT NULL, bench_command TEXT NOT NULL);
+        CREATE TABLE results (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            config_id INTEGER NOT NULL REFERENCES configs(id),
+            prompt_processing_tps REAL, decode_tps REAL, duration_s REAL,
+            output_snippet TEXT, status TEXT NOT NULL);
+        """
+    )
+    conn.execute("INSERT INTO runs(repo_id, requested_n) VALUES ('org/model', 1)")
+    conn.execute(
+        "INSERT INTO configs(run_id, server_id, model_id, flag_conf_json, serving_command, bench_command) "
+        "VALUES (1, 'llama.cpp', NULL, '[]', 'serve', 'bench')"
+    )
+    conn.execute(
+        "INSERT INTO results(config_id, prompt_processing_tps, decode_tps, duration_s, output_snippet, status) "
+        "VALUES (1, 1200.0, 86.4, 30.0, '', 'ok')"
+    )
+    conn.commit()
+    conn.close()
+
+    conn = init_db(db_path)
+    cols = [row[1] for row in conn.execute("PRAGMA table_info('results')")]
+    assert "agentic_tps" in cols
+    rows = get_results_for_run(conn, 1)
+    assert rows[0]["agentic_tps"] is None
+    assert rows[0]["decode_tps"] == 86.4
+    conn.close()
+
+
+def test_save_and_rank_by_agentic_tps(tmp_path):
+    conn = init_db(tmp_path / "test.db")
+    upsert_model(conn, repo_id="org/model", server_id="llama.cpp", format="hf",
+                 local_path="/x", status="downloaded")
+    run_id = create_run(conn, repo_id="org/model", requested_n=2)
+    slow_agentic = create_config(conn, run_id=run_id, server_id="llama.cpp", model_id=1,
+                                 flag_conf_json=[], serving_command="s", bench_command="b")
+    fast_agentic = create_config(conn, run_id=run_id, server_id="llama.cpp", model_id=1,
+                                 flag_conf_json=[], serving_command="s", bench_command="b")
+    raw_fast = create_config(conn, run_id=run_id, server_id="llama.cpp", model_id=1,
+                             flag_conf_json=[], serving_command="s", bench_command="b")
+    save_result(conn, config_id=slow_agentic, prompt_processing_tps=None, decode_tps=None,
+                duration_s=64.0, output_snippet="", status="ok", agentic_tps=20.0)
+    save_result(conn, config_id=fast_agentic, prompt_processing_tps=None, decode_tps=None,
+                duration_s=64.0, output_snippet="", status="ok", agentic_tps=50.0)
+    save_result(conn, config_id=raw_fast, prompt_processing_tps=2000.0, decode_tps=90.0,
+                duration_s=30.0, output_snippet="", status="ok")
+    results = get_results_for_run(conn, run_id)
+    assert [r["config_id"] for r in results] == [raw_fast, fast_agentic, slow_agentic]
+    assert results[0]["agentic_tps"] is None
+    assert results[0]["decode_tps"] == 90.0
+    assert results[1]["agentic_tps"] == 50.0
+    conn.close()

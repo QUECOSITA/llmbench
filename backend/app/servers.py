@@ -312,6 +312,68 @@ def build_speed_bench_command(script: str, flags: list[str], url: str = "localho
     return [sys.executable, script, *flags, "--url", url, "--output", output]
 
 
+AGENTIC_CLI_FLAGS = ("--turns", "--max-tokens")
+
+
+def agentic_default_flags(turns: int = 4, max_tokens: int = 16384) -> str:
+    return f"--turns {turns} --max-tokens {max_tokens}"
+
+
+def parse_agentic_flags(text: str) -> list[str]:
+    """Split the user-edited agentic flags string into tokens. Drop any leading
+    bare tokens and normalize --flag=value."""
+    tokens = _split_command(text)
+    while tokens and not tokens[0].startswith("-"):
+        tokens = tokens[1:]
+    out: list[str] = []
+    for tok in tokens:
+        if tok.startswith("--") and "=" in tok:
+            name, _, value = tok.partition("=")
+            if value.startswith("-"):
+                out.append(tok)
+            else:
+                out.extend([name, value])
+        else:
+            out.append(tok)
+    return out
+
+
+def validate_agentic_flags(flags: list[str]) -> str | None:
+    """Return an error message for invalid agentic flags, or None if valid."""
+    parsed: dict[str, int] = {}
+    i = 0
+    while i < len(flags):
+        tok = flags[i]
+        if not tok.startswith("-"):
+            return f"unexpected token '{tok}'"
+        name = tok
+        value = None
+        if tok.startswith("--") and "=" in tok:
+            name, _, value = tok.partition("=")
+        elif i + 1 < len(flags) and not flags[i + 1].startswith("-"):
+            value = flags[i + 1]
+            i += 1
+        if name not in AGENTIC_CLI_FLAGS:
+            return (f"unknown agentic flag '{name}'; allowed: "
+                    + ", ".join(AGENTIC_CLI_FLAGS))
+        if value is None:
+            return f"flag '{name}' requires a value"
+        try:
+            parsed[name] = int(value)
+        except (TypeError, ValueError):
+            return f"flag '{name}' requires an integer value"
+        if name == "--turns" and not (1 <= parsed[name] <= 20):
+            return "'--turns' must be between 1 and 20"
+        if name == "--max-tokens" and not (1 <= parsed[name] <= 32768):
+            return "'--max-tokens' must be between 1 and 32768"
+        i += 1
+    return None
+
+
+def build_agentic_command(model_ref: str, flags: list[str]) -> list[str]:
+    return ["agentic", "--model", model_ref, *flags]
+
+
 def build_server_command(serving_command: str, bin_dir: str | None = None) -> list[str]:
     """Turn the editable llama-server serving command into an executable token
     list: swap in the resolved binary and drop --port/--host (the runner injects

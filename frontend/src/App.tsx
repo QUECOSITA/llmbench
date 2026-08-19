@@ -73,6 +73,7 @@ function toResultRow(r: RunDetail["results"][number]): ResultRow {
     flag_conf: r.flag_conf ?? {},
     prompt_processing_tps: r.prompt_processing_tps ?? null,
     decode_tps: r.decode_tps ?? null,
+    agentic_tps: r.agentic_tps ?? null,
     result_status: r.result_status ?? null,
   };
 }
@@ -103,7 +104,7 @@ export function App() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [server, setServer] = useState<string>("");
   const [n, setN] = useState(1);
-  const [benchTool, setBenchTool] = useState<"llama-bench" | "speed-bench">("llama-bench");
+  const [benchTool, setBenchTool] = useState<"llama-bench" | "speed-bench" | "agentic">("llama-bench");
   const [configs, setConfigs] = useState<ConfigRow[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -641,6 +642,7 @@ export function App() {
                         total: progressState.total,
                         promptTps: progressState.promptTps,
                         decodeTps: progressState.decodeTps,
+                        agenticTps: progressState.agenticTps,
                       }
                     : null
                 }

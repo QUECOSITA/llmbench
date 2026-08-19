@@ -10,6 +10,8 @@ from app.servers import (is_spec_decoding_model, resolve_serving_binary, resolve
                          build_server_command, build_speed_bench_command, speed_bench_deps_available,
                          parse_speed_bench_flags, validate_speed_bench_flags, speed_bench_default_flags,
                          ensure_speed_bench_script, _split_command)
+from app.servers import (agentic_default_flags, build_agentic_command,
+                         parse_agentic_flags, validate_agentic_flags)
 
 
 def test_detect_finds_llama_bench(monkeypatch):
@@ -578,3 +580,50 @@ def test_build_bench_command_excludes_load_mode_and_no_mmproj(tmp_path):
     assert "--load-mode" not in cmd
     assert "--no-mmproj" not in cmd
     assert cmd[cmd.index("--fit-ctx") + 1] == "4096"
+
+
+def test_agentic_default_flags():
+    assert agentic_default_flags() == "--turns 4 --max-tokens 16384"
+    assert agentic_default_flags(turns=6, max_tokens=8192) == "--turns 6 --max-tokens 8192"
+
+
+def test_parse_agentic_flags():
+    assert parse_agentic_flags("--turns 4 --max-tokens 16384") == ["--turns", "4", "--max-tokens", "16384"]
+    assert parse_agentic_flags("agentic --turns 6 --max-tokens=8192") == ["--turns", "6", "--max-tokens", "8192"]
+    assert parse_agentic_flags("  ") == []
+
+
+def test_validate_agentic_flags_valid():
+    assert validate_agentic_flags(["--turns", "4", "--max-tokens", "16384"]) is None
+
+
+def test_validate_agentic_flags_unknown_flag():
+    err = validate_agentic_flags(["--foo", "1"])
+    assert err is not None and "unknown agentic flag '--foo'" in err
+
+
+def test_validate_agentic_flags_missing_value():
+    err = validate_agentic_flags(["--turns"])
+    assert err is not None and "requires a value" in err
+
+
+def test_validate_agentic_flags_non_int():
+    err = validate_agentic_flags(["--turns", "abc"])
+    assert err is not None and "integer" in err
+
+
+def test_validate_agentic_flags_out_of_range():
+    assert validate_agentic_flags(["--turns", "0", "--max-tokens", "1"]) is not None
+    assert validate_agentic_flags(["--turns", "21", "--max-tokens", "1"]) is not None
+    assert validate_agentic_flags(["--turns", "4", "--max-tokens", "0"]) is not None
+    assert validate_agentic_flags(["--turns", "4", "--max-tokens", "32769"]) is not None
+
+
+def test_validate_agentic_flags_bare_token():
+    err = validate_agentic_flags(["--turns", "4", "stray"])
+    assert err is not None and "unexpected token 'stray'" in err
+
+
+def test_build_agentic_command():
+    cmd = build_agentic_command("org/model", ["--turns", "4", "--max-tokens", "16384"])
+    assert cmd == ["agentic", "--model", "org/model", "--turns", "4", "--max-tokens", "16384"]

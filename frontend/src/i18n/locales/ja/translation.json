@@ -40,6 +40,7 @@
     "bankTitle": "02 · 構成バンク · N = {{n}}",
     "benchTool": "BENCH ツール",
     "speedBenchFlags": "SPEED-BENCH フラグ",
+    "agenticFlags": "AGENTIC フラグ",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all、または（{{bench}} ベンチの場合）: {{cats}}",
     "limitLine": "--limit: 任意の整数 — カテゴリあたりの最大サンプル数"
@@ -74,6 +75,7 @@
     "program": "プログラム",
     "promptTps": "PROMPT t/s",
     "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
     "status": "ステータス",
     "viewAll": "すべての実行を見る →",
     "backToBench": "← ベンチに戻る",
@@ -89,7 +91,8 @@
   },
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
-    "decodeStage": "DECODE STAGE · t/s"
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s"
   },
   "confirm": {
     "removeModel": "HF キャッシュから {{model}} を削除しますか？",

@@ -40,6 +40,7 @@
     "bankTitle": "02 · 구성 뱅크 · N = {{n}}",
     "benchTool": "BENCH 도구",
     "speedBenchFlags": "SPEED-BENCH 플래그",
+    "agenticFlags": "AGENTIC 플래그",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all 또는 ({{bench}} 벤치의 경우): {{cats}}",
     "limitLine": "--limit: 선택 정수 — 카테고리당 최대 샘플 수"
@@ -74,6 +75,7 @@
     "program": "프로그램",
     "promptTps": "PROMPT t/s",
     "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
     "status": "상태",
     "viewAll": "전체 실행 보기 →",
     "backToBench": "← 벤치로 돌아가기",
@@ -89,7 +91,8 @@
   },
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
-    "decodeStage": "DECODE STAGE · t/s"
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s"
   },
   "confirm": {
     "removeModel": "HF 캐시에서 {{model}}을(를) 제거할까요?",

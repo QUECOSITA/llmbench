@@ -113,6 +113,7 @@ export interface RunDetail {
     serving_command?: string;
     prompt_processing_tps: number | null;
     decode_tps: number | null;
+    agentic_tps: number | null;
     duration_s?: number | null;
     result_status?: string;
   }>;

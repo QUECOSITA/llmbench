@@ -1878,3 +1878,140 @@ def test_generate_configs_fit_uses_resolved_gguf_size(client, tmp_path):
     assert r.status_code == 200
     fit = r.json()["configs"][0]["fit"]
     assert fit["weights_gb"] == 3.0
+
+
+def test_generate_configs_agentic_builds_agentic_command(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 2, "vram_gb": 24.0,
+        "readme_flags": {}, "bench_tool": "agentic",
+    })
+    assert r.status_code == 200
+    for cfg in r.json()["configs"]:
+        assert cfg["bench_tool"] == "agentic"
+        assert cfg["bench_flags"] == "--turns 4 --max-tokens 16384"
+        assert cfg["bench_command"][0] == "agentic"
+        assert cfg["bench_command"][cfg["bench_command"].index("--model") + 1] == "org/model"
+
+
+def test_generate_configs_agentic_invalid_flags_sets_bench_error(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1, "vram_gb": 24.0,
+        "readme_flags": {}, "bench_tool": "agentic", "bench_flags": "--turns abc",
+    })
+    assert r.status_code == 200
+    assert "integer" in r.json()["configs"][0]["bench_error"]
+
+
+def test_rebuild_bench_command_agentic(tmp_path, monkeypatch):
+    from app.api import _rebuild_bench_command, AppState
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "llama-server").write_text("#!/bin/sh\n")
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl",
+                        llama_cpp_bin_dir=bin_dir)
+    (tmp_path / "prompts.jsonl").write_text("x\n")
+    s = AppState(settings)
+    cfg = {
+        "server_id": "llama.cpp",
+        "bench_tool": "agentic",
+        "serving_command": "llama-server -m /models/x.gguf --port 9999 --host 0.0.0.0",
+        "flags": {},
+        "bench_flags": "--turns 4 --max-tokens 8192",
+        "bench_command": [],
+    }
+    _rebuild_bench_command(s, cfg, "org/model")
+    assert cfg["server_command"][0] == str(bin_dir / "llama-server")
+    assert "--port" not in cfg["server_command"]
+    assert cfg["bench_command"][0] == "agentic"
+    assert cfg["agentic_params"]["turns"] == "4"
+    assert cfg["agentic_params"]["max_tokens"] == "8192"
+    assert cfg["agentic_params"]["model"] == "/models/x.gguf"
+    assert "bench_error" not in cfg
+
+
+def test_rebuild_bench_command_agentic_invalid_flags(tmp_path):
+    from app.api import _rebuild_bench_command, AppState
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl")
+    (tmp_path / "prompts.jsonl").write_text("x\n")
+    s = AppState(settings)
+    cfg = {
+        "server_id": "llama.cpp",
+        "bench_tool": "agentic",
+        "serving_command": "llama-server -m /models/x.gguf",
+        "flags": {},
+        "bench_flags": "--turns foo",
+        "bench_command": [],
+    }
+    _rebuild_bench_command(s, cfg, "org/model")
+    assert cfg["bench_command"] == []
+    assert "integer" in cfg["bench_error"]
+
+
+def test_rebuild_bench_command_agentic_missing_flag_uses_default(tmp_path):
+    from app.api import _rebuild_bench_command, AppState
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl",
+                        agentic_turns=4, agentic_max_tokens=16384)
+    (tmp_path / "prompts.jsonl").write_text("x\n")
+    s = AppState(settings)
+    cfg = {
+        "server_id": "llama.cpp",
+        "bench_tool": "agentic",
+        "serving_command": "llama-server -m /models/x.gguf",
+        "flags": {},
+        "bench_flags": "--turns 4",
+        "bench_command": [],
+    }
+    _rebuild_bench_command(s, cfg, "org/model")
+    assert cfg["agentic_params"]["turns"] == "4"
+    assert cfg["agentic_params"]["max_tokens"] == "16384"
+
+
+def test_start_run_agentic_persists_agentic_tps(client, monkeypatch, tmp_path):
+    import app.agentic as agentic_mod
+    from app import benchmark as bench_mod
+
+    async def fake_create(*a, **k):
+        return FakeProcess(b"")
+
+    async def fake_health(*a, **k):
+        return True
+
+    async def fake_session(base_url, model, turns, max_tokens, prompts,
+                           on_output=None, request_timeout=120.0, transport=None):
+        return {"agentic_tps": 25.0, "prompt_processing_tps": None, "decode_tps": None,
+                "total_prompt_tokens": 9000, "total_completion_tokens": 1600,
+                "total_wall_s": 64.0, "turns": 4, "per_turn": []}
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(bench_mod, "_free_port", lambda: 9123)
+    monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
+    monkeypatch.setattr(agentic_mod, "run_agentic_session", fake_session)
+    monkeypatch.setattr(agentic_mod, "load_workload_prompts", lambda path: ["t"])
+
+    cfg = {
+        "server_id": "llama.cpp",
+        "bench_tool": "agentic",
+        "flags": {},
+        "model_id": None,
+        "serving_command": "llama-server -m /models/x.gguf",
+        "bench_flags": "--turns 4 --max-tokens 16384",
+        "bench_command": [],
+    }
+    r = client.post("/api/benchmarks", json={"repo_id": "org/model", "configs": [cfg]})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    def results():
+        return client.get(f"/api/benchmarks/{run_id}").json()["results"]
+
+    assert _poll(lambda: bool(results()))
+    rows = results()
+    assert rows[0]["result_status"] == "ok"
+    assert rows[0]["agentic_tps"] == 25.0
+    assert rows[0]["decode_tps"] is None

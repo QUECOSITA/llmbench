@@ -10,7 +10,7 @@ test("run_started initializes state and clears previous results", () => {
     ...INITIAL_STATE,
     running: true,
     runId: 1,
-    results: [{ server_id: "llama.cpp", flag_conf: {}, prompt_processing_tps: 10, decode_tps: 5 }],
+    results: [{ server_id: "llama.cpp", flag_conf: {}, prompt_processing_tps: 10, decode_tps: 5, agentic_tps: null }],
   };
   const next = progressReducer(prev, ev("run_started", 2, { total: 3 }));
   expect(next.running).toBe(true);
@@ -25,7 +25,7 @@ test("config_done for matching run_id updates progress and results", () => {
   const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 2 }));
   const next = progressReducer(state, ev("config_done", 1, {
     index: 0,
-    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0 },
+    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0, agentic_tps: null },
   }));
   expect(next.index).toBe(0);
   expect(next.decodeTps).toBe(42.0);
@@ -37,7 +37,7 @@ test("config_done keeps result_status on the row", () => {
   const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
   const next = progressReducer(state, ev("config_done", 1, {
     index: 0,
-    result: { status: "failed", decode_tps: null, prompt_processing_tps: null },
+    result: { status: "failed", decode_tps: null, prompt_processing_tps: null, agentic_tps: null },
   }));
   expect(next.results[0].result_status).toBe("failed");
   expect(next.decodeTps).toBeNull();
@@ -48,7 +48,7 @@ test("config_done carries flag_conf into the result row when provided", () => {
   const next = progressReducer(state, ev("config_done", 1, {
     index: 0,
     flag_conf: { "--ctx-size": "54000" },
-    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0 },
+    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0, agentic_tps: null },
   }));
   expect(next.results[0].flag_conf).toEqual({ "--ctx-size": "54000" });
 });
@@ -57,9 +57,19 @@ test("config_done defaults flag_conf to empty when not provided", () => {
   const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
   const next = progressReducer(state, ev("config_done", 1, {
     index: 0,
-    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0 },
+    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0, agentic_tps: null },
   }));
   expect(next.results[0].flag_conf).toEqual({});
+});
+
+test("config_done carries agentic_tps into live agenticTps and the result row", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const next = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    result: { status: "ok", decode_tps: 10.0, prompt_processing_tps: 100.0, agentic_tps: 25.0 },
+  }));
+  expect(next.agenticTps).toBe(25.0);
+  expect(next.results[0].agentic_tps).toBe(25.0);
 });
 
 test("run_done for matching run_id stops running", () => {
@@ -76,12 +86,13 @@ test("run_sync replaces results and stops running", () => {
     status: "completed",
     total: 2,
     results: [
-      { server_id: "llama.cpp", flag_conf: { "--max-model-len": "8192" }, prompt_processing_tps: 100.0, decode_tps: 42.0 },
+      { server_id: "llama.cpp", flag_conf: { "--max-model-len": "8192" }, prompt_processing_tps: 100.0, decode_tps: 42.0, agentic_tps: 25.0 },
     ],
   });
   expect(next.running).toBe(false);
   expect(next.results).toHaveLength(1);
   expect(next.results[0].decode_tps).toBe(42.0);
+  expect(next.agenticTps).toBe(25.0);
   expect(next.index).toBe(1);
   expect(next.total).toBe(2);
 });
@@ -104,14 +115,14 @@ test("events for different run_id are ignored (stale replay protection)", () => 
   // Run 1 config_done
   const state2 = progressReducer(state1, ev("config_done", 1, {
     index: 0,
-    result: { status: "ok", decode_tps: 10.0, prompt_processing_tps: null },
+    result: { status: "ok", decode_tps: 10.0, prompt_processing_tps: null, agentic_tps: null },
   }));
   // Run 2 starts — should clear run 1 data
   const state3 = progressReducer(state2, ev("run_started", 2, { total: 1 }));
   // Run 1 config_done arrives late — should be ignored (run_id mismatch)
   const state4 = progressReducer(state3, ev("config_done", 1, {
     index: 0,
-    result: { status: "ok", decode_tps: 10.0, prompt_processing_tps: null },
+    result: { status: "ok", decode_tps: 10.0, prompt_processing_tps: null, agentic_tps: null },
   }));
   expect(state4.runId).toBe(2);
   expect(state4.results).toEqual([]);
@@ -122,7 +133,7 @@ test("run_started followed by late config_done (missed run_started) still works"
   // Simulate a WS that missed run_started but got config_done
   const state1 = progressReducer(INITIAL_STATE, ev("config_done", 3, {
     index: 0,
-    result: { status: "ok", decode_tps: 20.0, prompt_processing_tps: null },
+    result: { status: "ok", decode_tps: 20.0, prompt_processing_tps: null, agentic_tps: null },
   }));
   // run_id is null, so config_done with run_id=3 is ignored (run_id mismatch)
   expect(state1.results).toEqual([]);
@@ -132,7 +143,7 @@ test("run_started followed by late config_done (missed run_started) still works"
   // Config done for run 3 now works
   const state3 = progressReducer(state2, ev("config_done", 3, {
     index: 0,
-    result: { status: "ok", decode_tps: 20.0, prompt_processing_tps: null },
+    result: { status: "ok", decode_tps: 20.0, prompt_processing_tps: null, agentic_tps: null },
   }));
   expect(state3.decodeTps).toBe(20.0);
   expect(state3.results.length).toBe(1);
@@ -142,7 +153,7 @@ test("results_clear empties results and live metrics", () => {
   let state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
   state = progressReducer(state, ev("config_done", 1, {
     index: 0,
-    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0 },
+    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0, agentic_tps: null },
   }));
   expect(state.results).toHaveLength(1);
   const next = progressReducer(state, { type: "results_clear" });
@@ -200,10 +211,11 @@ test("config_done appends a result line", () => {
   const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
   const next = progressReducer(state, ev("config_done", 1, {
     index: 0,
-    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0 },
+    result: { status: "ok", decode_tps: 42.0, prompt_processing_tps: 100.0, agentic_tps: null },
   }));
   expect(next.lines[next.lines.length - 1]).toContain("42.0");
   expect(next.lines[next.lines.length - 1]).toContain("100.0");
+  expect(next.lines[next.lines.length - 1]).toContain("AGENTIC");
 });
 
 test("bench_log for a different run_id is ignored", () => {
@@ -234,8 +246,8 @@ test("run_watch seeds results and keeps running while a run is in progress", () 
     status: "running",
     total: 4,
     results: [
-      { server_id: "llama.cpp", flag_conf: { "--max-model-len": "8192" }, prompt_processing_tps: 100.0, decode_tps: 42.0 },
-      { server_id: "llama.cpp", flag_conf: { "-c": "4096" }, prompt_processing_tps: 90.0, decode_tps: 38.0 },
+      { server_id: "llama.cpp", flag_conf: { "--max-model-len": "8192" }, prompt_processing_tps: 100.0, decode_tps: 42.0, agentic_tps: 25.0 },
+      { server_id: "llama.cpp", flag_conf: { "-c": "4096" }, prompt_processing_tps: 90.0, decode_tps: 38.0, agentic_tps: 20.0 },
     ],
   });
   expect(next.running).toBe(true);
@@ -244,6 +256,7 @@ test("run_watch seeds results and keeps running while a run is in progress", () 
   expect(next.total).toBe(4);
   expect(next.results).toHaveLength(2);
   expect(next.results[1].decode_tps).toBe(38.0);
+  expect(next.agenticTps).toBe(20.0);
 });
 
 test("run_watch for a different run_id is ignored", () => {
@@ -253,7 +266,7 @@ test("run_watch for a different run_id is ignored", () => {
     run_id: 99,
     status: "running",
     total: 1,
-    results: [{ server_id: "llama.cpp", flag_conf: {}, prompt_processing_tps: 10, decode_tps: 5 }],
+    results: [{ server_id: "llama.cpp", flag_conf: {}, prompt_processing_tps: 10, decode_tps: 5, agentic_tps: null }],
   });
   expect(next.runId).toBe(5);
   expect(next.results).toEqual([]);

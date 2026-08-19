@@ -45,8 +45,8 @@ interface Props {
   onEdit?: (index: number, command: string) => void;
   onEditFlags?: (index: number, flags: string) => void;
   speedBenchInfo?: SpeedBenchInfo | null;
-  benchTool?: "llama-bench" | "speed-bench";
-  onBenchToolChange?: (tool: "llama-bench" | "speed-bench") => void;
+  benchTool?: "llama-bench" | "speed-bench" | "agentic";
+  onBenchToolChange?: (tool: "llama-bench" | "speed-bench" | "agentic") => void;
   showBenchToolSelector?: boolean;
 }
 
@@ -70,11 +70,12 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = tr
             {t("config.benchTool")}
             <select
               value={benchTool ?? "llama-bench"}
-              onChange={(e) => onBenchToolChange?.(e.target.value as "llama-bench" | "speed-bench")}
+              onChange={(e) => onBenchToolChange?.(e.target.value as "llama-bench" | "speed-bench" | "agentic")}
               disabled={!canGenerate}
             >
               <option value="llama-bench">llama-bench</option>
               <option value="speed-bench">speed-bench</option>
+              <option value="agentic">agentic</option>
             </select>
           </label>
         )}
@@ -90,10 +91,10 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = tr
               rows={2}
               style={{ fontFamily: "var(--font-mono)" }}
             />
-            {cfg.bench_tool === "speed-bench" && (
+            {(cfg.bench_tool === "speed-bench" || cfg.bench_tool === "agentic") && (
               <>
                 <label style={{ color: "var(--anode)", fontSize: 11, letterSpacing: 1 }}>
-                  {t("config.speedBenchFlags")}
+                  {cfg.bench_tool === "agentic" ? t("config.agenticFlags") : t("config.speedBenchFlags")}
                 </label>
                 <textarea
                   value={cfg.bench_flags ?? ""}
@@ -101,13 +102,13 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = tr
                   rows={2}
                   style={{ fontFamily: "var(--font-mono)" }}
                 />
-                {speedBenchInfo && (
+                {cfg.bench_tool === "speed-bench" && speedBenchInfo && (
                   <SpeedBenchFlagInfo flags={cfg.bench_flags ?? ""} info={speedBenchInfo} />
                 )}
               </>
             )}
           </div>
-          {cfg.bench_tool === "speed-bench" && (
+          {(cfg.bench_tool === "speed-bench" || cfg.bench_tool === "agentic") && (
             <span
               style={{
                 fontSize: 10,
@@ -118,7 +119,7 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = tr
                 whiteSpace: "nowrap",
               }}
             >
-              SPEED-BENCH
+              {cfg.bench_tool === "agentic" ? "AGENTIC" : "SPEED-BENCH"}
             </span>
           )}
           {cfg.fit && <FitBadge fit={cfg.fit} />}

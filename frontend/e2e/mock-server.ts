@@ -89,14 +89,32 @@ const server = createServer(async (req, res) => {
     } catch {}
     Object.assign(body, { ok: true });
   } else if (req.url?.startsWith("/api/configs/generate")) {
-    Object.assign(body, {
-      configs: [{
-        flags: { "--ctx-size": "8192", "--load-mode": "none", "--no-mmproj": "" },
-        serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
-        bench_tool: "llama-bench",
-        fit: { stage: "gpu", label: "FITS VRAM", fits_vram: true, offloaded: false, needed_gb: 3.8, kv_gb: 4.3, weights_gb: 4 },
-      }],
-    });
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk);
+    let benchTool = "llama-bench";
+    try {
+      const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      if (parsed.bench_tool) benchTool = String(parsed.bench_tool);
+    } catch {}
+    const base = {
+      flags: { "--ctx-size": "8192", "--load-mode": "none", "--no-mmproj": "" },
+      serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
+      fit: { stage: "gpu", label: "FITS VRAM", fits_vram: true, offloaded: false, needed_gb: 3.8, kv_gb: 4.3, weights_gb: 4 },
+    };
+    if (benchTool === "agentic") {
+      Object.assign(body, {
+        configs: [{
+          ...base,
+          bench_tool: "agentic",
+          bench_flags: "--turns 4 --max-tokens 16384",
+          bench_command: ["agentic", "--model", "org/model", "--turns", "4", "--max-tokens", "16384"],
+        }],
+      });
+    } else {
+      Object.assign(body, {
+        configs: [{ ...base, bench_tool: "llama-bench" }],
+      });
+    }
   } else if (req.url?.startsWith("/api/benchmarks/cancel")) {
     Object.assign(body, { ok: true });
   } else if (req.method === "GET" && req.url === "/api/benchmarks") {
@@ -117,6 +135,7 @@ const server = createServer(async (req, res) => {
         serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj --ctx-size 8192",
         prompt_processing_tps: 100.0,
         decode_tps: 42.0,
+        agentic_tps: 25.0,
       }],
     });
   } else if (req.url?.startsWith("/api/models")) {

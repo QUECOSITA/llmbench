@@ -40,6 +40,7 @@
     "bankTitle": "02 · KONFIGURATIONSBANK · N = {{n}}",
     "benchTool": "BENCH-WERKZEUG",
     "speedBenchFlags": "SPEED-BENCH-FLAGS",
+    "agenticFlags": "AGENTIC-FLAGS",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all, oder (für Bench {{bench}}): {{cats}}",
     "limitLine": "--limit: optionaler int — max. Stichproben pro Kategorie"
@@ -74,6 +75,7 @@
     "program": "Programm",
     "promptTps": "PROMPT t/s",
     "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
     "status": "STATUS",
     "viewAll": "alle Ausführungen anzeigen →",
     "backToBench": "← zurück zum Bench",
@@ -89,7 +91,8 @@
   },
   "metrics": {
     "promptProc": "PROMPT PROC · t/s",
-    "decodeStage": "DECODE STAGE · t/s"
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s"
   },
   "confirm": {
     "removeModel": "{{model}} aus dem HF-Cache entfernen?",
