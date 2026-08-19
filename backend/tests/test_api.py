@@ -1951,6 +1951,27 @@ def test_rebuild_bench_command_agentic_invalid_flags(tmp_path):
     assert "integer" in cfg["bench_error"]
 
 
+def test_rebuild_bench_command_agentic_missing_flag_uses_default(tmp_path):
+    from app.api import _rebuild_bench_command, AppState
+    settings = Settings(data_dir=tmp_path / "data", gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf",
+                        workload_file=tmp_path / "prompts.jsonl",
+                        agentic_turns=4, agentic_max_tokens=16384)
+    (tmp_path / "prompts.jsonl").write_text("x\n")
+    s = AppState(settings)
+    cfg = {
+        "server_id": "llama.cpp",
+        "bench_tool": "agentic",
+        "serving_command": "llama-server -m /models/x.gguf",
+        "flags": {},
+        "bench_flags": "--turns 4",
+        "bench_command": [],
+    }
+    _rebuild_bench_command(s, cfg, "org/model")
+    assert cfg["agentic_params"]["turns"] == "4"
+    assert cfg["agentic_params"]["max_tokens"] == "16384"
+
+
 def test_start_run_agentic_persists_agentic_tps(client, monkeypatch, tmp_path):
     import app.agentic as agentic_mod
     from app import benchmark as bench_mod

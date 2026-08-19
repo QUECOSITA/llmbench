@@ -625,10 +625,11 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
         parsed = parse_serving_command(cfg["server_id"], cfg.get("serving_command", ""))
         model_ref, gguf_filename = model_ref_from_flags(cfg["server_id"], parsed, repo_id)
         cfg["bench_command"] = build_agentic_command(gguf_filename or model_ref, flags)
+        _flag_map = dict(zip(flags[::2], flags[1::2]))
         cfg["agentic_params"] = {
             "model": gguf_filename or model_ref,
-            "turns": flags[flags.index("--turns") + 1],
-            "max_tokens": flags[flags.index("--max-tokens") + 1],
+            "turns": _flag_map.get("--turns", str(s.settings.agentic_turns)),
+            "max_tokens": _flag_map.get("--max-tokens", str(s.settings.agentic_max_tokens)),
         }
         cfg["flags"] = serving_command_display_flags(
             cfg["server_id"], cfg.get("serving_command", "")) or cfg.get("flags", {})
