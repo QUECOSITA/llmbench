@@ -782,7 +782,14 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                     db_mod.save_result(s.conn, cfg_id, result["prompt_processing_tps"],
                                        result["decode_tps"], result["duration_s"],
                                        result["output"], result["status"],
-                                       agentic_tps=result.get("agentic_tps"))
+                                       agentic_tps=result.get("agentic_tps"),
+                                       agentic_steps=result.get("steps"),
+                                       agentic_tool_calls=result.get("tool_calls"),
+                                       agentic_plan_revisions=result.get("plan_revisions"),
+                                       agentic_avg_ms=result.get("avg_latency_ms"),
+                                       agentic_p95_ms=result.get("p95_latency_ms"),
+                                       total_prompt_tokens=result.get("total_prompt_tokens"),
+                                       total_completion_tokens=result.get("total_completion_tokens"))
                     await broadcast(s, {"type": "config_done", "run_id": run_id, "index": i,
                                         "result": result, "flag_conf": cfg.get("flags", {})})
                     if result["status"] == "aborted":

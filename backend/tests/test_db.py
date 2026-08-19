@@ -406,3 +406,72 @@ def test_save_and_rank_by_agentic_tps(tmp_path):
     assert results[0]["decode_tps"] == 90.0
     assert results[1]["agentic_tps"] == 50.0
     conn.close()
+
+
+def test_migrate_results_adds_agentic_detail_v2(tmp_path):
+    db_path = tmp_path / "legacy-results.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        """
+        CREATE TABLE servers (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
+        CREATE TABLE models (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id TEXT NOT NULL,
+            server_id TEXT NOT NULL, format TEXT NOT NULL, local_path TEXT NOT NULL,
+            status TEXT NOT NULL, gguf_filename TEXT, size_bytes INTEGER, downloaded_at TEXT);
+        CREATE TABLE runs (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id TEXT NOT NULL,
+            requested_n INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            status TEXT NOT NULL DEFAULT 'queued');
+        CREATE TABLE configs (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL REFERENCES runs(id), server_id TEXT NOT NULL,
+            model_id INTEGER REFERENCES models(id), flag_conf_json TEXT NOT NULL,
+            serving_command TEXT NOT NULL, bench_command TEXT NOT NULL);
+        CREATE TABLE results (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            config_id INTEGER NOT NULL REFERENCES configs(id),
+            prompt_processing_tps REAL, decode_tps REAL, agentic_tps REAL,
+            duration_s REAL, output_snippet TEXT, status TEXT NOT NULL);
+        """
+    )
+    conn.execute("INSERT INTO runs(repo_id, requested_n) VALUES ('org/model', 1)")
+    conn.execute(
+        "INSERT INTO configs(run_id, server_id, model_id, flag_conf_json, serving_command, bench_command) "
+        "VALUES (1, 'llama.cpp', NULL, '[]', 'serve', 'bench')"
+    )
+    conn.execute(
+        "INSERT INTO results(config_id, prompt_processing_tps, decode_tps, agentic_tps, duration_s, output_snippet, status) "
+        "VALUES (1, NULL, NULL, 25.0, 64.0, '', 'ok')"
+    )
+    conn.commit()
+    conn.close()
+
+    conn = init_db(db_path)
+    cols = [row[1] for row in conn.execute("PRAGMA table_info('results')")]
+    for col in ("agentic_steps", "agentic_tool_calls", "agentic_plan_revisions",
+                "agentic_avg_ms", "agentic_p95_ms", "total_prompt_tokens",
+                "total_completion_tokens"):
+        assert col in cols
+    rows = get_results_for_run(conn, 1)
+    assert rows[0]["agentic_tps"] == 25.0
+    assert rows[0]["agentic_steps"] is None
+    conn.close()
+
+
+def test_save_and_read_agentic_detail(tmp_path):
+    conn = init_db(tmp_path / "test.db")
+    upsert_model(conn, repo_id="org/model", server_id="llama.cpp", format="hf",
+                 local_path="/x", status="downloaded")
+    run_id = create_run(conn, repo_id="org/model", requested_n=1)
+    cfg = create_config(conn, run_id=run_id, server_id="llama.cpp", model_id=1,
+                        flag_conf_json=[], serving_command="s", bench_command="b")
+    save_result(conn, config_id=cfg, prompt_processing_tps=None, decode_tps=None,
+                duration_s=64.0, output_snippet="", status="ok", agentic_tps=25.0,
+                agentic_steps=6, agentic_tool_calls=9, agentic_plan_revisions=1,
+                agentic_avg_ms=1200.0, agentic_p95_ms=3400.0,
+                total_prompt_tokens=9000, total_completion_tokens=1600)
+    rows = get_results_for_run(conn, run_id)
+    assert rows[0]["agentic_steps"] == 6
+    assert rows[0]["agentic_tool_calls"] == 9
+    assert rows[0]["agentic_plan_revisions"] == 1
+    assert rows[0]["agentic_avg_ms"] == 1200.0
+    assert rows[0]["agentic_p95_ms"] == 3400.0
+    assert rows[0]["total_prompt_tokens"] == 9000
+    assert rows[0]["total_completion_tokens"] == 1600
+    conn.close()

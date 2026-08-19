@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS results (
     prompt_processing_tps REAL,
     decode_tps REAL,
     agentic_tps REAL,
+    agentic_steps INTEGER,
+    agentic_tool_calls INTEGER,
+    agentic_plan_revisions INTEGER,
+    agentic_avg_ms REAL,
+    agentic_p95_ms REAL,
+    total_prompt_tokens INTEGER,
+    total_completion_tokens INTEGER,
     duration_s REAL,
     output_snippet TEXT,
     status TEXT NOT NULL
@@ -146,6 +153,20 @@ def _migrate_results_agentic(conn):
         conn.commit()
 
 
+def _migrate_results_agentic_v2(conn):
+    cols = [row[1] for row in conn.execute("PRAGMA table_info('results')")]
+    new_cols = [
+        ("agentic_steps", "INTEGER"), ("agentic_tool_calls", "INTEGER"),
+        ("agentic_plan_revisions", "INTEGER"), ("agentic_avg_ms", "REAL"),
+        ("agentic_p95_ms", "REAL"), ("total_prompt_tokens", "INTEGER"),
+        ("total_completion_tokens", "INTEGER"),
+    ]
+    for name, typ in new_cols:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE results ADD COLUMN {name} {typ}")
+    conn.commit()
+
+
 def init_db(path: str | Path) -> sqlite3.Connection:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
@@ -155,6 +176,7 @@ def init_db(path: str | Path) -> sqlite3.Connection:
     _migrate_models_table(conn)
     _repair_configs_fk(conn)
     _migrate_results_agentic(conn)
+    _migrate_results_agentic_v2(conn)
     conn.executescript(
         "INSERT OR IGNORE INTO servers(id, display_name) VALUES "
         "('llama.cpp','llama.cpp');"
@@ -267,11 +289,18 @@ def list_configs(conn, run_id):
 
 
 def save_result(conn, config_id, prompt_processing_tps, decode_tps, duration_s,
-                output_snippet, status, agentic_tps=None):
+                output_snippet, status, agentic_tps=None, agentic_steps=None,
+                agentic_tool_calls=None, agentic_plan_revisions=None,
+                agentic_avg_ms=None, agentic_p95_ms=None,
+                total_prompt_tokens=None, total_completion_tokens=None):
     conn.execute(
         "INSERT INTO results(config_id, prompt_processing_tps, decode_tps, agentic_tps, "
-        "duration_s, output_snippet, status) VALUES (?,?,?,?,?,?,?)",
+        "agentic_steps, agentic_tool_calls, agentic_plan_revisions, agentic_avg_ms, "
+        "agentic_p95_ms, total_prompt_tokens, total_completion_tokens, "
+        "duration_s, output_snippet, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (config_id, prompt_processing_tps, decode_tps, agentic_tps,
+         agentic_steps, agentic_tool_calls, agentic_plan_revisions, agentic_avg_ms,
+         agentic_p95_ms, total_prompt_tokens, total_completion_tokens,
          duration_s, output_snippet, status),
     )
     conn.commit()
@@ -282,7 +311,10 @@ def get_results_for_run(conn, run_id):
         """
         SELECT c.id AS config_id, c.server_id, c.flag_conf_json,
                c.serving_command, r.prompt_processing_tps, r.decode_tps,
-               r.agentic_tps, r.duration_s, r.status AS result_status
+               r.agentic_tps, r.agentic_steps, r.agentic_tool_calls,
+               r.agentic_plan_revisions, r.agentic_avg_ms, r.agentic_p95_ms,
+               r.total_prompt_tokens, r.total_completion_tokens,
+               r.duration_s, r.status AS result_status
         FROM configs c LEFT JOIN results r ON r.config_id = c.id
         WHERE c.run_id=? ORDER BY COALESCE(r.agentic_tps, r.decode_tps) DESC, c.id
         """, (run_id,)).fetchall()
