@@ -7,6 +7,8 @@ import type { ApiErrorContext, SpeedBenchInfo } from "./api/client";
 import { INITIAL_STATE, progressReducer, ResultRow, useBenchmarkProgress } from "./ws/useBenchmarkProgress";
 import { useDownloadProgress } from "./ws/useDownloadProgress";
 import { ConfigBank, ConfigRow } from "./components/ConfigBank";
+import { DecisionModal } from "./components/DecisionModal";
+import { AgenticFailureNotice } from "./components/AgenticFailureNotice";
 import { DownloadConsole } from "./components/DownloadConsole";
 import { DownloadedSection } from "./components/DownloadedSection";
 import { HardwareBar } from "./components/HardwareBar";
@@ -81,6 +83,10 @@ function toResultRow(r: RunDetail["results"][number]): ResultRow {
     agentic_p95_ms: r.agentic_p95_ms ?? null,
     total_prompt_tokens: r.total_prompt_tokens ?? null,
     total_completion_tokens: r.total_completion_tokens ?? null,
+    agentic_tier: r.agentic_tier ?? null,
+    user_decisions: r.user_decisions ?? null,
+    failure_reason_key: r.failure_reason_key ?? null,
+    failure_reason: r.failure_reason ?? null,
     result_status: r.result_status ?? null,
   };
 }
@@ -112,6 +118,7 @@ export function App() {
   const [server, setServer] = useState<string>("");
   const [n, setN] = useState(1);
   const [benchTool, setBenchTool] = useState<"llama-bench" | "speed-bench" | "agentic">("llama-bench");
+  const [agenticTier, setAgenticTier] = useState<string>("medium");
   const [configs, setConfigs] = useState<ConfigRow[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -271,9 +278,10 @@ export function App() {
       ram_gb: (hardware.ram_total_gb as number) ?? 0,
       model_arch: analysis.model_arch,
       bench_tool: benchTool,
+      agentic_tier: benchTool === "agentic" ? agenticTier : undefined,
     });
     setConfigs(data.configs);
-  }, [analysis, hardware, server, benchTool]);
+  }, [analysis, hardware, server, benchTool, agenticTier]);
 
   const [progressState, dispatch] = useReducer(progressReducer, INITIAL_STATE);
 
@@ -435,7 +443,7 @@ export function App() {
     }
   }, []);
 
-  const events = useBenchmarkProgress();
+  const { events, sendDecision } = useBenchmarkProgress();
 
   const processedEventsRef = useRef(0);
   useEffect(() => {
@@ -634,7 +642,15 @@ export function App() {
                 speedBenchInfo={speedBenchInfo}
                 benchTool={benchTool}
                 onBenchToolChange={setBenchTool}
+                agenticTier={agenticTier}
+                onAgenticTierChange={setAgenticTier}
               />
+
+              {benchTool === "agentic" && (
+                <p style={{ color: "var(--anode)", fontSize: 11, margin: "6px 0" }}>
+                  {t("agentic.interactiveNotice")}
+                </p>
+              )}
 
               <RunPanel
                 running={running}
@@ -656,6 +672,23 @@ export function App() {
                 lines={progressState.lines}
                 currentCommand={progressState.currentCommand}
               />
+              {progressState.pendingDecision && (
+                <DecisionModal
+                  decision={progressState.pendingDecision}
+                  onSubmit={(tool, args) => {
+                    sendDecision(tool, args);
+                  }}
+                  onCancel={() => {
+                    sendDecision("finish", { answer: "cancelled by user" });
+                  }}
+                />
+              )}
+              {progressState.lastFailure && (
+                <AgenticFailureNotice
+                  notice={progressState.lastFailure}
+                  onDismiss={() => dispatch({ type: "failure_dismiss" })}
+                />
+              )}
               {watchingRunId !== null && (
                 <p style={{ color: "var(--anode)", fontSize: 12 }}>
                   {t("run.watching", { id: watchingRunId })}

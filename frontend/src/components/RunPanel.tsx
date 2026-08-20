@@ -67,6 +67,7 @@ export function RunPanel({
         p95Ms={progress?.agenticDetail?.p95Ms ?? null}
         totalPromptTokens={progress?.agenticDetail?.totalPromptTokens ?? null}
         totalCompletionTokens={progress?.agenticDetail?.totalCompletionTokens ?? null}
+        tier={progress?.agenticDetail?.tier ?? null}
       />
       <AgenticSessionPanel lines={lines} />
       {lines.length > 0 && (

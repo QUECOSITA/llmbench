@@ -121,6 +121,10 @@ export interface RunDetail {
     agentic_p95_ms?: number | null;
     total_prompt_tokens?: number | null;
     total_completion_tokens?: number | null;
+    agentic_tier?: string | null;
+    user_decisions?: number | null;
+    failure_reason_key?: string | null;
+    failure_reason?: string | null;
     duration_s?: number | null;
     result_status?: string;
   }>;
@@ -162,6 +166,7 @@ export const api = {
     ram_gb?: number;
     model_arch?: ModelArch;
     bench_tool?: string;
+    agentic_tier?: string;
   }) =>
     request<{
       configs: Array<{

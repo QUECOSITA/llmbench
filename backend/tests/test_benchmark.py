@@ -513,7 +513,9 @@ async def test_agentic_runner_ok(monkeypatch, tmp_path):
     monkeypatch.setattr(bench_mod, "_wait_health", fake_health)
 
     async def fake_session(base_url, model, steps, max_tokens, task,
-                           on_output=None, request_timeout=120.0, transport=None):
+                           on_output=None, request_timeout=120.0, transport=None,
+                           tier="medium", fill_tokens=0, decide=None,
+                           session_timeout_s=None):
         return dict(AGENTIC_SESSION_RESULT)
 
     monkeypatch.setattr(agentic_mod, "run_agent_session", fake_session)
@@ -619,7 +621,9 @@ async def test_agentic_runner_abort_mid_session_reports_aborted(monkeypatch, tmp
         workload_file=str(tmp_path / "p.jsonl"))
 
     async def aborting_session(base_url, model, steps, max_tokens, task,
-                               on_output=None, request_timeout=120.0, transport=None):
+                               on_output=None, request_timeout=120.0, transport=None,
+                               tier="medium", fill_tokens=0, decide=None,
+                               session_timeout_s=None):
         runner.abort()
         raise RuntimeError("server killed by abort")
 
@@ -631,3 +635,23 @@ async def test_agentic_runner_abort_mid_session_reports_aborted(monkeypatch, tmp
     result = await runner.run()
     assert result["status"] == "aborted"
     assert result["agentic_tps"] is None
+
+
+def test_classify_agentic_failure_context_overflow():
+    from app.benchmark import _classify_agentic_failure
+    r = _classify_agentic_failure(None, "ggml_general_rope: context size 131072 exceeds maximum of 65536\n")
+    assert r["key"] == "context_overflow"
+    assert "context" in r["message"].lower()
+
+
+def test_classify_agentic_failure_oom():
+    from app.benchmark import _classify_agentic_failure
+    r = _classify_agentic_failure(None, "CUDA out of memory. Tried to allocate 2.00 GiB")
+    assert r["key"] == "oom_insufficient_vram"
+    assert "VRAM" in r["message"] or "memory" in r["message"].lower()
+
+
+def test_classify_agentic_failure_unknown():
+    from app.benchmark import _classify_agentic_failure
+    r = _classify_agentic_failure(RuntimeError("some weird failure"), "")
+    assert r["key"] == "unknown"

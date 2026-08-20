@@ -312,13 +312,18 @@ def build_speed_bench_command(script: str, flags: list[str], url: str = "localho
     return [sys.executable, script, *flags, "--url", url, "--output", output]
 
 
-AGENTIC_CLI_FLAGS = ("--steps", "--max-tokens", "--task")
+AGENTIC_CLI_FLAGS = ("--steps", "--max-tokens", "--task", "--tier")
 AGENTIC_TASKS = ("codebase_refactor", "data_pipeline", "research")
+AGENTIC_MAX_TOKENS_CAP = 65728
+AGENTIC_DEFAULT_TIER = "medium"
+
+from app.agentic import AGENTIC_TIERS, AGENTIC_DEFAULT_TIER  # noqa: E402
 
 
 def agentic_default_flags(steps: int = 10, max_tokens: int = 4096,
-                          task: str = "codebase_refactor") -> str:
-    return f"--steps {steps} --max-tokens {max_tokens} --task {task}"
+                          task: str = "codebase_refactor",
+                          tier: str = AGENTIC_DEFAULT_TIER) -> str:
+    return f"--steps {steps} --max-tokens {max_tokens} --task {task} --tier {tier}"
 
 
 def parse_agentic_flags(text: str) -> list[str]:
@@ -370,15 +375,30 @@ def validate_agentic_flags(flags: list[str]) -> str | None:
         i += 1
     if "--steps" in parsed and not (1 <= parsed["--steps"] <= 20):
         return "'--steps' must be between 1 and 20"
-    if "--max-tokens" in parsed and not (1 <= parsed["--max-tokens"] <= 32768):
-        return "'--max-tokens' must be between 1 and 32768"
+    if "--max-tokens" in parsed and not (1 <= parsed["--max-tokens"] <= AGENTIC_MAX_TOKENS_CAP):
+        return f"'--max-tokens' must be between 1 and {AGENTIC_MAX_TOKENS_CAP}"
     if "--task" in parsed and parsed["--task"] not in AGENTIC_TASKS:
         return ("unknown --task; available: " + ", ".join(AGENTIC_TASKS))
+    if "--tier" in parsed and parsed["--tier"] not in AGENTIC_TIERS:
+        return ("unknown --tier; available: " + ", ".join(sorted(AGENTIC_TIERS)))
     return None
 
 
 def build_agentic_command(model_ref: str, flags: list[str]) -> list[str]:
     return ["agentic", "--model", model_ref, *flags]
+
+
+def agentic_tier_ctx(flags: list[str]) -> int | None:
+    """Resolve the agentic --tier's ctx-size from a parsed flags list, or None
+    when the tier is absent/unknown (the caller keeps its own --ctx-size)."""
+    for i, tok in enumerate(flags):
+        if tok == "--tier" and i + 1 < len(flags):
+            spec = AGENTIC_TIERS.get(flags[i + 1])
+            return spec["ctx_size"] if spec else None
+        if tok.startswith("--tier="):
+            spec = AGENTIC_TIERS.get(tok.partition("=")[2])
+            return spec["ctx_size"] if spec else None
+    return None
 
 
 def build_server_command(serving_command: str, bin_dir: str | None = None) -> list[str]:

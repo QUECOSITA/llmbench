@@ -34,7 +34,7 @@ vi.mock("./api/client", () => ({
 
 vi.mock("./ws/useBenchmarkProgress", async (importOriginal) => {
   const mod = await importOriginal<typeof import("./ws/useBenchmarkProgress")>();
-  return { ...mod, useBenchmarkProgress: vi.fn().mockReturnValue([]) };
+  return { ...mod, useBenchmarkProgress: vi.fn().mockReturnValue({ events: [], sendDecision: vi.fn() }) };
 });
 
 vi.mock("./ws/useDownloadProgress", () => ({

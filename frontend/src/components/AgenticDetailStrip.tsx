@@ -8,6 +8,7 @@ export interface AgenticDetail {
   p95Ms: number | null;
   totalPromptTokens: number | null;
   totalCompletionTokens: number | null;
+  tier?: string | null;
 }
 
 export function AgenticDetailStrip({
@@ -18,9 +19,11 @@ export function AgenticDetailStrip({
   p95Ms,
   totalPromptTokens,
   totalCompletionTokens,
+  tier,
 }: AgenticDetail) {
   const { t } = useTranslation();
   const parts: string[] = [];
+  if (tier != null) parts.push(`tier ${tier}`);
   if (steps != null) parts.push(t("metrics.agenticSteps", { count: steps }));
   if (toolCalls != null) parts.push(t("metrics.agenticToolCalls", { count: toolCalls }));
   if (planRevisions != null) parts.push(t("metrics.agenticPlanRevs", { count: planRevisions }));

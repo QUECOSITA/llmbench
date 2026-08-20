@@ -113,7 +113,7 @@ The `/results` page shows the full benchmark history.
 - Each config runs the server's native bench tool with mapped flags, averaged over a window capped at one minute.
 - **Cancel** any active run at any time.
 - Speculative-decoding / MTP models (README proposes `--spec-type`/spec flags, or the name contains `MTP`) are benchmarked with **speed-bench** (llama-server + `speed_bench.py`) instead of `llama-bench`, so MTP configs are actually measured.
-- The **agentic** bench tool drives a real in-process plan→act agent harness (tools, planning loop, decision branching) against the serving model and reports effective AGENTIC t/s across the whole session — total tokens (prompt + completion) over wall time, so it reflects real interactive agentic load including every prefill.
+- The **agentic** bench tool drives a real in-process plan→act agent harness (tools, planning loop, decision branching) against the serving model and reports effective AGENTIC t/s across the whole session — total tokens (prompt + completion) over wall time, so it reflects real interactive agentic load including every prefill. It is **human-in-the-loop**: at each ACT branch the harness asks you to pick the next tool + arguments (you can edit or accept the model's proposal), and the run pauses until you answer — it is **not** an auto test.
 
 ### Results & Persistence
 
@@ -143,7 +143,7 @@ External tools the backend spawns:
 - **`llama-bench`** — native benchmark for standard configs (`-o csv`, prompt from a coding-prompt workload, `-n 128 -r 2`).
 - **`llama-server`** — serving side for speed-bench.
 - **`speed_bench.py`** — speculative-decoding / MTP client; auto-discovered next to `llama-server`, honored via `LLMBENCH_SPEED_BENCH_SCRIPT`, or downloaded into `~/.llmbench/speed-bench/` on first use (best-effort). Always runs with `--limit 1 --category all --bench qualitative --osl 528`.
-- **agentic** — in-process plan→act agent harness; runs a conversational benchmark against a live `llama-server` using function calling (plan → act → finish), reporting effective AGENTIC t/s plus steps, tool calls, plan revisions, avg/p95 latency, and context tokens (`--steps 10 --max-tokens 4096 --task codebase_refactor` by default). Requires a model that supports OpenAI tool calling.
+- **agentic** — in-process plan→act agent harness; runs a conversational benchmark against a live `llama-server` using function calling (plan → act → finish), reporting effective AGENTIC t/s plus steps, tool calls, plan revisions, avg/p95 latency, and context tokens. It is **interactive**: at each ACT branch the user picks the next tool + args via a dialog, and the run waits for the answer. A **ctx tier** dropdown (low ≤16k / medium ≤64k / heavy ≥128k) sets the serving `--ctx-size` and injects 2× the tier's context as filler plus heavy thinking, so prefill and decode are genuinely heavy. Failures (context overflow, insufficient VRAM, etc.) are recorded as failed with a human-readable reason. Requires a model that supports OpenAI tool calling.
 - **`nvidia-smi`** — GPU name / VRAM / driver detection.
 
 ## Data & Configuration

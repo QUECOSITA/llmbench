@@ -7,6 +7,47 @@ import httpx
 
 AGENTIC_DEFAULT_STEPS = 10
 AGENTIC_DEFAULT_MAX_TOKENS = 4096
+AGENTIC_DEFAULT_TIER = "medium"
+
+# Agentic option tiers: low / medium / heavy. Each maps to a context-window
+# size (used as the serving --ctx-size), a --max-tokens default, and a filler
+# (injected context) size. "Double" the injected context per the user: the
+# filler is 2x the tier's full ctx value so the prefill is genuinely heavy (a
+# real agentic t/s bench, not a soft simulation). Runs at medium/heavy will
+# legitimately overflow unless there is enough VRAM/context headroom.
+AGENTIC_TIERS = {
+    "low": {"ctx_size": 16384, "max_tokens": 4096, "fill_tokens": 2 * 16384},
+    "medium": {"ctx_size": 65536, "max_tokens": 8192, "fill_tokens": 2 * 65536},
+    "heavy": {"ctx_size": 131072, "max_tokens": 65728, "fill_tokens": 2 * 131072},
+}
+
+# Per-tier thinking intensity. The heavier the tier the larger the reasoning
+# trace the model is asked to produce each step, so decode is genuinely heavy
+# (combined with the injected filler making prefill genuinely heavy).
+AGENTIC_THINKING = {
+    "low": "Keep your reasoning concise and to the point.",
+    "medium": "Provide a moderately detailed, step-by-step reasoning trace.",
+    "heavy": ("Produce a very long, exhaustive, step-by-step reasoning trace. "
+              "Spell out every consideration, alternative, and decision in "
+              "full sentences before each tool call."),
+}
+
+# A single deterministic filler paragraph, repeated to build the injected
+# context. 4 chars ~ 1 token is a conservative approximation.
+_FILLER_UNIT = (
+    "This is a synthetic filler context block used to stress the prefill "
+    "path of the serving backend under a real agentic workload. "
+)
+
+
+def _build_filler(fill_tokens: int) -> str:
+    """Return a deterministic filler blob of roughly ``fill_tokens`` tokens
+    (approx 4 chars/token). Large enough to dominate the prefill."""
+    target_chars = max(0, int(fill_tokens) * 4)
+    unit = _FILLER_UNIT
+    repeats = target_chars // len(unit) + 1
+    return (unit * repeats)[:target_chars]
+
 
 AGENTIC_SYSTEM_PROMPT = (
     "You are an expert software engineer. You operate in two phases: "
@@ -239,13 +280,34 @@ async def probe_tool_calling(base_url: str, model: str, request_timeout: float =
 
 
 async def run_agent_session(base_url, model, steps, max_tokens, task,
-                            on_output=None, request_timeout=120.0, transport=None):
+                            on_output=None, request_timeout=120.0, transport=None,
+                            tier="medium", fill_tokens=0, decide=None,
+                            session_timeout_s=None):
     """Run a plan→act agent session. Returns serving-throughput metrics plus a
-    transcript of the whole exchange."""
+    transcript of the whole exchange.
+
+    ``fill_tokens`` injects a deterministic filler blob into the initial prompt
+    so the prefill is genuinely heavy for the chosen ctx tier. ``tier`` selects
+    the thinking intensity (low/medium/heavy).
+
+    ``decide`` is an optional async callable invoked before each Phase-2 ACT
+    branch: ``await decide(step, proposed_tool, proposed_args, tool_options) ->
+    (tool, args)``. When provided, the harness pauses and waits for the caller
+    (the user) to pick the branch; otherwise it executes the model's own
+    recommendation (legacy auto behaviour).
+
+    ``session_timeout_s`` is a wall-clock budget for the model calls only. User
+    decision wait time is intentionally NOT counted against it, so an
+    interactive run can wait as long as the user needs without the harness
+    cutting the session short."""
     scenario = AGENTIC_TASKS.get(task, AGENTIC_TASKS["codebase_refactor"])
     corpus = scenario["corpus"]
+    thinking = AGENTIC_THINKING.get(tier, AGENTIC_THINKING["medium"])
+    system_prompt = AGENTIC_SYSTEM_PROMPT + "\n" + thinking
+    if fill_tokens:
+        system_prompt += "\n\n" + _build_filler(fill_tokens)
     messages = [
-        {"role": "system", "content": AGENTIC_SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": scenario["prompt"]},
     ]
     total_prompt_tokens = 0
@@ -254,6 +316,7 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
     latencies_ms = []
     tool_calls = 0
     plan_revisions = 0
+    user_decisions = 0
     finished = False
     transcript = []
     kwargs = {"base_url": base_url, "timeout": request_timeout}
@@ -266,6 +329,8 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
     async with httpx.AsyncClient(**kwargs) as client:
         step = 0
         while step < steps:
+            if session_timeout_s is not None and total_wall >= session_timeout_s:
+                break
             step += 1
             if step == 1:
                 body = {
@@ -288,7 +353,7 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
                     "stream": False,
                 }
             start = time.monotonic()
-            choice = "forced submit_plan" if step == 1 else "auto"
+            choice = "forced submit_plan" if step == 1 else "ask user"
             await emit(f"── step {step}/{steps} ──",
                  f"CHOICE {choice}",
                  f"PROMPT {messages[-1]['content']}")
@@ -308,6 +373,36 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
             calls = msg.get("tool_calls") or []
             if content:
                 messages.append({"role": "assistant", "content": content})
+                await emit("THINK " + content[:200])
+            # Resolve the branch to execute: the model recommends, the user (via
+            # `decide`) may override it. Phase 1 keeps the forced submit_plan.
+            if step == 1:
+                proposed = ("submit_plan", json.loads(
+                    ((calls[0].get("function") or {}).get("arguments") or "{}")
+                    if calls else "{}"))
+                name, args = proposed
+            elif calls:
+                fn = calls[0].get("function") or {}
+                proposed_name = fn.get("name") or "finish"
+                try:
+                    proposed_args = json.loads(fn.get("arguments") or "{}")
+                except json.JSONDecodeError:
+                    proposed_args = {}
+                tool_options = [s["function"]["name"] for s in AGENTIC_TOOL_SCHEMAS]
+                if decide is not None:
+                    await emit(f"DECISION NEEDED → recommended {proposed_name}")
+                    name, args = await decide(step, proposed_name, proposed_args, tool_options)
+                    user_decisions += 1
+                    await emit(f"DECISION → {name}({json.dumps(args)})")
+                else:
+                    name, args = proposed_name, proposed_args
+                calls = [{"id": "call_user", "type": "function",
+                          "function": {"name": name, "arguments": json.dumps(args)}}]
+                content = None
+            else:
+                name, args = "finish", {"answer": content or "done"}
+                calls = [{"id": "call_finish", "type": "function",
+                          "function": {"name": "finish", "arguments": json.dumps(args)}}]
             if calls:
                 messages.append({"role": "assistant", "content": content or None,
                                  "tool_calls": calls})
@@ -339,13 +434,7 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
                 transcript.append(f"step {step}: {name}({json.dumps(args)}) -> {result[:80]}")
                 messages.append({"role": "tool", "tool_call_id": call.get("id", "call_0"),
                                  "content": result})
-            if content:
-                await emit("THINK " + content[:200])
-            if calls:
-                branch = calls[0].get("function") or {}
-                await emit(f"BRANCH → {branch.get('name', '?')}")
-            else:
-                await emit("THINK (tool call only)")
+            await emit(f"BRANCH → {name}")
             await emit(f"step {step}/{steps}: prompt {p_tok} tok + {c_tok} tok in {elapsed:.1f}s")
             if finished:
                 break
@@ -368,6 +457,7 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
         "steps": step,
         "tool_calls": tool_calls,
         "plan_revisions": plan_revisions,
+        "user_decisions": user_decisions,
         "avg_latency_ms": avg_latency_ms,
         "p95_latency_ms": p95_latency_ms,
         "total_prompt_tokens": total_prompt_tokens,

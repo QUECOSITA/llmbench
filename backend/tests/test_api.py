@@ -1888,9 +1888,24 @@ def test_generate_configs_agentic_builds_agentic_command(client):
     assert r.status_code == 200
     for cfg in r.json()["configs"]:
         assert cfg["bench_tool"] == "agentic"
-        assert cfg["bench_flags"] == "--steps 10 --max-tokens 4096 --task codebase_refactor"
+        assert cfg["bench_flags"] == "--steps 10 --max-tokens 4096 --task codebase_refactor --tier medium"
+        assert cfg["agentic_tier"] == "medium"
         assert cfg["bench_command"][0] == "agentic"
         assert cfg["bench_command"][cfg["bench_command"].index("--model") + 1] == "org/model"
+        # default tier medium drives the serving ctx-size to 65536
+        assert "--ctx-size" in cfg["serving_command"] and "65536" in cfg["serving_command"]
+
+
+def test_generate_configs_agentic_tier_drives_ctx(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1, "vram_gb": 24.0,
+        "readme_flags": {}, "bench_tool": "agentic", "agentic_tier": "heavy",
+    })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert cfg["agentic_tier"] == "heavy"
+    assert "131072" in cfg["serving_command"]
+    assert "--tier heavy" in cfg["bench_flags"]
 
 
 def test_generate_configs_agentic_invalid_flags_sets_bench_error(client):
@@ -1983,7 +1998,9 @@ def test_start_run_agentic_persists_agentic_tps(client, monkeypatch, tmp_path):
         return True
 
     async def fake_session(base_url, model, steps, max_tokens, task,
-                           on_output=None, request_timeout=120.0, transport=None):
+                           on_output=None, request_timeout=120.0, transport=None,
+                           tier="medium", fill_tokens=0, decide=None,
+                           session_timeout_s=None):
         return {"agentic_tps": 25.0, "prompt_processing_tps": None, "decode_tps": None,
                 "total_prompt_tokens": 9000, "total_completion_tokens": 1600,
                 "total_wall_s": 64.0, "steps": 6, "tool_calls": 9,

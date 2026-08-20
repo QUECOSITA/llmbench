@@ -46,7 +46,8 @@
     "agenticFlags": "FLAG AGENTIC",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all, oppure (per il bench {{bench}}): {{cats}}",
-    "limitLine": "--limit: int opzionale — campioni massimi per categoria"
+    "limitLine": "--limit: int opzionale — campioni massimi per categoria",
+    "agenticTier": "AGENTIC TIER"
   },
   "run": {
     "configProgress": "configurazione {{index}}/{{total}}",
@@ -115,5 +116,20 @@
     "cancelled": "annullato",
     "error": "errore",
     "ok": "ok"
+  },
+  "agentic": {
+    "interactiveNotice": "Agentic bench is an interactive, human-in-the-loop test — NOT an auto test. You must be present: at each step the harness asks you to choose the branching tool and arguments, and the run pauses until you answer.",
+    "failureTitle": "AGENTIC CONFIG FAILED — tier {{tier}}",
+    "failureDismiss": "DISMISS"
+  },
+  "decision": {
+    "title": "AGENTIC — BRANCH DECISION REQUIRED",
+    "hint": "step {{step}} — choose the next tool and arguments, or accept the proposed values.",
+    "tool": "TOOL",
+    "args": "ARGUMENTS (JSON)",
+    "argsPlaceholder": "{}",
+    "cancel": "FINISH / CANCEL",
+    "continue": "CONTINUE",
+    "invalidArgs": "Arguments must be a valid JSON object."
   }
 }

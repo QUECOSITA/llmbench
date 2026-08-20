@@ -271,3 +271,75 @@ test("run_watch for a different run_id is ignored", () => {
   expect(next.runId).toBe(5);
   expect(next.results).toEqual([]);
 });
+
+
+test("agentic_decision sets pendingDecision with proposal and options", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const next = progressReducer(state, ev("agentic_decision", 1, {
+    index: 0,
+    proposed_tool: "read_file",
+    proposed_args: { path: "/repo/main.py" },
+    tool_options: ["read_file", "search", "finish"],
+  }));
+  expect(next.pendingDecision).toEqual({
+    run_id: 1,
+    index: 0,
+    proposed_tool: "read_file",
+    proposed_args: { path: "/repo/main.py" },
+    tool_options: ["read_file", "search", "finish"],
+  });
+});
+
+test("config_done clears pendingDecision and carries agentic_tier into result", () => {
+  let state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  state = progressReducer(state, ev("agentic_decision", 1, {
+    index: 0, proposed_tool: "read_file", proposed_args: {}, tool_options: [],
+  }));
+  const next = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    result: { status: "ok", decode_tps: null, prompt_processing_tps: null, agentic_tps: 25.0, agentic_tier: "heavy" },
+  }));
+  expect(next.pendingDecision).toBeNull();
+  expect(next.results[0].agentic_tier).toBe("heavy");
+});
+
+
+test("config_done with a failure reason sets lastFailure with message and tier", () => {
+  let state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  state = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    result: {
+      status: "failed", decode_tps: null, prompt_processing_tps: null, agentic_tps: null,
+      agentic_tier: "heavy",
+      failure_reason_key: "context_overflow",
+      failure_reason: "Context overflow: the injected filler + --ctx-size exceeds the model's context window.",
+      output: "llama-server: request exceeds context",
+    },
+  }));
+  expect(state.lastFailure).not.toBeNull();
+  expect(state.lastFailure?.key).toBe("context_overflow");
+  expect(state.lastFailure?.tier).toBe("heavy");
+  expect(state.lastFailure?.message).toContain("Context overflow");
+});
+
+test("failure_dismiss clears lastFailure", () => {
+  let state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  state = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    result: { status: "failed", decode_tps: null, prompt_processing_tps: null, agentic_tps: null, failure_reason_key: "unknown", failure_reason: "nope" },
+  }));
+  expect(state.lastFailure).not.toBeNull();
+  state = progressReducer(state, { type: "failure_dismiss", run_id: 1 });
+  expect(state.lastFailure).toBeNull();
+});
+
+test("run_started resets lastFailure", () => {
+  let state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  state = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    result: { status: "failed", decode_tps: null, prompt_processing_tps: null, agentic_tps: null, failure_reason_key: "unknown", failure_reason: "nope" },
+  }));
+  expect(state.lastFailure).not.toBeNull();
+  state = progressReducer(state, ev("run_started", 2, { total: 1 }));
+  expect(state.lastFailure).toBeNull();
+});

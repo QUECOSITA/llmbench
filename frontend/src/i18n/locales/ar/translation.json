@@ -46,7 +46,8 @@
     "agenticFlags": "أعلام AGENTIC",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all، أو (لاختبار {{bench}}): {{cats}}",
-    "limitLine": "--limit: عدد صحيح اختياري — الحد الأقصى للعينات لكل فئة"
+    "limitLine": "--limit: عدد صحيح اختياري — الحد الأقصى للعينات لكل فئة",
+    "agenticTier": "AGENTIC TIER"
   },
   "run": {
     "configProgress": "التكوين {{index}}/{{total}}",
@@ -115,5 +116,20 @@
     "cancelled": "ملغي",
     "error": "خطأ",
     "ok": "جيد"
+  },
+  "agentic": {
+    "interactiveNotice": "Agentic bench is an interactive, human-in-the-loop test — NOT an auto test. You must be present: at each step the harness asks you to choose the branching tool and arguments, and the run pauses until you answer.",
+    "failureTitle": "AGENTIC CONFIG FAILED — tier {{tier}}",
+    "failureDismiss": "DISMISS"
+  },
+  "decision": {
+    "title": "AGENTIC — BRANCH DECISION REQUIRED",
+    "hint": "step {{step}} — choose the next tool and arguments, or accept the proposed values.",
+    "tool": "TOOL",
+    "args": "ARGUMENTS (JSON)",
+    "argsPlaceholder": "{}",
+    "cancel": "FINISH / CANCEL",
+    "continue": "CONTINUE",
+    "invalidArgs": "Arguments must be a valid JSON object."
   }
 }

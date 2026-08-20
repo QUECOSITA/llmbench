@@ -188,3 +188,90 @@ async def test_run_agent_session_emits_thinking_and_branch(monkeypatch):
     assert "THINK I will make a plan" in joined
     assert "THINK Let me read a file" in joined
     assert "BRANCH → read_file" in joined
+
+
+def _workload_handler():
+    def handler(request):
+        body = json.loads(request.content)
+        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("submit_plan", {"steps": ["a"]})]}
+        else:
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("search", {"query": "x"})]}
+        return httpx.Response(200, json=_resp(msg))
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_decide_overrides_branch(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+    decisions = []
+
+    async def decide(step, proposed_tool, proposed_args, tool_options):
+        decisions.append((step, proposed_tool))
+        return ("read_file", {"path": "/repo/main.py"})
+
+    transport = httpx.MockTransport(_workload_handler())
+    result = await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=3, max_tokens=4096,
+        task="codebase_refactor", transport=transport, decide=decide)
+    assert result["status"] == "ok"
+    assert decisions, "decide should have been called on Phase-2 branches"
+    assert all(step >= 2 for step, _ in decisions)
+    assert result["user_decisions"] == len(decisions)
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_injects_filler_and_thinking(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+    requests = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("submit_plan", {"steps": ["a"]})]}
+        else:
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("finish", {"answer": "ok"})]}
+        return httpx.Response(200, json=_resp(msg))
+
+    transport = httpx.MockTransport(handler)
+    await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=2, max_tokens=4096,
+        task="codebase_refactor", transport=transport, tier="heavy", fill_tokens=2 * 131072)
+    system_content = requests[0]["messages"][0]["content"]
+    # Heavy thinking + the injected filler (2x heavy ctx => ~262144 tokens worth).
+    assert "exhaustive, step-by-step" in system_content
+    assert len(system_content) > 200000
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_session_budget_excludes_decide(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+    # Each model call advances the fake clock by 1s; budget of 1.0 should allow
+    # only a couple of model calls but the decide wait is free.
+
+    async def decide(step, proposed_tool, proposed_args, tool_options):
+        return ("read_file", {"path": "a.py"})
+
+    def handler(request):
+        body = json.loads(request.content)
+        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("submit_plan", {"steps": ["a"]})]}
+        else:
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("read_file", {"path": "a.py"})]}
+        return httpx.Response(200, json=_resp(msg))
+
+    transport = httpx.MockTransport(handler)
+    result = await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=10, max_tokens=4096,
+        task="codebase_refactor", transport=transport, decide=decide,
+        session_timeout_s=1.0)
+    # With a 1s budget and 1s/model call, only the forced plan step should run
+    # before the budget is exhausted at the next loop check.
+    assert result["steps"] == 1

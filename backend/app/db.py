@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS results (
     agentic_p95_ms REAL,
     total_prompt_tokens INTEGER,
     total_completion_tokens INTEGER,
+    agentic_tier TEXT,
+    user_decisions INTEGER,
+    failure_reason_key TEXT,
+    failure_reason TEXT,
     duration_s REAL,
     output_snippet TEXT,
     status TEXT NOT NULL
@@ -167,6 +171,18 @@ def _migrate_results_agentic_v2(conn):
     conn.commit()
 
 
+def _migrate_results_agentic_v3(conn):
+    cols = [row[1] for row in conn.execute("PRAGMA table_info('results')")]
+    new_cols = [
+        ("agentic_tier", "TEXT"), ("user_decisions", "INTEGER"),
+        ("failure_reason_key", "TEXT"), ("failure_reason", "TEXT"),
+    ]
+    for name, typ in new_cols:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE results ADD COLUMN {name} {typ}")
+    conn.commit()
+
+
 def init_db(path: str | Path) -> sqlite3.Connection:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
@@ -177,6 +193,7 @@ def init_db(path: str | Path) -> sqlite3.Connection:
     _repair_configs_fk(conn)
     _migrate_results_agentic(conn)
     _migrate_results_agentic_v2(conn)
+    _migrate_results_agentic_v3(conn)
     conn.executescript(
         "INSERT OR IGNORE INTO servers(id, display_name) VALUES "
         "('llama.cpp','llama.cpp');"
@@ -292,15 +309,19 @@ def save_result(conn, config_id, prompt_processing_tps, decode_tps, duration_s,
                 output_snippet, status, agentic_tps=None, agentic_steps=None,
                 agentic_tool_calls=None, agentic_plan_revisions=None,
                 agentic_avg_ms=None, agentic_p95_ms=None,
-                total_prompt_tokens=None, total_completion_tokens=None):
+                total_prompt_tokens=None, total_completion_tokens=None,
+                agentic_tier=None, user_decisions=None,
+                failure_reason_key=None, failure_reason=None):
     conn.execute(
         "INSERT INTO results(config_id, prompt_processing_tps, decode_tps, agentic_tps, "
         "agentic_steps, agentic_tool_calls, agentic_plan_revisions, agentic_avg_ms, "
         "agentic_p95_ms, total_prompt_tokens, total_completion_tokens, "
-        "duration_s, output_snippet, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "agentic_tier, user_decisions, failure_reason_key, failure_reason, "
+        "duration_s, output_snippet, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (config_id, prompt_processing_tps, decode_tps, agentic_tps,
          agentic_steps, agentic_tool_calls, agentic_plan_revisions, agentic_avg_ms,
          agentic_p95_ms, total_prompt_tokens, total_completion_tokens,
+         agentic_tier, user_decisions, failure_reason_key, failure_reason,
          duration_s, output_snippet, status),
     )
     conn.commit()
@@ -314,6 +335,8 @@ def get_results_for_run(conn, run_id):
                r.agentic_tps, r.agentic_steps, r.agentic_tool_calls,
                r.agentic_plan_revisions, r.agentic_avg_ms, r.agentic_p95_ms,
                r.total_prompt_tokens, r.total_completion_tokens,
+               r.agentic_tier, r.user_decisions,
+               r.failure_reason_key, r.failure_reason,
                r.duration_s, r.status AS result_status
         FROM configs c LEFT JOIN results r ON r.config_id = c.id
         WHERE c.run_id=? ORDER BY COALESCE(r.agentic_tps, r.decode_tps) DESC, c.id
