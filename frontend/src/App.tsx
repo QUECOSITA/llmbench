@@ -8,6 +8,7 @@ import { INITIAL_STATE, progressReducer, ResultRow, useBenchmarkProgress } from 
 import { useDownloadProgress } from "./ws/useDownloadProgress";
 import { ConfigBank, ConfigRow } from "./components/ConfigBank";
 import { DecisionModal } from "./components/DecisionModal";
+import { AgenticFailureNotice } from "./components/AgenticFailureNotice";
 import { DownloadConsole } from "./components/DownloadConsole";
 import { DownloadedSection } from "./components/DownloadedSection";
 import { HardwareBar } from "./components/HardwareBar";
@@ -680,6 +681,12 @@ export function App() {
                   onCancel={() => {
                     sendDecision("finish", { answer: "cancelled by user" });
                   }}
+                />
+              )}
+              {progressState.lastFailure && (
+                <AgenticFailureNotice
+                  notice={progressState.lastFailure}
+                  onDismiss={() => dispatch({ type: "failure_dismiss" })}
                 />
               )}
               {watchingRunId !== null && (

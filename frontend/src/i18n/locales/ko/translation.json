@@ -118,7 +118,9 @@
     "ok": "정상"
   },
   "agentic": {
-    "interactiveNotice": "Agentic bench is an interactive, human-in-the-loop test — NOT an auto test. You must be present: at each step the harness asks you to choose the branching tool and arguments, and the run pauses until you answer."
+    "interactiveNotice": "Agentic bench is an interactive, human-in-the-loop test — NOT an auto test. You must be present: at each step the harness asks you to choose the branching tool and arguments, and the run pauses until you answer.",
+    "failureTitle": "AGENTIC CONFIG FAILED — tier {{tier}}",
+    "failureDismiss": "DISMISS"
   },
   "decision": {
     "title": "AGENTIC — BRANCH DECISION REQUIRED",

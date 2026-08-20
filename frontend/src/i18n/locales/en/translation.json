@@ -1,5 +1,7 @@
 {
-  "nav": { "results": "RESULTS" },
+  "nav": {
+    "results": "RESULTS"
+  },
   "panel": {
     "modelInput": "01 · MODEL INPUT",
     "run": "03 · RUN",
@@ -48,7 +50,9 @@
     "limitLine": "--limit: optional int — max samples per category"
   },
   "agentic": {
-    "interactiveNotice": "Agentic bench is an interactive, human-in-the-loop test — NOT an auto test. You must be present: at each step the harness asks you to choose the branching tool and arguments, and the run pauses until you answer."
+    "interactiveNotice": "Agentic bench is an interactive, human-in-the-loop test — NOT an auto test. You must be present: at each step the harness asks you to choose the branching tool and arguments, and the run pauses until you answer.",
+    "failureTitle": "AGENTIC CONFIG FAILED — tier {{tier}}",
+    "failureDismiss": "DISMISS"
   },
   "decision": {
     "title": "AGENTIC — BRANCH DECISION REQUIRED",

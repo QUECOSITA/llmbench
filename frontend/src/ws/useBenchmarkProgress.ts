@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AgenticDetail } from "../components/AgenticDetailStrip";
 
 export interface ProgressEvent {
-  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "results_clear" | "agentic_decision";
+  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "results_clear" | "agentic_decision" | "failure_dismiss";
   run_id?: number;
   index?: number;
   total?: number;
@@ -25,6 +25,7 @@ export interface ProgressEvent {
     user_decisions?: number | null;
     failure_reason_key?: string | null;
     failure_reason?: string | null;
+    output?: string;
   };
   flag_conf?: Record<string, string>;
   status?: string;
@@ -62,6 +63,13 @@ export interface PendingDecision {
   tool_options: string[];
 }
 
+export interface FailureNotice {
+  key: string;
+  message: string;
+  tier: string | null;
+  details?: string;
+}
+
 export interface ProgressState {
   running: boolean;
   runId: number | null;
@@ -75,6 +83,7 @@ export interface ProgressState {
   lines: string[];
   currentCommand: string;
   pendingDecision: PendingDecision | null;
+  lastFailure: FailureNotice | null;
 }
 
 export const INITIAL_STATE: ProgressState = {
@@ -90,6 +99,7 @@ export const INITIAL_STATE: ProgressState = {
   lines: [],
   currentCommand: "",
   pendingDecision: null,
+  lastFailure: null,
 };
 
 export function progressReducer(state: ProgressState, event: ProgressEvent): ProgressState {
@@ -107,11 +117,16 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       lines: [],
       currentCommand: "",
       pendingDecision: null,
+      lastFailure: null,
     };
   }
 
   if (event.type === "results_clear") {
-    return { ...state, results: [], promptTps: null, decodeTps: null, agenticTps: null, agenticDetail: null, pendingDecision: null };
+    return { ...state, results: [], promptTps: null, decodeTps: null, agenticTps: null, agenticDetail: null, pendingDecision: null, lastFailure: null };
+  }
+
+  if (event.type === "failure_dismiss") {
+    return { ...state, lastFailure: null };
   }
 
   if (event.type === "config_start" && event.run_id === state.runId) {
@@ -190,6 +205,14 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       ? ` · ${event.result.failure_reason}`
       : "";
     const resultLine = `PROMPT ${fmt(promptTps)} · DECODE ${fmt(decodeTps)} · AGENTIC ${fmt(agenticTps)} · ${event.result?.status ?? ""}${failureLine}`;
+    const lastFailure = event.result?.failure_reason_key
+      ? {
+          key: event.result.failure_reason_key,
+          message: event.result.failure_reason ?? "agentic config failed",
+          tier: event.result.agentic_tier ?? null,
+          details: (event.result.output ?? "").slice(-800),
+        }
+      : state.lastFailure;
     return {
       ...state,
       index: idx,
@@ -201,6 +224,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       results,
       lines: [...state.lines, resultLine],
       pendingDecision: null,
+      lastFailure,
     };
   }
 
@@ -241,6 +265,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       lines: state.lines,
       currentCommand: state.currentCommand,
       pendingDecision: state.pendingDecision,
+      lastFailure: state.lastFailure,
     };
   }
 
