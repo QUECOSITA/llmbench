@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     agentic_steps: int = 10
     agentic_max_tokens: int = 4096
     agentic_task: str = "codebase_refactor"
+    agentic_tier: str = "medium"
     agentic_timeout_s: int = 300
 
     @model_validator(mode="after")

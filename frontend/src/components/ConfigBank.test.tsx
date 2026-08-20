@@ -194,3 +194,36 @@ test("disables the bench tool selector when canGenerate is false", () => {
   );
   expect(screen.getByLabelText(/bench tool/i)).toBeDisabled();
 });
+
+
+test("renders the agentic tier dropdown when bench_tool is agentic and calls onAgenticTierChange", () => {
+  const onTierChange = vi.fn();
+  render(
+    <ConfigBank
+      n={1}
+      onNChange={() => {}}
+      onGenerate={() => {}}
+      configs={[{ flags: {}, serving_command: "llama-server -m x", bench_tool: "agentic" }]}
+      benchTool="agentic"
+      agenticTier="medium"
+      onAgenticTierChange={onTierChange}
+    />,
+  );
+  const select = screen.getByDisplayValue("medium");
+  fireEvent.change(select, { target: { value: "heavy" } });
+  expect(onTierChange).toHaveBeenCalledWith("heavy");
+});
+
+test("hides the agentic tier dropdown for non-agentic bench tools", () => {
+  render(
+    <ConfigBank
+      n={1}
+      onNChange={() => {}}
+      onGenerate={() => {}}
+      configs={[{ flags: {}, serving_command: "llama-server -m x" }]}
+      benchTool="llama-bench"
+      agenticTier="medium"
+    />,
+  );
+  expect(screen.queryByDisplayValue("medium")).toBeNull();
+});

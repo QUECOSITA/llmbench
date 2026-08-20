@@ -46,7 +46,8 @@
     "agenticFlags": "AGENTIC 플래그",
     "benchLine": "--bench: {{benches}}",
     "categoryLine": "--category: all 또는 ({{bench}} 벤치의 경우): {{cats}}",
-    "limitLine": "--limit: 선택 정수 — 카테고리당 최대 샘플 수"
+    "limitLine": "--limit: 선택 정수 — 카테고리당 최대 샘플 수",
+    "agenticTier": "AGENTIC TIER"
   },
   "run": {
     "configProgress": "구성 {{index}}/{{total}}",
@@ -115,5 +116,18 @@
     "cancelled": "취소됨",
     "error": "오류",
     "ok": "정상"
+  },
+  "agentic": {
+    "interactiveNotice": "Agentic bench is an interactive, human-in-the-loop test — NOT an auto test. You must be present: at each step the harness asks you to choose the branching tool and arguments, and the run pauses until you answer."
+  },
+  "decision": {
+    "title": "AGENTIC — BRANCH DECISION REQUIRED",
+    "hint": "step {{step}} — choose the next tool and arguments, or accept the proposed values.",
+    "tool": "TOOL",
+    "args": "ARGUMENTS (JSON)",
+    "argsPlaceholder": "{}",
+    "cancel": "FINISH / CANCEL",
+    "continue": "CONTINUE",
+    "invalidArgs": "Arguments must be a valid JSON object."
   }
 }

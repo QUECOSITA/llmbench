@@ -47,9 +47,13 @@ interface Props {
   speedBenchInfo?: SpeedBenchInfo | null;
   benchTool?: "llama-bench" | "speed-bench" | "agentic";
   onBenchToolChange?: (tool: "llama-bench" | "speed-bench" | "agentic") => void;
+  agenticTier?: string;
+  onAgenticTierChange?: (tier: string) => void;
 }
 
-export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = true, onEdit, onEditFlags, speedBenchInfo, benchTool, onBenchToolChange }: Props) {
+export const AGENTIC_TIERS = ["low", "medium", "heavy"];
+
+export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = true, onEdit, onEditFlags, speedBenchInfo, benchTool, onBenchToolChange, agenticTier, onAgenticTierChange }: Props) {
   const { t } = useTranslation();
   return (
     <section className="panel">
@@ -76,6 +80,20 @@ export function ConfigBank({ n, onNChange, onGenerate, configs, canGenerate = tr
             <option value="agentic">agentic</option>
           </select>
         </label>
+        {benchTool === "agentic" && (
+          <label style={{ color: "var(--anode)", fontSize: 12 }}>
+            {t("config.agenticTier")}
+            <select
+              value={agenticTier ?? "medium"}
+              onChange={(e) => onAgenticTierChange?.(e.target.value)}
+              disabled={!canGenerate}
+            >
+              {AGENTIC_TIERS.map((tier) => (
+                <option key={tier} value={tier}>{tier}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <button onClick={() => onGenerate(n)} disabled={!canGenerate}>{t("common.generate")}</button>
       </div>
       {configs.map((cfg, i) => (

@@ -271,3 +271,34 @@ test("run_watch for a different run_id is ignored", () => {
   expect(next.runId).toBe(5);
   expect(next.results).toEqual([]);
 });
+
+
+test("agentic_decision sets pendingDecision with proposal and options", () => {
+  const state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  const next = progressReducer(state, ev("agentic_decision", 1, {
+    index: 0,
+    proposed_tool: "read_file",
+    proposed_args: { path: "/repo/main.py" },
+    tool_options: ["read_file", "search", "finish"],
+  }));
+  expect(next.pendingDecision).toEqual({
+    run_id: 1,
+    index: 0,
+    proposed_tool: "read_file",
+    proposed_args: { path: "/repo/main.py" },
+    tool_options: ["read_file", "search", "finish"],
+  });
+});
+
+test("config_done clears pendingDecision and carries agentic_tier into result", () => {
+  let state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
+  state = progressReducer(state, ev("agentic_decision", 1, {
+    index: 0, proposed_tool: "read_file", proposed_args: {}, tool_options: [],
+  }));
+  const next = progressReducer(state, ev("config_done", 1, {
+    index: 0,
+    result: { status: "ok", decode_tps: null, prompt_processing_tps: null, agentic_tps: 25.0, agentic_tier: "heavy" },
+  }));
+  expect(next.pendingDecision).toBeNull();
+  expect(next.results[0].agentic_tier).toBe("heavy");
+});

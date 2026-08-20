@@ -48,6 +48,8 @@ test("agentic flow: pick agentic bench tool, generate, run, and see AGENTIC t/s"
   await page.getByRole("button", { name: /analyze/i }).click();
   await expect(page.getByText(/may not be loadable by LLMBENCH/i)).toBeVisible();
   await page.getByRole("combobox", { name: /bench tool/i }).selectOption("agentic");
+  await expect(page.getByRole("combobox", { name: /agentic tier/i })).toBeVisible();
+  await expect(page.getByText(/interactive, human-in-the-loop/i)).toBeVisible();
   await page.getByRole("button", { name: /generate/i }).click();
   await expect(page.getByText("AGENTIC", { exact: true })).toBeVisible();
   await expect(page.getByText(/--steps 10 --max-tokens 4096 --task codebase_refactor/i)).toBeVisible();

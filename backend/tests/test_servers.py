@@ -583,9 +583,9 @@ def test_build_bench_command_excludes_load_mode_and_no_mmproj(tmp_path):
 
 
 def test_agentic_default_flags():
-    assert agentic_default_flags() == "--steps 10 --max-tokens 4096 --task codebase_refactor"
-    assert agentic_default_flags(steps=6, max_tokens=8192, task="research") == \
-        "--steps 6 --max-tokens 8192 --task research"
+    assert agentic_default_flags() == "--steps 10 --max-tokens 4096 --task codebase_refactor --tier medium"
+    assert agentic_default_flags(steps=6, max_tokens=8192, task="research", tier="heavy") == \
+        "--steps 6 --max-tokens 8192 --task research --tier heavy"
 
 
 def test_parse_agentic_flags():
@@ -620,7 +620,15 @@ def test_validate_agentic_flags_out_of_range():
     assert validate_agentic_flags(["--steps", "0", "--max-tokens", "1"]) is not None
     assert validate_agentic_flags(["--steps", "21", "--max-tokens", "1"]) is not None
     assert validate_agentic_flags(["--steps", "10", "--max-tokens", "0"]) is not None
-    assert validate_agentic_flags(["--steps", "10", "--max-tokens", "32769"]) is not None
+    assert validate_agentic_flags(["--steps", "10", "--max-tokens", "32769"]) is None
+    assert validate_agentic_flags(["--steps", "10", "--max-tokens", "65728"]) is None
+    assert validate_agentic_flags(["--steps", "10", "--max-tokens", "65729"]) is not None
+
+
+def test_validate_agentic_flags_tier():
+    assert validate_agentic_flags(["--tier", "heavy"]) is None
+    err = validate_agentic_flags(["--tier", "nope"])
+    assert err is not None and "unknown --tier" in err
 
 
 def test_validate_agentic_flags_bad_task():

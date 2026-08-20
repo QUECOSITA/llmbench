@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import threading
@@ -25,7 +26,7 @@ from app.servers import (agentic_default_flags, build_agentic_command,
                          serving_command_display_flags, speed_bench_deps_available,
                          parse_speed_bench_flags, speed_bench_default_flags,
                          validate_agentic_flags, validate_speed_bench_flags,
-                         SPEED_BENCH_BENCHES, SPEED_BENCH_CATEGORIES)
+                         AGENTIC_TIERS, SPEED_BENCH_BENCHES, SPEED_BENCH_CATEGORIES)
 from app.spawn import spawn_env
 
 router = APIRouter(prefix="/api")
@@ -78,6 +79,10 @@ class AppState:
         self.runner: benchmark_mod.BenchmarkRunner | benchmark_mod.SpeedBenchRunner | None = None
         self._ws_clients: set[WebSocket] = set()
         self._state_lock = threading.Lock()
+        # Agentic interactive decision bridge: (run_id, index) -> future that is
+        # resolved when the frontend replies with the user's chosen branch.
+        self._agentic_pending: tuple[int, int] | None = None
+        self._agentic_future: asyncio.Future | None = None
         self._job_active = False
         self._download_active = False
         self._download_pty: DownloadPty | None = None
@@ -533,7 +538,26 @@ async def generate(payload: dict):
         )
     )
     uses_agentic = requested_bench_tool == "agentic"
+    # Resolve the agentic tier once for the whole bank. Prefer the explicit
+    # agentic_tier payload field (frontend dropdown); fall back to parsing
+    # --tier from bench_flags; else the default.
+    agentic_tier = None
+    if uses_agentic:
+        agentic_tier = payload.get("agentic_tier")
+        if agentic_tier not in AGENTIC_TIERS:
+            flags_text0 = (payload.get("bench_flags") or
+                           agentic_default_flags(s.settings.agentic_steps,
+                                                 s.settings.agentic_max_tokens,
+                                                 s.settings.agentic_task))
+            tier_from_flags = dict(zip(parse_agentic_flags(flags_text0)[::2],
+                                       parse_agentic_flags(flags_text0)[1::2])).get("--tier")
+            agentic_tier = tier_from_flags if tier_from_flags in AGENTIC_TIERS \
+                else s.settings.agentic_tier
     for cfg in configs:
+        if uses_agentic:
+            tier_spec = AGENTIC_TIERS[agentic_tier]
+            cfg["flags"] = dict(cfg["flags"])
+            cfg["flags"]["--ctx-size"] = str(tier_spec["ctx_size"])
         cfg["serving_command"] = build_serving_command(
             server_id, repo_id, cfg["flags"],
             gguf_filename=gguf_filename,
@@ -545,14 +569,21 @@ async def generate(payload: dict):
             flags_text = (payload.get("bench_flags")
                           or agentic_default_flags(s.settings.agentic_steps,
                                                    s.settings.agentic_max_tokens,
-                                                   s.settings.agentic_task))
+                                                   s.settings.agentic_task,
+                                                   agentic_tier))
             flags = parse_agentic_flags(flags_text)
             error = validate_agentic_flags(flags)
             if error:
                 cfg["bench_command"] = []
                 cfg["bench_error"] = error
             else:
+                # Merge the tier into the flags if not already set so the tier
+                # is explicit in agentic_params.
+                if not any(t == "--tier" for t in flags):
+                    flags += ["--tier", agentic_tier]
+                    flags_text = flags_text.strip() + f" --tier {agentic_tier}"
                 cfg["bench_flags"] = flags_text
+                cfg["agentic_tier"] = agentic_tier
                 cfg["bench_command"] = build_agentic_command(repo_id, flags)
         elif uses_speed_bench:
             script = await asyncio.to_thread(
@@ -628,12 +659,15 @@ def _rebuild_bench_command(s: AppState, cfg: dict, repo_id: str) -> None:
         model_ref, gguf_filename = model_ref_from_flags(cfg["server_id"], parsed, repo_id)
         cfg["bench_command"] = build_agentic_command(gguf_filename or model_ref, flags)
         _flag_map = dict(zip(flags[::2], flags[1::2]))
+        tier = _flag_map.get("--tier", s.settings.agentic_tier)
         cfg["agentic_params"] = {
             "model": gguf_filename or model_ref,
             "steps": _flag_map.get("--steps", str(s.settings.agentic_steps)),
             "max_tokens": _flag_map.get("--max-tokens", str(s.settings.agentic_max_tokens)),
             "task": _flag_map.get("--task", s.settings.agentic_task),
+            "tier": tier,
         }
+        cfg["agentic_tier"] = tier
         cfg["flags"] = serving_command_display_flags(
             cfg["server_id"], cfg.get("serving_command", "")) or cfg.get("flags", {})
         cfg.pop("bench_error", None)
@@ -746,12 +780,29 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                     await broadcast(s, {"type": "config_start", "run_id": run_id, "index": i,
                                         "total": len(configs), "config": cfg})
                     if cfg.get("bench_tool") == "agentic":
+                        async def decide(_step, proposed_tool, proposed_args, tool_options):
+                            future = asyncio.get_event_loop().create_future()
+                            s._agentic_pending = (run_id, i)
+                            s._agentic_future = future
+                            try:
+                                await broadcast(s, {"type": "agentic_decision",
+                                                    "run_id": run_id, "index": i,
+                                                    "proposed_tool": proposed_tool,
+                                                    "proposed_args": proposed_args,
+                                                    "tool_options": tool_options})
+                                choice = await asyncio.wait_for(future, timeout=None)
+                                return choice["tool"], choice["args"]
+                            finally:
+                                if s._agentic_pending == (run_id, i):
+                                    s._agentic_pending = None
+                                    s._agentic_future = None
                         runner = benchmark_mod.AgenticRunner(
                             server_command=cfg.get("server_command", []),
                             params=cfg.get("agentic_params", {}),
                             timeout_s=s.settings.agentic_timeout_s,
                             startup_timeout_s=s.settings.agentic_timeout_s,
                             workload_file=str(s.settings.workload_file),
+                            decide=decide,
                         )
                     elif cfg.get("bench_tool") == "speed-bench":
                         runner = benchmark_mod.SpeedBenchRunner(
@@ -789,7 +840,12 @@ async def _run_job(s: AppState, run_id: int, configs: list[dict]):
                                        agentic_avg_ms=result.get("avg_latency_ms"),
                                        agentic_p95_ms=result.get("p95_latency_ms"),
                                        total_prompt_tokens=result.get("total_prompt_tokens"),
-                                       total_completion_tokens=result.get("total_completion_tokens"))
+                                       total_completion_tokens=result.get("total_completion_tokens"),
+                                       agentic_tier=cfg.get("agentic_params", {}).get("tier"),
+                                       user_decisions=result.get("user_decisions"),
+                                       failure_reason_key=result.get("failure_reason_key"),
+                                       failure_reason=result.get("failure_reason"))
+                    result["agentic_tier"] = cfg.get("agentic_params", {}).get("tier")
                     await broadcast(s, {"type": "config_done", "run_id": run_id, "index": i,
                                         "result": result, "flag_conf": cfg.get("flags", {})})
                     if result["status"] == "aborted":
@@ -862,6 +918,21 @@ async def ws_endpoint(ws: WebSocket):
     s._ws_clients.add(ws)
     try:
         while True:
-            await ws.receive_text()
+            raw = await ws.receive_text()
+            if not raw:
+                continue
+            try:
+                msg = json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            if msg.get("type") == "agentic_decision_reply" and s._agentic_future is not None:
+                tool = msg.get("tool")
+                args = msg.get("args") or {}
+                if s._agentic_future.done():
+                    continue
+                if not tool:
+                    s._agentic_future.set_exception(ValueError("no tool chosen"))
+                else:
+                    s._agentic_future.set_result({"tool": tool, "args": args})
     except WebSocketDisconnect:
         s._ws_clients.discard(ws)

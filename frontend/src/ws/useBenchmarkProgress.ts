@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AgenticDetail } from "../components/AgenticDetailStrip";
 
 export interface ProgressEvent {
-  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "results_clear";
+  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "results_clear" | "agentic_decision";
   run_id?: number;
   index?: number;
   total?: number;
@@ -21,10 +21,17 @@ export interface ProgressEvent {
     agentic_p95_ms?: number | null;
     total_prompt_tokens?: number | null;
     total_completion_tokens?: number | null;
+    agentic_tier?: string | null;
+    user_decisions?: number | null;
+    failure_reason_key?: string | null;
+    failure_reason?: string | null;
   };
   flag_conf?: Record<string, string>;
   status?: string;
   results?: ResultRow[];
+  proposed_tool?: string;
+  proposed_args?: Record<string, unknown>;
+  tool_options?: string[];
 }
 
 export interface ResultRow {
@@ -40,7 +47,19 @@ export interface ResultRow {
   agentic_p95_ms?: number | null;
   total_prompt_tokens?: number | null;
   total_completion_tokens?: number | null;
+  agentic_tier?: string | null;
+  user_decisions?: number | null;
+  failure_reason_key?: string | null;
+  failure_reason?: string | null;
   result_status?: string | null;
+}
+
+export interface PendingDecision {
+  run_id: number | null;
+  index: number;
+  proposed_tool: string;
+  proposed_args: Record<string, unknown>;
+  tool_options: string[];
 }
 
 export interface ProgressState {
@@ -55,6 +74,7 @@ export interface ProgressState {
   results: ResultRow[];
   lines: string[];
   currentCommand: string;
+  pendingDecision: PendingDecision | null;
 }
 
 export const INITIAL_STATE: ProgressState = {
@@ -69,6 +89,7 @@ export const INITIAL_STATE: ProgressState = {
   results: [],
   lines: [],
   currentCommand: "",
+  pendingDecision: null,
 };
 
 export function progressReducer(state: ProgressState, event: ProgressEvent): ProgressState {
@@ -85,11 +106,12 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       results: [],
       lines: [],
       currentCommand: "",
+      pendingDecision: null,
     };
   }
 
   if (event.type === "results_clear") {
-    return { ...state, results: [], promptTps: null, decodeTps: null, agenticTps: null, agenticDetail: null };
+    return { ...state, results: [], promptTps: null, decodeTps: null, agenticTps: null, agenticDetail: null, pendingDecision: null };
   }
 
   if (event.type === "config_start" && event.run_id === state.runId) {
@@ -114,6 +136,19 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
     return { ...state, lines };
   }
 
+  if (event.type === "agentic_decision" && event.run_id === state.runId) {
+    return {
+      ...state,
+      pendingDecision: {
+        run_id: event.run_id ?? null,
+        index: event.index ?? state.index,
+        proposed_tool: event.proposed_tool ?? "finish",
+        proposed_args: event.proposed_args ?? {},
+        tool_options: event.tool_options ?? [],
+      },
+    };
+  }
+
   if (event.type === "config_done" && event.run_id === state.runId) {
     const idx = event.index ?? state.index;
     const promptTps = event.result?.prompt_processing_tps ?? null;
@@ -127,6 +162,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       p95Ms: event.result?.agentic_p95_ms ?? null,
       totalPromptTokens: event.result?.total_prompt_tokens ?? null,
       totalCompletionTokens: event.result?.total_completion_tokens ?? null,
+      tier: event.result?.agentic_tier ?? null,
     };
     const newResult: ResultRow = {
       server_id: "",
@@ -141,12 +177,19 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       agentic_p95_ms: detail.p95Ms,
       total_prompt_tokens: detail.totalPromptTokens,
       total_completion_tokens: detail.totalCompletionTokens,
+      agentic_tier: event.result?.agentic_tier ?? null,
+      user_decisions: event.result?.user_decisions ?? null,
+      failure_reason_key: event.result?.failure_reason_key ?? null,
+      failure_reason: event.result?.failure_reason ?? null,
       result_status: event.result?.status ?? null,
     };
     const results = [...state.results];
     results[idx] = newResult;
     const fmt = (v: number | null) => (v == null ? "—" : v.toFixed(1));
-    const resultLine = `PROMPT ${fmt(promptTps)} · DECODE ${fmt(decodeTps)} · AGENTIC ${fmt(agenticTps)} · ${event.result?.status ?? ""}`;
+    const failureLine = event.result?.failure_reason
+      ? ` · ${event.result.failure_reason}`
+      : "";
+    const resultLine = `PROMPT ${fmt(promptTps)} · DECODE ${fmt(decodeTps)} · AGENTIC ${fmt(agenticTps)} · ${event.result?.status ?? ""}${failureLine}`;
     return {
       ...state,
       index: idx,
@@ -157,6 +200,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       agenticDetail: detail,
       results,
       lines: [...state.lines, resultLine],
+      pendingDecision: null,
     };
   }
 
@@ -196,6 +240,7 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
       results,
       lines: state.lines,
       currentCommand: state.currentCommand,
+      pendingDecision: state.pendingDecision,
     };
   }
 
@@ -211,19 +256,32 @@ function rowDetail(row: ResultRow): AgenticDetail {
     p95Ms: row.agentic_p95_ms ?? null,
     totalPromptTokens: row.total_prompt_tokens ?? null,
     totalCompletionTokens: row.total_completion_tokens ?? null,
+    tier: row.agentic_tier ?? null,
   };
 }
 
 export function useBenchmarkProgress() {
   const [events, setEvents] = useState<ProgressEvent[]>([]);
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:8000/api/ws");
+    wsRef.current = ws;
     ws.onmessage = (msg) => {
       setEvents((prev) => [...prev, JSON.parse(msg.data) as ProgressEvent]);
     };
-    return () => ws.close();
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
   }, []);
 
-  return events;
+  const sendDecision = (tool: string, args: Record<string, unknown>) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "agentic_decision_reply", tool, args }));
+    }
+  };
+
+  return { events, sendDecision };
 }

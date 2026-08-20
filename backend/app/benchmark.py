@@ -200,6 +200,44 @@ def _decode_parts(parts: list[bytes]) -> str:
     return "\n".join(p.decode(errors="replace") for p in parts if p)
 
 
+def _classify_agentic_failure(exc: BaseException | None, output: str) -> dict:
+    """Classify an agentic session failure into a human-readable reason so the
+    user understands WHY a config failed (context overflow vs not-enough-VRAM vs
+    unknown) instead of seeing a bare failure. Returns a dict with ``key``
+    (machine-readable) and ``message`` (human-readable)."""
+    text = output or ""
+    low = text.lower()
+    msg = str(exc or "").lower()
+    combined = low + "\n" + msg
+    if "out of memory" in combined or "not enough memory" in combined \
+            or "oom" in combined or "cuda out of memory" in combined \
+            or "insufficient" in combined and "vram" in combined \
+            or "no space" in combined:
+        return {
+            "key": "oom_insufficient_vram",
+            "message": ("Not enough VRAM/memory to serve this model at the "
+                        "requested context (tier filler + ctx-size). Lower the "
+                        "agentic tier or reduce --ctx-size / the model size."),
+        }
+    if "context" in combined and ("exceed" in combined or "too large" in combined
+                                  or "overflow" in combined or "window" in combined):
+        return {
+            "key": "context_overflow",
+            "message": ("Context overflow: the injected filler + --ctx-size "
+                        "exceeds the model's context window. Lower the agentic "
+                        "tier or raise --ctx-size on the serving command."),
+        }
+    if "no space left" in combined or "disk" in combined:
+        return {
+            "key": "no_disk_space",
+            "message": "Not enough disk space to run this workload.",
+        }
+    return {
+        "key": "unknown",
+        "message": f"Agentic session failed: {msg or 'see server output below'}",
+    }
+
+
 _STARTUP_REPORT_S = 10.0
 
 
@@ -408,7 +446,8 @@ class AgenticRunner:
     processing tokens (prompt + completion) divided by total session wall time."""
 
     def __init__(self, server_command: list[str], params: dict,
-                 timeout_s: float, startup_timeout_s: float, workload_file: str):
+                 timeout_s: float, startup_timeout_s: float, workload_file: str,
+                 decide=None):
         from app.agentic import AGENTIC_DEFAULT_MAX_TOKENS, AGENTIC_DEFAULT_STEPS
         self.server_command = list(server_command)
         self.params = dict(params)
@@ -417,6 +456,7 @@ class AgenticRunner:
         self.workload_file = workload_file
         self._default_steps = AGENTIC_DEFAULT_STEPS
         self._default_max_tokens = AGENTIC_DEFAULT_MAX_TOKENS
+        self.decide = decide
         self._aborted = asyncio.Event()
         self._procs: list[asyncio.subprocess.Process] = []
 
@@ -515,6 +555,14 @@ class AgenticRunner:
                         "duration_s": asyncio.get_event_loop().time() - start,
                         "output": "served model does not support function/tool calling; "
                                   "agentic bench requires it.\n" + _decode_parts(parts)}
+            from app.agentic import AGENTIC_TIERS, AGENTIC_DEFAULT_TIER
+            tier = self.params.get("tier", AGENTIC_DEFAULT_TIER)
+            tier_spec = AGENTIC_TIERS.get(tier, AGENTIC_TIERS[AGENTIC_DEFAULT_TIER])
+            fill_tokens = int(tier_spec.get("fill_tokens", 0))
+            # Interactive session: the model-call budget is enforced inside
+            # run_agent_session (excluding user decision wait). The outer
+            # wait_for is only a generous hard ceiling to catch a hung server.
+            hard_cap = max(self.timeout_s * 30.0, 3600.0)
             try:
                 session = await asyncio.wait_for(
                     run_agent_session(
@@ -523,10 +571,14 @@ class AgenticRunner:
                         steps=int(self.params.get("steps", self._default_steps)),
                         max_tokens=int(self.params.get("max_tokens", self._default_max_tokens)),
                         task=self.params.get("task", "codebase_refactor"),
+                        tier=tier,
+                        fill_tokens=fill_tokens,
+                        decide=self.decide,
                         on_output=on_output,
                         request_timeout=self.timeout_s,
+                        session_timeout_s=self.timeout_s,
                     ),
-                    timeout=self.timeout_s,
+                    timeout=hard_cap,
                 )
             except asyncio.TimeoutError:
                 if self._aborted.is_set():
@@ -539,16 +591,20 @@ class AgenticRunner:
                         "duration_s": asyncio.get_event_loop().time() - start,
                         "output": f"agentic session timed out after {self.timeout_s}s\n"
                                   + _decode_parts(parts)}
-            except Exception:
+            except Exception as exc:
                 if self._aborted.is_set():
                     return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,
                             "agentic_tps": None,
                             "duration_s": asyncio.get_event_loop().time() - start,
                             "output": _decode_parts(parts)}
+                output = _decode_parts(parts)
+                reason = _classify_agentic_failure(exc, output)
                 return {"status": "failed", "prompt_processing_tps": None, "decode_tps": None,
                         "agentic_tps": None,
                         "duration_s": asyncio.get_event_loop().time() - start,
-                        "output": _decode_parts(parts)}
+                        "failure_reason_key": reason["key"],
+                        "failure_reason": reason["message"],
+                        "output": output}
             duration = asyncio.get_event_loop().time() - start
             if self._aborted.is_set():
                 return {"status": "aborted", "prompt_processing_tps": None, "decode_tps": None,
