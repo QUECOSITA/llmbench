@@ -5,6 +5,7 @@ import pytest
 
 from app.agentic import (AGENTIC_DEFAULT_MAX_TOKENS, AGENTIC_DEFAULT_STEPS,
                          AGENTIC_TASKS, AGENTIC_TOOL_SCHEMAS, DEFAULT_USER_PROMPT,
+                         agentic_request_timeout, agentic_session_timeout,
                          probe_tool_calling, run_agent_session)
 
 
@@ -266,6 +267,25 @@ def test_fill_tokens_half_ctx():
     from app.agentic import AGENTIC_TIERS
     for tier, spec in AGENTIC_TIERS.items():
         assert spec["fill_tokens"] == spec["ctx_size"] // 2
+
+
+def test_agentic_request_timeout_scales_with_tier():
+    # Medium tier injects 32k filler tokens; at a conservative 20 tps prefill
+    # that alone is ~1600s, so the derived per-request timeout must comfortably
+    # exceed the flat 300s default that caused the original failure.
+    t = agentic_request_timeout("medium", 8192)
+    assert t >= 3600
+    # Heavier tier => larger workload => larger per-request timeout.
+    assert agentic_request_timeout("heavy", 8192) > t
+    assert agentic_request_timeout("low", 4096) < t
+    # Unknown tier falls back to the default (medium) sizing.
+    assert agentic_request_timeout("bogus", 8192) == t
+
+
+def test_agentic_session_timeout_scales_with_steps():
+    per = agentic_request_timeout("medium", 8192)
+    assert agentic_session_timeout("medium", 1, 8192) == per
+    assert agentic_session_timeout("medium", 10, 8192) == per * 10
 
 
 @pytest.mark.asyncio
