@@ -33,7 +33,7 @@ def _plan_handler(requests):
     def handler(request):
         body = json.loads(request.content)
         requests.append(body)
-        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+        if body.get("tool_choice") == "required":
             msg = {"role": "assistant", "content": None,
                    "tool_calls": [_tool_call("submit_plan", {"steps": ["a", "b"]})]}
         elif len(body["messages"]) >= 6:
@@ -60,7 +60,7 @@ async def test_run_agent_session_plan_then_act_then_finish(monkeypatch):
     assert result["tool_calls"] >= 3
     assert result["agentic_tps"] == (10 * 3 + 4 * 3) / 3.0
     assert result["total_wall_s"] == 3.0
-    assert requests[0]["tool_choice"] == {"type": "function", "function": {"name": "submit_plan"}}
+    assert requests[0]["tool_choice"] == "required"
 
 
 @pytest.mark.asyncio
@@ -171,7 +171,7 @@ async def test_run_agent_session_emits_thinking_and_branch(monkeypatch):
 
     def handler(request):
         body = json.loads(request.content)
-        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+        if body.get("tool_choice") == "required":
             msg = {"role": "assistant", "content": "I will make a plan",
                    "tool_calls": [_tool_call("submit_plan", {"steps": ["a"]})]}
         else:
@@ -193,7 +193,7 @@ async def test_run_agent_session_emits_thinking_and_branch(monkeypatch):
 def _workload_handler():
     def handler(request):
         body = json.loads(request.content)
-        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+        if body.get("tool_choice") == "required":
             msg = {"role": "assistant", "content": None,
                    "tool_calls": [_tool_call("submit_plan", {"steps": ["a"]})]}
         else:
@@ -230,7 +230,7 @@ async def test_run_agent_session_injects_filler_and_thinking(monkeypatch):
     def handler(request):
         body = json.loads(request.content)
         requests.append(body)
-        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+        if body.get("tool_choice") == "required":
             msg = {"role": "assistant", "content": None,
                    "tool_calls": [_tool_call("submit_plan", {"steps": ["a"]})]}
         else:
@@ -259,7 +259,7 @@ async def test_run_agent_session_session_budget_excludes_decide(monkeypatch):
 
     def handler(request):
         body = json.loads(request.content)
-        if body.get("tool_choice") == {"type": "function", "function": {"name": "submit_plan"}}:
+        if body.get("tool_choice") == "required":
             msg = {"role": "assistant", "content": None,
                    "tool_calls": [_tool_call("submit_plan", {"steps": ["a"]})]}
         else:
@@ -275,3 +275,42 @@ async def test_run_agent_session_session_budget_excludes_decide(monkeypatch):
     # With a 1s budget and 1s/model call, only the forced plan step should run
     # before the budget is exhausted at the next loop check.
     assert result["steps"] == 1
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_step1_retries_until_submit_plan(monkeypatch):
+    monkeypatch.setattr("app.agentic.time.monotonic", FakeClock())
+    requests = []
+    attempts = {"n": 0}
+
+    def handler(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            # Step 1 first returns a non-plan tool; harness must retry to force submit_plan.
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("read_file", {"path": "/repo/main.py"})]}
+        elif body.get("tool_choice") == "required":
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("submit_plan", {"steps": ["a"]})]}
+        else:
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [_tool_call("finish", {"answer": "ok"})]}
+        return httpx.Response(200, json=_resp(msg))
+
+    transport = httpx.MockTransport(handler)
+    result = await run_agent_session(
+        base_url="http://127.0.0.1:9", model="m", steps=10, max_tokens=4096,
+        task="codebase_refactor", transport=transport)
+    assert result["status"] == "ok"
+    assert result["finished"] is True
+    assert result["steps"] == 2
+    assert result["plan_retries"] == 1
+    # The stray read_file from the failed step-1 attempt was executed (its tool
+    # result is fed back into the retry) rather than silently dropped.
+    assert requests[0]["tool_choice"] == "required"
+    assert requests[1]["tool_choice"] == "required"
+    retry_messages = requests[1]["messages"]
+    assert retry_messages[-2]["role"] == "tool"
+    assert "Your first action was not submit_plan" in retry_messages[-1]["content"]

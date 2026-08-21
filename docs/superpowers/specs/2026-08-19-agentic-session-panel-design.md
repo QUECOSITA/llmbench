@@ -50,7 +50,7 @@ lines through the existing `on_output` callback (keep the existing `transcript` 
 metrics/`agentic_tps` untouched). Each block includes:
 
 - **Step header** — `── step 1/10 ──` (loop-iteration marker)
-- **Prompt sent** — the `tool_choice` (forced `submit_plan` on step 1, `auto` after)
+- **Prompt sent** — the `tool_choice` (`"required"` on step 1, `auto` after)
   plus the scenario task prompt text, noting the growing message history.
 - **Model output / thinking** — the returned assistant `content` (or
   `(tool call only)` when the model emitted a tool call without prose).

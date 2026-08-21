@@ -50,8 +50,8 @@ frontend ──ws──▶ backend api._run_job
                      ▼
               run_agent_session(): plan→act loop
                  • probe tool-calling support (fail clearly if absent)
-                 • PHASE 1 PLAN: force tool_choice=submit_plan
-                 • PHASE 2 ACT: tool_choice=auto, up to --steps calls
+                • PHASE 1 PLAN: force tool_choice="required", retry to submit_plan
+                • PHASE 2 ACT: tool_choice=auto, up to --steps calls
                  • tools: submit_plan / finish (control)
                          read_file / list_dir / search / calculate (workload)
                  • collect metrics + transcript
@@ -77,9 +77,14 @@ frontend ──ws──▶ backend api._run_job
   - `calculate({expression})` — safe arithmetic evaluation (no `eval` of
     arbitrary code; a small guarded evaluator).
 
-**Phase 1 — PLAN (forced):** the first model call uses `tool_choice` pinned to
-`submit_plan`, guaranteeing every run begins with a structured plan and that
-runs are comparable across configs.
+**Phase 1 — PLAN (forced):** the first model call uses `tool_choice: "required"`
+(a string; llama.cpp only accepts `auto`/`none`/`required` — the OpenAI
+object form is rejected with a "Wrong type supplied" warning and silently
+downgraded to `auto`). Because llama.cpp cannot force a specific function by
+name, if the model does not return `submit_plan` on the first attempt the
+harness executes whatever tool it did return (feeding the result back) and
+re-issues the call with a corrective prompt to `submit_plan`, guaranteeing every
+run begins with a structured plan and that runs are comparable across configs.
 
 **Phase 2 — ACT (`tool_choice: auto`):** the model executes plan steps by
 calling tools; results are appended as `tool` messages. It branches freely, may
