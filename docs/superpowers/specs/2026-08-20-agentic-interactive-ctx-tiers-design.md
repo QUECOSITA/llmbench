@@ -13,9 +13,9 @@ against a live `llama-server`, but:
 2. There are no predefined context-usage tiers; the user wants three
    (low / medium / heavy) that map to context-window sizes.
 3. The injected/prompt context is grown only through tool results, which is a
-   soft simulation. The user wants the prefill to be genuinely heavy: 2× the
-   tier's context injected as filler plus heavy per-step thinking, so the bench
-   measures real long-prefill + long-decode t/s.
+   soft simulation. The user wants the prefill to be genuinely heavy: inject the
+   tier's context as filler plus heavy per-step thinking, so the bench measures
+   real long-prefill + long-decode t/s.
 4. `--max-tokens` is capped at 32768; the heavy tier needs 65728.
 5. Failed configs are reported as a bare failure with no explanation; the user
    wants to know WHY (e.g. context overflow vs insufficient VRAM).
@@ -26,7 +26,7 @@ against a live `llama-server`, but:
 - Add a ctx-tier selector (low ≤16k, medium ≤64k, heavy ≥128k) that drives the
   serving `--ctx-size`, injected-context size, thinking intensity, and
   `--max-tokens`.
-- Inject 2× the tier's context as filler + heavy thinking per step.
+- Inject the tier's context as filler (50% of ctx, once) + heavy per-step thinking.
 - Raise the `--max-tokens` validation cap to 65728 (used by the heavy tier).
 - Classify agentic failures into a human-readable reason (context overflow,
   insufficient VRAM, etc.) and surface it in the UI + DB.
@@ -40,7 +40,7 @@ against a live `llama-server`, but:
 | Branch wait | Wait indefinitely for the user (decision wait is exempt from the model-call budget); Cancel aborts |
 | Tier defaults | Dropdown next to bench-tool, default **medium** |
 | Tier boundaries | low ≤16k, medium ≤64k, heavy ≥128k |
-| Injected context | 2× the tier's full ctx value (filler) + heavy thinking; overflow errors accepted |
+| Injected context | 50% of the tier's full ctx value, injected once (one-time context message); overflow errors accepted |
 | Failure handling | Record as failed but report WHY (context_overflow / oom_insufficient_vram / …) |
 
 ## Architecture
@@ -59,11 +59,11 @@ api._run_job (per config)
    ▼
 AgenticRunner.run
    • spawn llama-server (ctx from tier), probe tool calling
-   • run_agent_session(tier, fill_tokens=2*ctx, decide, session_timeout_s)
+   • run_agent_session(tier, fill_tokens=ctx//2, decide, session_timeout_s)
    • classify failures → failure_reason
    ▼
 agentic.run_agent_session
-   • inject filler + thinking into system prompt
+   • inject a one-time context filler message + tier-bounded thinking
    • Phase 1: forced submit_plan
    • Phase 2: model recommends; decide() asks the user; execute chosen tool
    • budget counts model-call wall time only (user wait is free)
