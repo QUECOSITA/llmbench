@@ -655,3 +655,19 @@ def test_classify_agentic_failure_unknown():
     from app.benchmark import _classify_agentic_failure
     r = _classify_agentic_failure(RuntimeError("some weird failure"), "")
     assert r["key"] == "unknown"
+
+
+def test_classify_agentic_failure_request_timeout():
+    from app.benchmark import _classify_agentic_failure
+    import httpx
+    # httpx read timeout mid-prefill: must be classified as request_timeout with
+    # an actionable message (not the generic "unknown").
+    r = _classify_agentic_failure(httpx.ReadTimeout("timed out"), "")
+    assert r["key"] == "request_timeout"
+    assert "timeout" in r["message"].lower()
+
+
+def test_classify_agentic_failure_timeout_in_output():
+    from app.benchmark import _classify_agentic_failure
+    r = _classify_agentic_failure(None, "read timeout waiting for response")
+    assert r["key"] == "request_timeout"

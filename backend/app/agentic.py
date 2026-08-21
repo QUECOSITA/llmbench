@@ -9,6 +9,36 @@ AGENTIC_DEFAULT_STEPS = 10
 AGENTIC_DEFAULT_MAX_TOKENS = 4096
 AGENTIC_DEFAULT_TIER = "medium"
 
+# Conservative throughput assumptions (tokens/second) used only to size the
+# per-request timeout so a heavy tier's prefill is not killed by a flat read
+# timeout. Actual hardware is usually faster; these are lower bounds.
+_ESTIMATED_PREFILL_TPUT = 20.0
+_ESTIMATED_DECODE_TPUT = 20.0
+_HEADROOM_FACTOR = 3.0
+_TIMEOUT_FLOOR_S = 60.0
+
+
+def agentic_request_timeout(tier: str, max_tokens: int) -> int:
+    """Estimate a per-request wall-clock budget (seconds) large enough for ONE
+    model call at the given tier: fill_tokens of prefill + max_tokens of decode,
+    at conservative throughputs, with generous headroom. The per-request httpx
+    timeout must never fire on a legitimate in-flight request, so it is derived
+    from the workload rather than a flat constant."""
+    spec = AGENTIC_TIERS.get(tier, AGENTIC_TIERS[AGENTIC_DEFAULT_TIER])
+    fill = int(spec.get("fill_tokens", 0))
+    prefill_s = fill / _ESTIMATED_PREFILL_TPUT
+    decode_s = max(0, int(max_tokens)) / _ESTIMATED_DECODE_TPUT
+    return int((prefill_s + decode_s) * _HEADROOM_FACTOR + _TIMEOUT_FLOOR_S)
+
+
+def agentic_session_timeout(tier: str, steps: int, max_tokens: int) -> int:
+    """Estimate a whole-session model-call budget (seconds): up to ``steps``
+    requests, each potentially as heavy as the first (the transcript grows, so
+    later prefills are no smaller), plus headroom. Excludes user-decision wait
+    time (that is handled separately and not billed against this budget)."""
+    per_request = agentic_request_timeout(tier, max_tokens)
+    return per_request * max(1, int(steps))
+
 # Agentic option tiers: low / medium / heavy. Each maps to a context-window
 # size (used as the serving --ctx-size), a --max-tokens default, and a filler
 # (injected context) size. The filler is 50% of the tier's ctx value: heavy

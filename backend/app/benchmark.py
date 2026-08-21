@@ -232,6 +232,16 @@ def _classify_agentic_failure(exc: BaseException | None, output: str) -> dict:
             "key": "no_disk_space",
             "message": "Not enough disk space to run this workload.",
         }
+    if "timed out" in combined or "read timeout" in combined or "timeout" in combined:
+        return {
+            "key": "request_timeout",
+            "message": ("A model request exceeded its allowed time before the "
+                        "server returned a response. The tier's injected "
+                        "context (filler + --ctx-size) is likely too heavy for "
+                        "the prefill speed, or the model/GPU is too slow. Lower "
+                        "the agentic tier, use a smaller model, or raise the "
+                        "agentic timeout."),
+        }
     return {
         "key": "unknown",
         "message": f"Agentic session failed: {msg or 'see server output below'}",
@@ -555,28 +565,42 @@ class AgenticRunner:
                         "duration_s": asyncio.get_event_loop().time() - start,
                         "output": "served model does not support function/tool calling; "
                                   "agentic bench requires it.\n" + _decode_parts(parts)}
-            from app.agentic import AGENTIC_TIERS, AGENTIC_DEFAULT_TIER
+            from app.agentic import (AGENTIC_TIERS, AGENTIC_DEFAULT_TIER,
+                                     agentic_request_timeout,
+                                     agentic_session_timeout)
             tier = self.params.get("tier", AGENTIC_DEFAULT_TIER)
             tier_spec = AGENTIC_TIERS.get(tier, AGENTIC_TIERS[AGENTIC_DEFAULT_TIER])
             fill_tokens = int(tier_spec.get("fill_tokens", 0))
+            steps = int(self.params.get("steps", self._default_steps))
+            max_tokens = int(self.params.get("max_tokens", self._default_max_tokens))
+            # Decouple the per-request httpx read timeout from the whole-session
+            # budget. A single heavy-tier request (32k+ filler prefill + decode)
+            # can take far longer than the configured flat timeout, so it must be
+            # derived from the tier workload. The session budget is derived from
+            # steps * per-request estimate and, for interactive runs, excludes
+            # user-decision wait time (billed inside run_agent_session).
+            request_timeout = max(agentic_request_timeout(tier, max_tokens),
+                                  self.timeout_s)
+            session_timeout_s = max(agentic_session_timeout(tier, steps, max_tokens),
+                                    self.timeout_s)
             # Interactive session: the model-call budget is enforced inside
             # run_agent_session (excluding user decision wait). The outer
             # wait_for is only a generous hard ceiling to catch a hung server.
-            hard_cap = max(self.timeout_s * 30.0, 3600.0)
+            hard_cap = max(session_timeout_s * 2.0, self.timeout_s * 30.0, 3600.0)
             try:
                 session = await asyncio.wait_for(
                     run_agent_session(
                         base_url=f"http://127.0.0.1:{port}",
                         model=self.params.get("model", "default"),
-                        steps=int(self.params.get("steps", self._default_steps)),
-                        max_tokens=int(self.params.get("max_tokens", self._default_max_tokens)),
+                        steps=steps,
+                        max_tokens=max_tokens,
                         task=self.params.get("task", "codebase_refactor"),
                         tier=tier,
                         fill_tokens=fill_tokens,
                         decide=self.decide,
                         on_output=on_output,
-                        request_timeout=self.timeout_s,
-                        session_timeout_s=self.timeout_s,
+                        request_timeout=request_timeout,
+                        session_timeout_s=session_timeout_s,
                     ),
                     timeout=hard_cap,
                 )
