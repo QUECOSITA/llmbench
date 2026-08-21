@@ -290,6 +290,19 @@ test("agentic_decision sets pendingDecision with proposal and options", () => {
   });
 });
 
+test("decision_clear nulls pendingDecision while preserving other state", () => {
+  let state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 3 }));
+  state = progressReducer(state, ev("agentic_decision", 1, {
+    index: 1, proposed_tool: "read_file", proposed_args: {}, tool_options: [],
+  }));
+  expect(state.pendingDecision).not.toBeNull();
+  const next = progressReducer(state, ev("decision_clear", 1));
+  expect(next.pendingDecision).toBeNull();
+  expect(next.running).toBe(true);
+  expect(next.runId).toBe(1);
+  expect(next.total).toBe(3);
+});
+
 test("config_done clears pendingDecision and carries agentic_tier into result", () => {
   let state = progressReducer(INITIAL_STATE, ev("run_started", 1, { total: 1 }));
   state = progressReducer(state, ev("agentic_decision", 1, {
