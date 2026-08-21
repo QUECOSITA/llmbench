@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AgenticDetail } from "../components/AgenticDetailStrip";
 
 export interface ProgressEvent {
-  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "results_clear" | "agentic_decision" | "failure_dismiss";
+  type: "run_started" | "config_start" | "config_done" | "run_done" | "run_sync" | "run_watch" | "bench_log" | "results_clear" | "agentic_decision" | "failure_dismiss" | "decision_clear";
   run_id?: number;
   index?: number;
   total?: number;
@@ -127,6 +127,10 @@ export function progressReducer(state: ProgressState, event: ProgressEvent): Pro
 
   if (event.type === "failure_dismiss") {
     return { ...state, lastFailure: null };
+  }
+
+  if (event.type === "decision_clear") {
+    return { ...state, pendingDecision: null };
   }
 
   if (event.type === "config_start" && event.run_id === state.runId) {

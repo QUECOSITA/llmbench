@@ -677,9 +677,11 @@ export function App() {
                   decision={progressState.pendingDecision}
                   onSubmit={(tool, args) => {
                     sendDecision(tool, args);
+                    dispatch({ type: "decision_clear" });
                   }}
                   onCancel={() => {
                     sendDecision("finish", { answer: "cancelled by user" });
+                    dispatch({ type: "decision_clear" });
                   }}
                 />
               )}
