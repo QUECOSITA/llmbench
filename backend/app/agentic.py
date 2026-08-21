@@ -268,7 +268,7 @@ async def probe_tool_calling(base_url: str, model: str, request_timeout: float =
                 "model": model,
                 "messages": [{"role": "user", "content": "call read_file on x"}],
                 "tools": AGENTIC_TOOL_SCHEMAS,
-                "tool_choice": {"type": "function", "function": {"name": "read_file"}},
+                "tool_choice": "required",
                 "max_tokens": 64,
             })
             resp.raise_for_status()
@@ -316,6 +316,7 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
     latencies_ms = []
     tool_calls = 0
     plan_revisions = 0
+    plan_retries = 0
     user_decisions = 0
     finished = False
     transcript = []
@@ -337,7 +338,7 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
                     "model": model,
                     "messages": messages,
                     "tools": AGENTIC_TOOL_SCHEMAS,
-                    "tool_choice": {"type": "function", "function": {"name": "submit_plan"}},
+                    "tool_choice": "required",
                     "max_tokens": max_tokens,
                     "temperature": 0.2,
                     "stream": False,
@@ -375,12 +376,76 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
                 messages.append({"role": "assistant", "content": content})
                 await emit("THINK " + content[:200])
             # Resolve the branch to execute: the model recommends, the user (via
-            # `decide`) may override it. Phase 1 keeps the forced submit_plan.
+            # `decide`) may override it. Phase 1 forces a tool call via
+            # tool_choice="required" and, if the model does not return
+            # submit_plan on the first attempt, executes whatever it did return
+            # and re-asks it to submit the plan (llama.cpp cannot force a
+            # specific function by name).
             if step == 1:
-                proposed = ("submit_plan", json.loads(
-                    ((calls[0].get("function") or {}).get("arguments") or "{}")
-                    if calls else "{}"))
-                name, args = proposed
+                fn = (calls[0].get("function") or {}) if calls else {}
+                proposed_name = fn.get("name") or "finish"
+                try:
+                    proposed_args = json.loads(fn.get("arguments") or "{}")
+                except json.JSONDecodeError:
+                    proposed_args = {}
+                if calls and proposed_name != "submit_plan":
+                    await emit(f"PLAN RETRY → model returned {proposed_name}, "
+                               "asking for submit_plan")
+                    for call in calls:
+                        cfn = call.get("function") or {}
+                        cname = cfn.get("name") or "finish"
+                        try:
+                            cargs = json.loads(cfn.get("arguments") or "{}")
+                        except json.JSONDecodeError:
+                            cargs = {}
+                        tool_calls += 1
+                        result = _tool_result(cname, cargs, corpus)
+                        await emit(f"TOOL {cname}({json.dumps(cargs)})",
+                             f"RESULT {result[:200]}")
+                        transcript.append(f"step {step}: {cname}({json.dumps(cargs)}) "
+                                          f"-> {result[:80]}")
+                        messages.append({"role": "tool",
+                                         "tool_call_id": call.get("id", "call_0"),
+                                         "content": result})
+                    messages.append({"role": "user", "content": (
+                        "Your first action was not submit_plan. Please call "
+                        "submit_plan now with your step-by-step plan.")})
+                    plan_retries += 1
+                    body = {
+                        "model": model,
+                        "messages": messages,
+                        "tools": AGENTIC_TOOL_SCHEMAS,
+                        "tool_choice": "required",
+                        "max_tokens": max_tokens,
+                        "temperature": 0.2,
+                        "stream": False,
+                    }
+                    await emit(f"PLAN RETRY PROMPT {messages[-1]['content']}")
+                    rstart = time.monotonic()
+                    rresp = await client.post("/v1/chat/completions", json=body)
+                    rresp.raise_for_status()
+                    rdata = rresp.json()
+                    relapsed = time.monotonic() - rstart
+                    latencies_ms.append(relapsed * 1000.0)
+                    rusage = rdata.get("usage") or {}
+                    total_prompt_tokens += int(rusage.get("prompt_tokens", 0) or 0)
+                    total_completion_tokens += int(rusage.get("completion_tokens", 0) or 0)
+                    total_wall += relapsed
+                    rmsg = (((rdata.get("choices") or [{}])[0] or {}).get("message") or {})
+                    rcontent = rmsg.get("content") or ""
+                    rcalls = rmsg.get("tool_calls") or []
+                    if rcontent:
+                        messages.append({"role": "assistant", "content": rcontent})
+                        await emit("THINK " + rcontent[:200])
+                    rfn = (rcalls[0].get("function") or {}) if rcalls else {}
+                    proposed_name = rfn.get("name") or "finish"
+                    try:
+                        proposed_args = json.loads(rfn.get("arguments") or "{}")
+                    except json.JSONDecodeError:
+                        proposed_args = {}
+                    calls = rcalls
+                    content = rcontent
+                name, args = proposed_name, proposed_args
             elif calls:
                 fn = calls[0].get("function") or {}
                 proposed_name = fn.get("name") or "finish"
@@ -457,6 +522,7 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
         "steps": step,
         "tool_calls": tool_calls,
         "plan_revisions": plan_revisions,
+        "plan_retries": plan_retries,
         "user_decisions": user_decisions,
         "avg_latency_ms": avg_latency_ms,
         "p95_latency_ms": p95_latency_ms,
