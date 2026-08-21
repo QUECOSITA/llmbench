@@ -44,3 +44,9 @@ human-readable reason.
 
 ## Notes
 - `backend/data/llmbench.db` is local user data and must NOT be committed.
+- **2026-08-21 retune:** the "inject 2× tier context as filler" overshot —
+  medium/heavy filler exceeded the context window, so runs failed before decode
+  and heavy was unusable. Retuned (see
+  `2026-08-21-retune-agentic-filler.md`): filler is now a one-time context
+  message at 50% of the tier's ctx, and per-tier thinking is bounded to a fixed
+  token target (~80/160/320). `--max-tokens` cap (65728) is unchanged.
