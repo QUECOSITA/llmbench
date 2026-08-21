@@ -240,12 +240,32 @@ async def test_run_agent_session_injects_filler_and_thinking(monkeypatch):
 
     transport = httpx.MockTransport(handler)
     await run_agent_session(
-        base_url="http://127.0.0.1:9", model="m", steps=2, max_tokens=4096,
-        task="codebase_refactor", transport=transport, tier="heavy", fill_tokens=2 * 131072)
-    system_content = requests[0]["messages"][0]["content"]
-    # Heavy thinking + the injected filler (2x heavy ctx => ~262144 tokens worth).
-    assert "exhaustive, step-by-step" in system_content
-    assert len(system_content) > 200000
+        base_url="http://127.0.0.1:9", model="m", steps=3, max_tokens=4096,
+        task="codebase_refactor", transport=transport, tier="heavy",
+        fill_tokens=65536)  # heavy ctx 131072 // 2
+    first = requests[0]["messages"]
+    sys_prompt = first[0]["content"]
+    # Filler is a one-time user message, NOT the system prompt.
+    assert "synthetic filler" not in sys_prompt
+    assert any("synthetic filler" in (m.get("content") or "")
+               for m in first if m["role"] == "user")
+    # Bounded heavy thinking target present in the system prompt.
+    assert "~320 tokens" in sys_prompt
+    # Filler sent once on step 1, not re-injected on later steps.
+    def filler_chars(body):
+        return sum(len(m.get("content") or "")
+                   for m in body["messages"]
+                   if "synthetic filler" in (m.get("content") or ""))
+    assert filler_chars(requests[0]) > 100000
+    # Filler stays a single message in the growing context — it is not duplicated
+    # or re-appended on later steps (constant size, not growing with each step).
+    assert filler_chars(requests[1]) == filler_chars(requests[0])
+
+
+def test_fill_tokens_half_ctx():
+    from app.agentic import AGENTIC_TIERS
+    for tier, spec in AGENTIC_TIERS.items():
+        assert spec["fill_tokens"] == spec["ctx_size"] // 2
 
 
 @pytest.mark.asyncio

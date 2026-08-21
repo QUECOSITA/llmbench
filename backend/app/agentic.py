@@ -11,25 +11,25 @@ AGENTIC_DEFAULT_TIER = "medium"
 
 # Agentic option tiers: low / medium / heavy. Each maps to a context-window
 # size (used as the serving --ctx-size), a --max-tokens default, and a filler
-# (injected context) size. "Double" the injected context per the user: the
-# filler is 2x the tier's full ctx value so the prefill is genuinely heavy (a
-# real agentic t/s bench, not a soft simulation). Runs at medium/heavy will
-# legitimately overflow unless there is enough VRAM/context headroom.
+# (injected context) size. The filler is 50% of the tier's ctx value: heavy
+# enough to make the prefill genuinely heavy, but small enough to leave headroom
+# for the transcript + thinking + decode so a run completes instead of
+# guaranteeing context overflow (the earlier 2x sizing overflowed by design).
 AGENTIC_TIERS = {
-    "low": {"ctx_size": 16384, "max_tokens": 4096, "fill_tokens": 2 * 16384},
-    "medium": {"ctx_size": 65536, "max_tokens": 8192, "fill_tokens": 2 * 65536},
-    "heavy": {"ctx_size": 131072, "max_tokens": 65728, "fill_tokens": 2 * 131072},
+    "low": {"ctx_size": 16384, "max_tokens": 4096, "fill_tokens": 16384 // 2},
+    "medium": {"ctx_size": 65536, "max_tokens": 8192, "fill_tokens": 65536 // 2},
+    "heavy": {"ctx_size": 131072, "max_tokens": 65728, "fill_tokens": 131072 // 2},
 }
 
-# Per-tier thinking intensity. The heavier the tier the larger the reasoning
-# trace the model is asked to produce each step, so decode is genuinely heavy
-# (combined with the injected filler making prefill genuinely heavy).
-AGENTIC_THINKING = {
-    "low": "Keep your reasoning concise and to the point.",
-    "medium": "Provide a moderately detailed, step-by-step reasoning trace.",
-    "heavy": ("Produce a very long, exhaustive, step-by-step reasoning trace. "
-              "Spell out every consideration, alternative, and decision in "
-              "full sentences before each tool call."),
+# Per-tier bounded thinking intensity. The heavier the tier the larger the
+# reasoning trace the model is asked to produce each step (measured in tokens),
+# so decode is genuinely heavy but bounded — a runaway "very long" trace that
+# fills the whole --max-tokens budget is avoided.
+AGENTIC_THINKING_TOKENS = {
+    "low": "Keep your reasoning concise, ~80 tokens per step.",
+    "medium": "Provide a step-by-step reasoning trace of ~160 tokens per step.",
+    "heavy": ("Produce an exhaustive reasoning trace of ~320 tokens per step, "
+              "spelling out every consideration before each tool call."),
 }
 
 # A single deterministic filler paragraph, repeated to build the injected
@@ -302,14 +302,12 @@ async def run_agent_session(base_url, model, steps, max_tokens, task,
     cutting the session short."""
     scenario = AGENTIC_TASKS.get(task, AGENTIC_TASKS["codebase_refactor"])
     corpus = scenario["corpus"]
-    thinking = AGENTIC_THINKING.get(tier, AGENTIC_THINKING["medium"])
+    thinking = AGENTIC_THINKING_TOKENS.get(tier, AGENTIC_THINKING_TOKENS["medium"])
     system_prompt = AGENTIC_SYSTEM_PROMPT + "\n" + thinking
+    messages = [{"role": "system", "content": system_prompt}]
     if fill_tokens:
-        system_prompt += "\n\n" + _build_filler(fill_tokens)
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": scenario["prompt"]},
-    ]
+        messages.append({"role": "user", "content": _build_filler(fill_tokens)})
+    messages.append({"role": "user", "content": scenario["prompt"]})
     total_prompt_tokens = 0
     total_completion_tokens = 0
     total_wall = 0.0
