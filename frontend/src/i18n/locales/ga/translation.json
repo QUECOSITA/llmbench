@@ -1,0 +1,135 @@
+{
+  "nav": {
+    "results": "TORTHAÍ"
+  },
+  "panel": {
+    "modelInput": "01 · IONCHUR SAMHLA",
+    "run": "03 · RITH",
+    "resultsRanked": "05 · TORTHAÍ — RANGAITHE",
+    "downloaded": "ÍOSLODAITHE",
+    "resultsAllRuns": "TORTHAÍ · GACH RITH",
+    "agenticSession": "SEISIÚN AGENTIC"
+  },
+  "common": {
+    "analyze": "ANALAÍS",
+    "generate": "GIN",
+    "runBenchmark": "RITH BEINCHMARK",
+    "cancel": "CEALAIGH",
+    "cancelBenchmark": "CEALAIGH BEINCHMARK",
+    "download": "Íoslódáil",
+    "load": "LUCHTAIGH",
+    "remove": "BAIN",
+    "clear": "GLAN",
+    "clearHistory": "GLAN STAIR",
+    "no": "NÍL",
+    "error": "Earráid: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "gan GPU",
+    "gbVram": "{{gb}}GB VRAM",
+    "gbRam": "{{gb}}GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · freastalaí {{server}} · {{count}} bratach",
+    "fileLabel": "Comhad",
+    "serverManual": "de láimh",
+    "servingServer": "freastalaí seirbheála",
+    "noServerProposed": "ní mholann README an gheallchiste seo aon fhreastalaí seirbheála — níl an tsamhail tacaithe ag llama.cpp",
+    "noServingCommand": "ní dhéanann README an gheallchiste seo doiciméadú ar aon ordú seirbheála llama.cpp (llama-server / speed-bench / llama-cli / llama-bench) — b'fhéidir nach féidir le LLMBENCH é a lódáil.",
+    "noServingCommandWithGguf": "ní dhéanann README an gheallchiste seo doiciméadú ar aon ordú seirbheála llama.cpp (llama-server / speed-bench / llama-cli / llama-bench) — fiú amháin le .gguf san áireamh, b'fhéidir nach féidir le LLMBENCH é a lódáil.",
+    "noServerForGenerate": "Níl aon fhreastalaí seirbheála roghnaithe — roghnaigh ceann in IONCHUR SAMHLA chun cumraíochtaí a ghiniúint."
+  },
+  "config": {
+    "bankTitle": "02 · BANC CUMRAÍOCHTAÍ · N = {{n}}",
+    "benchTool": "UIRLIS BEINCHMARK",
+    "agenticTier": "GRÁD AGENTIC",
+    "speedBenchFlags": "BRATACHA SPEED-BENCH",
+    "agenticFlags": "BRATACHA AGENTIC",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, nó (le haghaidh beinchmark {{bench}}): {{cats}}",
+    "limitLine": "--limit: int roghnach — uasmhéid samplaí in aghaidh na catagóire"
+  },
+  "agentic": {
+    "interactiveNotice": "Is tástáil idirghníomhach é beinchmark Agentic le duine sa lúb — NÍ tástáil uathoibríoch é. Ní mór duit a bheith i láthair: ag gach céim iarrann an harness ort an uirlis brainseacháin agus na hargóintí a roghnú, agus cuirtear an rith ar fionraí go dtí go bhfreagraíonn tú.",
+    "failureTitle": "TEIP AR CHUMRAÍOCHT AGENTIC — grád {{tier}}",
+    "failureDismiss": "DÚN"
+  },
+  "decision": {
+    "title": "AGENTIC — CINNEADH BRAINSE RIACHTANACH",
+    "hint": "céim {{step}} — roghnaigh an chéad uirlis eile agus na hargóintí, nó glac leis na luachanna molta.",
+    "tool": "UIRLIS",
+    "args": "ARGÓINTÍ (JSON)",
+    "argsPlaceholder": "{}",
+    "cancel": "CRÍOCH / CEALAIGH",
+    "continue": "LEAN AR AGH",
+    "invalidArgs": "Caithfidh argóintí a bheith ina rud JSON bailí."
+  },
+  "run": {
+    "configProgress": "cumraíocht {{index}}/{{total}}",
+    "pause": "SOS",
+    "pressEnter": "BRÚIGH IONTRÁIL LE LEANÚINT AR AGH",
+    "continue": "LEAN AR AGH",
+    "watching": "→ ag faire ar rith beinchmark #{{id}} ar siúl",
+    "statusError": "rith {{status}}"
+  },
+  "download": {
+    "yesAnyway": "TÁ — ÍOSLÓDAIL AR AON NÓS",
+    "prunePrompt": "hf cache prune — Leanúint ar aghaidh? [y/N]",
+    "downloadedTo": "íoslódáilte → {{path}}",
+    "pruned": "ceistnós glanta — bain triail as an íoslódáil arís nuair a bheidh tú réidh",
+    "pruneSkipped": "bearradh scipeáilte — bain triail as an íoslódáil arís nuair a bheidh tú réidh",
+    "error": "earráid: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "ag íoslódáil",
+    "downloaded": "íoslódáilte",
+    "cancelled": "cealaithe",
+    "pruning": "ag bearradh",
+    "pruned": "bearrtha"
+  },
+  "downloaded": {
+    "empty": "gan aon tsamhail íoslódáilte"
+  },
+  "results": {
+    "program": "Clár",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
+    "status": "STAID",
+    "viewAll": "féach ar gach rith →",
+    "backToBench": "← ar ais go dtí an beinchmark",
+    "empty": "Níl aon rith beinchmark fós.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} cumraíocht · {{status}}"
+  },
+  "fit": {
+    "gpu": "FÉACHANN I VRAM — teastaíonn ~{{needed}} GB (meáchain + KV) de {{vram}} GB VRAM",
+    "ramOffload": "AISTRÍONN GO RAM — teastaíonn ~{{needed}} GB, sreabhann thar {{vram}} GB VRAM isteach i {{ram}} GB RAM",
+    "ram": "CPU AMHÁIN — gan aon GPU VRAM, teastaíonn ~{{needed}} GB de {{ram}} GB RAM",
+    "noFit": "NÍ FÉACHANN — teastaíonn ~{{needed}} GB i gcoinne {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "ní fhéachann an tsamhail seo i VRAM/RAM an ríomhaire seo — b'fhéidir nach féidir le LLMBENCH é a lódáil."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s",
+    "agenticSteps": "{{count}} céim",
+    "agenticToolCalls": "{{count}} glao uirlise",
+    "agenticPlanRevs": "{{count}} athbhreithniú plean",
+    "agenticAvg": "meán {{s}}s",
+    "agenticP95": "p95 {{s}}s",
+    "agenticCtx": "ctx {{k}}k"
+  },
+  "confirm": {
+    "removeModel": "An bhfuil {{model}} a bhaint as ceistnós HF?",
+    "clearHistory": "An bhfuil tú ag iarraidh an stair beinchmark go léir a ghlanadh? Bainfidh sé seo gach rith agus a n-aschur speed-bench amh. Coinnítear na samhlacha íoslódáilte."
+  },
+  "status": {
+    "running": "ar siúl",
+    "queued": "i scuaine",
+    "completed": "críochnaithe",
+    "failed": "theip",
+    "cancelled": "cealaithe",
+    "error": "earráid",
+    "ok": "ok"
+  }
+}
