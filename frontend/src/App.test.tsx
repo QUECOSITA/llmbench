@@ -658,6 +658,60 @@ test("defaults the selector to auto_bench_tool=speed-bench from analyze", async 
   expect(select.value).toBe("speed-bench");
 });
 
+test("generate passes the loaded gguf filename when a specific file was selected", async () => {
+  const { api } = await import("./api/client");
+  const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({
+    configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj", bench_command: [], bench_tool: "llama-bench", fit: null }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: false,
+    gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+    readme_flags: {},
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model/model.gguf" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  fireEvent.click(screen.getByText(/generate/i));
+  await waitFor(() => expect(generateSpy).toHaveBeenCalled());
+  const body = generateSpy.mock.calls[0][0] as { gguf_filename?: string };
+  expect(body.gguf_filename).toBe("model.gguf");
+});
+
+test("generate omits gguf_filename when a plain repo was analyzed", async () => {
+  const { api } = await import("./api/client");
+  const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({
+    configs: [{ flags: {}, serving_command: "llama-server --hf-repo org/model --hf-file model.gguf --load-mode none --no-mmproj", bench_command: [], bench_tool: "llama-bench", fit: null }],
+  });
+  const analyzeSpy = vi.spyOn(api, "analyze");
+  analyzeSpy.mockResolvedValueOnce({
+    repo_id: "org/model",
+    detected_server: "llama.cpp",
+    readme_has_serving_command: false,
+    gguf_files: [{ path: "model.gguf", size: 4_000_000_000 }],
+    readme_flags: {},
+    downloaded: { "llama.cpp": true },
+  });
+
+  render(<MemoryRouter><App /></MemoryRouter>);
+  const input = await screen.findByPlaceholderText(/model/i);
+  fireEvent.change(input, { target: { value: "org/model" } });
+  fireEvent.click(screen.getByText(/analyze/i));
+  await screen.findByText(/org\/model/i);
+
+  fireEvent.click(screen.getByText(/generate/i));
+  await waitFor(() => expect(generateSpy).toHaveBeenCalled());
+  const body = generateSpy.mock.calls[0][0] as { gguf_filename?: string };
+  expect(body.gguf_filename).toBeUndefined();
+});
+
 test("shows the bench tool selector and passes bench_tool even when README proposes a serving config", async () => {
   const { api } = await import("./api/client");
   const generateSpy = vi.spyOn(api, "generateConfigs").mockResolvedValue({

@@ -69,6 +69,16 @@ function FitStatusLine({
   );
 }
 
+function ggufFromInput(input: string): string | null {
+  const s = input.trim().replace(/^\/+|\/+$/g, "");
+  const m = s.match(/^[\w.\-]+\/[\w.\-]+\/([\w.+\-]+)$/);
+  if (m) return m[1];
+  const hf = s.match(
+    /huggingface\.co\/[^/?#]+\/[^/?#]+\/(?:resolve|blob|raw)\/[^/?#]+\/([^?#]+)/,
+  );
+  return hf ? hf[1] : null;
+}
+
 function toResultRow(r: RunDetail["results"][number]): ResultRow {
   return {
     server_id: r.server_id ?? "",
@@ -134,6 +144,7 @@ export function App() {
   const [confirmUnsupportedDownload, setConfirmUnsupportedDownload] = useState(false);
   const [dismissedUnsupported, setDismissedUnsupported] = useState(false);
   const [selectedGgufs, setSelectedGgufs] = useState<string[]>([]);
+  const [loadedGguf, setLoadedGguf] = useState<string | null>(null);
   const [speedBenchInfo, setSpeedBenchInfo] = useState<SpeedBenchInfo | null>(null);
   const downloadEvents = useDownloadProgress();
 
@@ -242,6 +253,7 @@ export function App() {
   const onAnalyze = useCallback(async (input: string) => {
     const data = await api.analyze(input);
     setAnalysis(data);
+    setLoadedGguf(ggufFromInput(input));
     setBenchTool(data.auto_bench_tool === "speed-bench" ? "speed-bench" : "llama-bench");
     setServer(data.detected_server ?? "");
     setConfigs([]);
@@ -279,9 +291,10 @@ export function App() {
       model_arch: analysis.model_arch,
       bench_tool: benchTool,
       agentic_tier: benchTool === "agentic" ? agenticTier : undefined,
+      gguf_filename: loadedGguf ?? undefined,
     });
     setConfigs(data.configs);
-  }, [analysis, hardware, server, benchTool, agenticTier]);
+  }, [analysis, hardware, server, benchTool, agenticTier, loadedGguf]);
 
   const [progressState, dispatch] = useReducer(progressReducer, INITIAL_STATE);
 
