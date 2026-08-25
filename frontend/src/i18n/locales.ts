@@ -19,6 +19,8 @@ export const LANGS: Lang[] = [
   { code: "no", label: "Norsk" },
   { code: "da", label: "Dansk" },
   { code: "fi", label: "Suomi" },
+  { code: "is", label: "Íslenska" },
+  { code: "lb", label: "Lëtzebuergesch" },
 ];
 
 export const SUPPORTED = new Set(LANGS.map((l) => l.code));

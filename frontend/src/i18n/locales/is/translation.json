@@ -1,0 +1,135 @@
+{
+  "nav": {
+    "results": "NIÐURSTÖÐUR"
+  },
+  "panel": {
+    "modelInput": "01 · INNTÖK LÍKANS",
+    "run": "03 · KEYRSLA",
+    "resultsRanked": "05 · NIÐURSTÖÐUR — RAFARÐAÐ",
+    "downloaded": "SÓTT",
+    "resultsAllRuns": "NIÐURSTÖÐUR · ALLAR KEYRSLUR",
+    "agenticSession": "AGENTIC LOTA"
+  },
+  "common": {
+    "analyze": "GREINA",
+    "generate": "MYNDA",
+    "runBenchmark": "KEYRA VIÐMIÐUN",
+    "cancel": "HÆTTA VIÐ",
+    "cancelBenchmark": "HÆTTA VIÐ VIÐMIÐUN",
+    "download": "Sækja",
+    "load": "HLAÐA",
+    "remove": "FJARLÆGJA",
+    "clear": "HREINSA",
+    "clearHistory": "HREINSA SÖGU",
+    "no": "NEI",
+    "error": "Villa: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "engin GPU",
+    "gbVram": "{{gb}}GB VRAM",
+    "gbRam": "{{gb}}GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · þjónn {{server}} · {{count}} fánar",
+    "fileLabel": "Skrá",
+    "serverManual": "handvirkt",
+    "servingServer": "afgreiðsluþjónn",
+    "noServerProposed": "README þessa repo leggur ekki til neinn afgreiðsluþjón — líkanið er ekki stutt af llama.cpp",
+    "noServingCommand": "README þessa repo skráir enga llama.cpp afgreiðsluskipun (llama-server / speed-bench / llama-cli / llama-bench) — það gæti ekki verið hlaðanlegt af LLMBENCH.",
+    "noServingCommandWithGguf": "README þessa repo skráir enga llama.cpp afgreiðsluskipun (llama-server / speed-bench / llama-cli / llama-bench) — jafnvel þótt það innihaldi .gguf, gæti það ekki verið hlaðanlegt af LLMBENCH.",
+    "noServerForGenerate": "Enginn afgreiðsluþjónn valinn — veldu einn í INNTÖK LÍKANS til að mynda stillingar."
+  },
+  "config": {
+    "bankTitle": "02 · STILLINGABANKI · N = {{n}}",
+    "benchTool": "VIÐMIÐUNARVERKFÆRI",
+    "agenticTier": "AGENTIC ÞREP",
+    "speedBenchFlags": "SPEED-BENCH FÁNAR",
+    "agenticFlags": "AGENTIC FÁNAR",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, eða (fyrir viðmiðun {{bench}}): {{cats}}",
+    "limitLine": "--limit: valfrjáls heiltala — hámarkssýni í hverjum flokki"
+  },
+  "agentic": {
+    "interactiveNotice": "Agentic viðmiðun er gagnvirk prófun með manni í lykkjunni — EKKI sjálfvirk prófun. Þú verður að vera viðstaddur: í hverju skrefi biður grindin þig um að velja greiningarverkfæri og rök, og keyrslan bíður þar til þú svarar.",
+    "failureTitle": "AGENTIC STILLINGAR MISTÓKUST — þrep {{tier}}",
+    "failureDismiss": "LUKA"
+  },
+  "decision": {
+    "title": "AGENTIC — GREININGARÁKVÖRÐUN NAUÐSYNLEG",
+    "hint": "skref {{step}} — veldu næsta verkfæri og rök, eða samþykktu tillögurnar.",
+    "tool": "VERKFÆRI",
+    "args": "RÖK (JSON)",
+    "argsPlaceholder": "{}",
+    "cancel": "LJÚKA / HÆTTA VIÐ",
+    "continue": "HALDA ÁFRAM",
+    "invalidArgs": "Rök verða að vera gilt JSON hlut."
+  },
+  "run": {
+    "configProgress": "stilling {{index}}/{{total}}",
+    "pause": "HLÉ",
+    "pressEnter": "ÝTTU Á ENTER TIL AÐ HALDA ÁFRAM",
+    "continue": "HALDA ÁFRAM",
+    "watching": "→ fylgist með viðmiðunarkeyrslu #{{id}} í gangi",
+    "statusError": "keyrsla {{status}}"
+  },
+  "download": {
+    "yesAnyway": "JÁ — SÆKJA ENGU AÐ SÍÐUR",
+    "prunePrompt": "hf cache prune — Halda áfram? [y/N]",
+    "downloadedTo": "sótt → {{path}}",
+    "pruned": "skyndiminni snyrt — reyndu niðurhal aftur þegar þú ert tilbúin(n)",
+    "pruneSkipped": "snyrting sleppt — reyndu niðurhal aftur þegar þú ert tilbúin(n)",
+    "error": "villa: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "sæki",
+    "downloaded": "sótt",
+    "cancelled": "hætt við",
+    "pruning": "snyri",
+    "pruned": "snyrt"
+  },
+  "downloaded": {
+    "empty": "engin líkön sótt"
+  },
+  "results": {
+    "program": "Forrit",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
+    "status": "STÁÐA",
+    "viewAll": "sjá allar keyrslur →",
+    "backToBench": "← til baka í viðmiðun",
+    "empty": "Engar viðmiðunarkeyrslur ennþá.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} stillingar · {{status}}"
+  },
+  "fit": {
+    "gpu": "PASSAR Í VRAM — þarf ~{{needed}} GB (þyngdir + KV) af {{vram}} GB VRAM",
+    "ramOffload": "LOSAR Í RAM — þarf ~{{needed}} GB, flæðir fram hjá {{vram}} GB VRAM inn í {{ram}} GB RAM",
+    "ram": "AÐEINS CPU — engin GPU VRAM, þarf ~{{needed}} GB af {{ram}} GB RAM",
+    "noFit": "PASSAR EKKI — þarf ~{{needed}} GB á móti {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "þetta líkan passar ekki í VRAM/RAM þessarar vélar — það gæti ekki verið hlaðanlegt af LLMBENCH."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s",
+    "agenticSteps": "{{count}} skref",
+    "agenticToolCalls": "{{count}} verkfæraköll",
+    "agenticPlanRevs": "{{count}} áætlunarbreytingar",
+    "agenticAvg": "meðaltal {{s}}s",
+    "agenticP95": "p95 {{s}}s",
+    "agenticCtx": "ctx {{k}}k"
+  },
+  "confirm": {
+    "removeModel": "Fjarlægja {{model}} úr HF-skyndiminni?",
+    "clearHistory": "Hreinsa alla viðmiðunarsögu? Þetta fjarlægir allar keyrslur og hrá speed-bench úttök þeirra. Sótt líkön eru geymd."
+  },
+  "status": {
+    "running": "í gangi",
+    "queued": "í bið",
+    "completed": "lokið",
+    "failed": "mistókst",
+    "cancelled": "hætt við",
+    "error": "villa",
+    "ok": "ok"
+  }
+}

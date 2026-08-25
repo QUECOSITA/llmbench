@@ -1,0 +1,135 @@
+{
+  "nav": {
+    "results": "RESULTATER"
+  },
+  "panel": {
+    "modelInput": "01 · MODELLAGAB",
+    "run": "03 · AUSFÉIERUNG",
+    "resultsRanked": "05 · RESULTATER — GRADÉIERT",
+    "downloaded": "EROFGELUEDEN",
+    "resultsAllRuns": "RESULTATER · ALLE LAF",
+    "agenticSession": "AGENTIC SESSIÓUN"
+  },
+  "common": {
+    "analyze": "ANALYSÉIEREN",
+    "generate": "GENERÉIEREN",
+    "runBenchmark": "BENCHMARK LAFEN",
+    "cancel": "OFBRIECHEN",
+    "cancelBenchmark": "BENCHMARK OFBRIECHEN",
+    "download": "Eroflueden",
+    "load": "LUEDEN",
+    "remove": "ENTFERNEN",
+    "clear": "EIDIEREN",
+    "clearHistory": "VERLAF EIDIEREN",
+    "no": "NEEN",
+    "error": "Feeler: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "keng GPU",
+    "gbVram": "{{gb}}GB VRAM",
+    "gbRam": "{{gb}}GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · Server {{server}} · {{count}} Fändelen",
+    "fileLabel": "Fichier",
+    "serverManual": "manuell",
+    "servingServer": "Serving-Server",
+    "noServerProposed": "d'README vun dësem Repo proposéiert kee Serving-Server — Modell gëtt net vum llama.cpp ënnerstëtzt",
+    "noServingCommand": "d'README vun dësem Repo dokumentéiert kee llama.cpp Serving-Kommando (llama-server / speed-bench / llama-cli / llama-bench) — et kann sinn, datt et net vum LLMBENCH geluede ka ginn.",
+    "noServingCommandWithGguf": "d'README vun dësem Repo dokumentéiert kee llama.cpp Serving-Kommando (llama-server / speed-bench / llama-cli / llama-bench) — och wann eng .gguf matleeft, kann et sinn, datt et net vum LLMBENCH geluede ka ginn.",
+    "noServerForGenerate": "Kee Serving-Server ausgewielt — wielt een an der MODELLAGAB, fir Konfiguratiounen ze generéieren."
+  },
+  "config": {
+    "bankTitle": "02 · KONFIGURATIOUNSBANK · N = {{n}}",
+    "benchTool": "BENCH-TOOL",
+    "agenticTier": "AGENTIC TIER",
+    "speedBenchFlags": "SPEED-BENCH FÄNDELEN",
+    "agenticFlags": "AGENTIC FÄNDELEN",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, oder (fir Bench {{bench}}): {{cats}}",
+    "limitLine": "--limit: optional int — max. Proben pro Kategorie"
+  },
+  "agentic": {
+    "interactiveNotice": "Agentic Bench ass en interaktive Test mam Mënsch an der Loop — KEEN Autotest. Dir musst dobäi sinn: bei all Schrëtt freet d'Harness Iech fir d'Branching-Tool an d'Argumenter ze wielen, an de Laf hält un, bis Dir äntwert.",
+    "failureTitle": "AGENTIC CONFIG FEHLGESCHLOEN — Tier {{tier}}",
+    "failureDismiss": "ZOUMAACHEN"
+  },
+  "decision": {
+    "title": "AGENTIC — BRANCH-ENTSCHEEDUNG NÉIDEG",
+    "hint": "Schrëtt {{step}} — wielt dat nächste Tool an d'Argumenter, oder akzeptéiert déi proposéiert Wäerter.",
+    "tool": "TOOL",
+    "args": "ARGUMENTER (JSON)",
+    "argsPlaceholder": "{}",
+    "cancel": "FÄERDEG / OFBRIECHEN",
+    "continue": "WEIDER",
+    "invalidArgs": "D'Argumenter musse e valabelt JSON-Objet sinn."
+  },
+  "run": {
+    "configProgress": "Config {{index}}/{{total}}",
+    "pause": "PAUS",
+    "pressEnter": "DRÉCKT ENTER FIR WEIDERZEMAACHEN",
+    "continue": "WEIDER",
+    "watching": "→ kuckt de Benchmark-Laf #{{id}} am Gaang",
+    "statusError": "Laf {{status}}"
+  },
+  "download": {
+    "yesAnyway": "JO — TROTZDEM EROFLUEDEN",
+    "prunePrompt": "hf cache prune — Weider? [y/N]",
+    "downloadedTo": "erofgelueden → {{path}}",
+    "pruned": "Cache gebotzt — probéiert den Download nach eng Kéier, wann Dir prett sidd",
+    "pruneSkipped": "Botzen iwwersprongen — probéiert den Download nach eng Kéier, wann Dir prett sidd",
+    "error": "Feeler: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "gëtt erofgelueden",
+    "downloaded": "erofgelueden",
+    "cancelled": "ofgebrach",
+    "pruning": "gëtt gebotzt",
+    "pruned": "gebotzt"
+  },
+  "downloaded": {
+    "empty": "nach keng Modeller erofgelueden"
+  },
+  "results": {
+    "program": "Programm",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
+    "status": "STATUS",
+    "viewAll": "all Läf weisen →",
+    "backToBench": "← zeréck zum Bench",
+    "empty": "Nach keng Benchmark-Läf.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} Konfiguratiounen · {{status}}"
+  },
+  "fit": {
+    "gpu": "PASST AN VRAM — brauch ~{{needed}} GB (Gewiichter + KV) vun {{vram}} GB VRAM",
+    "ramOffload": "LAGERT AN RAM AUS — brauch ~{{needed}} GB, geet iwwer {{vram}} GB VRAM eraus an {{ram}} GB RAM",
+    "ram": "NËMMEN CPU — keng GPU VRAM, brauch ~{{needed}} GB vun {{ram}} GB RAM",
+    "noFit": "PASST NET — brauch ~{{needed}} GB géint {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "dëse Modell passt net an de VRAM/RAM vun dëser Maschinn — et kann sinn, datt en net vum LLMBENCH geluede ka ginn."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s",
+    "agenticSteps": "{{count}} Schrëtt",
+    "agenticToolCalls": "{{count}} Tool-Calls",
+    "agenticPlanRevs": "{{count}} Plang-Revisiounen",
+    "agenticAvg": "avg {{s}}s",
+    "agenticP95": "p95 {{s}}s",
+    "agenticCtx": "ctx {{k}}k"
+  },
+  "confirm": {
+    "removeModel": "{{model}} aus dem HF-Cache ewechhuelen?",
+    "clearHistory": "De ganzen Benchmark-Verlaf läschen? Dat ewechhëlt all Laf an hir rau speed-bench Ausgaben. Erofgelauden Modeller ginn behalen."
+  },
+  "status": {
+    "running": "am Gaang",
+    "queued": "an der Queue",
+    "completed": "fäerdeg",
+    "failed": "fehlgeschloen",
+    "cancelled": "ofgebrach",
+    "error": "Feeler",
+    "ok": "ok"
+  }
+}
