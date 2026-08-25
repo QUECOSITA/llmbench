@@ -1,0 +1,135 @@
+{
+  "nav": {
+    "results": "KEPUTUSAN"
+  },
+  "panel": {
+    "modelInput": "01 · INPUT MODEL",
+    "run": "03 · JALANKAN",
+    "resultsRanked": "05 · KEPUTUSAN — DISUSUN",
+    "downloaded": "DIMUAT TURUN",
+    "resultsAllRuns": "KEPUTUSAN · SEMUA JALANAN",
+    "agenticSession": "SESI AGENTIC"
+  },
+  "common": {
+    "analyze": "ANALISA",
+    "generate": "JANA",
+    "runBenchmark": "JALANKAN BENCHMARK",
+    "cancel": "BATAL",
+    "cancelBenchmark": "BATAL BENCHMARK",
+    "download": "Muat turun",
+    "load": "MUAT",
+    "remove": "KELUARKAN",
+    "clear": "KOSONGKAN",
+    "clearHistory": "KOSONGKAN SEJARAH",
+    "no": "TIDAK",
+    "error": "Ralat: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "tiada GPU",
+    "gbVram": "{{gb}}GB VRAM",
+    "gbRam": "{{gb}}GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · pelayan {{server}} · {{count}} bendera",
+    "fileLabel": "Fail",
+    "serverManual": "manual",
+    "servingServer": "pelayan servis",
+    "noServerProposed": "README repo ini tidak mencadangkan sebarang pelayan servis — model tidak disokong oleh llama.cpp",
+    "noServingCommand": "README repo ini tidak mendokumenkan arahan servis llama.cpp (llama-server / speed-bench / llama-cli / llama-bench) — mungkin ia tidak boleh dimuatkan oleh LLMBENCH.",
+    "noServingCommandWithGguf": "README repo ini tidak mendokumenkan arahan servis llama.cpp (llama-server / speed-bench / llama-cli / llama-bench) — walaupun ia menyertakan .gguf, mungkin ia tidak boleh dimuatkan oleh LLMBENCH.",
+    "noServerForGenerate": "Tiada pelayan servis dipilih — pilih satu dalam INPUT MODEL untuk menjana konfigurasi."
+  },
+  "config": {
+    "bankTitle": "02 · BANK KONFIGURASI · N = {{n}}",
+    "benchTool": "ALAT BENCH",
+    "agenticTier": "TIER AGENTIC",
+    "speedBenchFlags": "BENDERA SPEED-BENCH",
+    "agenticFlags": "BENDERA AGENTIC",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, atau (untuk bench {{bench}}): {{cats}}",
+    "limitLine": "--limit: int pilihan — sampel maksimum setiap kategori"
+  },
+  "agentic": {
+    "interactiveNotice": "Bench agentic ialah ujian interaktif dengan manusia dalam gelung — BUKAN ujian automatik. Anda mesti hadir: pada setiap langkah, harness meminta anda memilih alat pencabangan dan argumen, dan jalanan berhenti sehingga anda menjawab.",
+    "failureTitle": "KONFIGURASI AGENTIC GAGAL — tier {{tier}}",
+    "failureDismiss": "TUTUP"
+  },
+  "decision": {
+    "title": "AGENTIC — KEPUTUSAN CABANGAN DIPERLUKAN",
+    "hint": "langkah {{step}} — pilih alat dan argumen seterusnya, atau terima nilai yang dicadangkan.",
+    "tool": "ALAT",
+    "args": "ARGUMEN (JSON)",
+    "argsPlaceholder": "{}",
+    "cancel": "SELESAI / BATAL",
+    "continue": "TERUSKAN",
+    "invalidArgs": "Argumen mesti objek JSON yang sah."
+  },
+  "run": {
+    "configProgress": "konfigurasi {{index}}/{{total}}",
+    "pause": "JEDA",
+    "pressEnter": "TEKAN ENTER UNTUK MENERUSKAN",
+    "continue": "TERUSKAN",
+    "watching": "→ memerhati jalanan benchmark #{{id}} sedang berjalan",
+    "statusError": "jalanan {{status}}"
+  },
+  "download": {
+    "yesAnyway": "YA — MUAT TURUN LAGI",
+    "prunePrompt": "hf cache prune — Teruskan? [y/N]",
+    "downloadedTo": "dimuat turun → {{path}}",
+    "pruned": "cache dipangkas — cuba muat turun semula apabila anda bersedia",
+    "pruneSkipped": "pemangkasan dilangkau — cuba muat turun semula apabila anda bersedia",
+    "error": "ralat: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "memuat turun",
+    "downloaded": "dimuat turun",
+    "cancelled": "dibatalkan",
+    "pruning": "memangkas",
+    "pruned": "dipangkas"
+  },
+  "downloaded": {
+    "empty": "tiada model dimuat turun"
+  },
+  "results": {
+    "program": "Program",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
+    "status": "STATUS",
+    "viewAll": "lihat semua jalanan →",
+    "backToBench": "← kembali ke bench",
+    "empty": "Belum ada jalanan benchmark.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} konfigurasi · {{status}}"
+  },
+  "fit": {
+    "gpu": "MUAT DALAM VRAM — perlukan ~{{needed}} GB (berat + KV) daripada {{vram}} GB VRAM",
+    "ramOffload": "OFFLOAD KE RAM — perlukan ~{{needed}} GB, tumpah melepasi {{vram}} GB VRAM ke dalam {{ram}} GB RAM",
+    "ram": "CPU SAHAJA — tiada GPU VRAM, perlukan ~{{needed}} GB daripada {{ram}} GB RAM",
+    "noFit": "TIDAK MUAT — perlukan ~{{needed}} GB berbanding {{vram}} GB VRAM + {{ram}} GB RAM",
+    "noFitNotice": "model ini tidak muat dalam VRAM/RAM mesin ini — mungkin ia tidak boleh dimuatkan oleh LLMBENCH."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s",
+    "agenticSteps": "{{count}} langkah",
+    "agenticToolCalls": "{{count}} panggilan alat",
+    "agenticPlanRevs": "{{count}} semakan pelan",
+    "agenticAvg": "purata {{s}}s",
+    "agenticP95": "p95 {{s}}s",
+    "agenticCtx": "ctx {{k}}k"
+  },
+  "confirm": {
+    "removeModel": "Keluarkan {{model}} daripada cache HF?",
+    "clearHistory": "Kosongkan semua sejarah benchmark? Ini mengeluarkan setiap jalanan dan output speed-bench mentahnya. Model yang dimuat turun dikekalkan."
+  },
+  "status": {
+    "running": "berjalan",
+    "queued": "dalam baris",
+    "completed": "selesai",
+    "failed": "gagal",
+    "cancelled": "dibatalkan",
+    "error": "ralat",
+    "ok": "ok"
+  }
+}

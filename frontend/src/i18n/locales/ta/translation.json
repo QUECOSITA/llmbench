@@ -1,0 +1,135 @@
+{
+  "nav": {
+    "results": "முடிவுகள்"
+  },
+  "panel": {
+    "modelInput": "01 · மாதிரி உள்ளீடு",
+    "run": "03 · இயக்கு",
+    "resultsRanked": "05 · முடிவுகள் — தரவரிசை",
+    "downloaded": "பதிவிறக்கப்பட்டது",
+    "resultsAllRuns": "முடிவுகள் · அனைத்து இயக்கங்கள்",
+    "agenticSession": "AGENTIC அமர்வு"
+  },
+  "common": {
+    "analyze": "பகுப்பாய்வு",
+    "generate": "உருவாக்கு",
+    "runBenchmark": "BENCHMARK ஐ இயக்கு",
+    "cancel": "ரத்து",
+    "cancelBenchmark": "BENCHMARK ரத்து",
+    "download": "பதிவிறக்கு",
+    "load": "ஏற்று",
+    "remove": "அகற்று",
+    "clear": "அழி",
+    "clearHistory": "வரலாற்றை அழி",
+    "no": "இல்லை",
+    "error": "பிழை: {{message}}"
+  },
+  "hardware": {
+    "noGpu": "GPU இல்லை",
+    "gbVram": "{{gb}}GB VRAM",
+    "gbRam": "{{gb}}GB RAM"
+  },
+  "model": {
+    "analysisSummary": "→ {{repo}} · சேவையகம் {{server}} · {{count}} கொடிகள்",
+    "fileLabel": "கோப்பு",
+    "serverManual": "கைமுறை",
+    "servingServer": "சேவை வழங்கு சேவையகம்",
+    "noServerProposed": "இந்த repo இன் README எந்த சேவை சேவையகத்தையும் முன்மொழியவில்லை — model llama.cpp ஆல் ஆதரிக்கப்படவில்லை",
+    "noServingCommand": "இந்த repo இன் README எந்த llama.cpp சேவை கட்டளையையும் ஆவணப்படுத்தவில்லை (llama-server / speed-bench / llama-cli / llama-bench) — இது LLMBENCH ஆல் ஏற்றப்படாமல் போகலாம்.",
+    "noServingCommandWithGguf": "இந்த repo இன் README எந்த llama.cpp சேவை கட்டளையையும் ஆவணப்படுத்தவில்லை (llama-server / speed-bench / llama-cli / llama-bench) — அது .gguf ஐ கொண்டிருந்தாலும், இது LLMBENCH ஆல் ஏற்றப்படாமல் போகலாம்.",
+    "noServerForGenerate": "சேவை சேவையகம் தேர்ந்தெடுக்கப்படவில்லை — கட்டமைப்புகளை உருவாக்க MODEL INPUT இல் ஒன்றைத் தேர்ந்தெடுக்கவும்."
+  },
+  "config": {
+    "bankTitle": "02 · கட்டமைப்பு வங்கி · N = {{n}}",
+    "benchTool": "BENCH கருவி",
+    "agenticTier": "AGENTIC அடுக்கு",
+    "speedBenchFlags": "SPEED-BENCH கொடிகள்",
+    "agenticFlags": "AGENTIC கொடிகள்",
+    "benchLine": "--bench: {{benches}}",
+    "categoryLine": "--category: all, அல்லது (bench {{bench}} க்கு): {{cats}}",
+    "limitLine": "--limit: விருப்ப int — ஒவ்வொரு பிரிவுக்கும் அதிகபட்ச மாதிரிகள்"
+  },
+  "agentic": {
+    "interactiveNotice": "Agentic bench என்பது மனிதர் லூப்பில் இருக்கும் ஒரு ஊடாடும் சோதனை — தானியங்கி சோதனை அல்ல. நீங்கள் கண்டிப்பாக இருக்க வேண்டும்: ஒவ்வொரு படியிலும் harness பிராஞ்சிங் கருவியையும் வாதங்களையும் தேர்ந்தெடுக்க உங்களைக் கேட்கிறது, மேலும் நீங்கள் பதிலளிக்கும் வரை இயக்கம் இடைநிறுத்தப்படும்.",
+    "failureTitle": "AGENTIC கட்டமைப்பு தோல்வியடைந்தது — அடுக்கு {{tier}}",
+    "failureDismiss": "மூடு"
+  },
+  "decision": {
+    "title": "AGENTIC — கிளை முடிவு தேவை",
+    "hint": "படி {{step}} — அடுத்த கருவியையும் வாதங்களையும் தேர்ந்தெடுக்கவும், அல்லது முன்மொழியப்பட்ட மதிப்புகளை ஏற்கவும்.",
+    "tool": "கருவி",
+    "args": "வாதங்கள் (JSON)",
+    "argsPlaceholder": "{}",
+    "cancel": "முடி / ரத்து",
+    "continue": "தொடர்",
+    "invalidArgs": "வாதங்கள் சரியான JSON பொருளாக இருக்க வேண்டும்."
+  },
+  "run": {
+    "configProgress": "கட்டமைப்பு {{index}}/{{total}}",
+    "pause": "இடைநிறுத்து",
+    "pressEnter": "தொடர ENTER ஐ அழுத்தவும்",
+    "continue": "தொடர்",
+    "watching": "→ benchmark இயக்கம் #{{id}} நடைபெறுவதை கவனிக்கிறது",
+    "statusError": "இயக்கம் {{status}}"
+  },
+  "download": {
+    "yesAnyway": "ஆம் — எப்படியும் பதிவிறக்கு",
+    "prunePrompt": "hf cache prune — தொடரவா? [y/N]",
+    "downloadedTo": "பதிவிறக்கப்பட்டது → {{path}}",
+    "pruned": "cache சீரமைக்கப்பட்டது — தயாராக இருக்கும்போது மீண்டும் பதிவிறக்க முயற்சிக்கவும்",
+    "pruneSkipped": "சீரமைப்பு தவிர்க்கப்பட்டது — தயாராக இருக்கும்போது மீண்டும் பதிவிறக்க முயற்சிக்கவும்",
+    "error": "பிழை: {{message}}"
+  },
+  "dlStatus": {
+    "downloading": "பதிவிறக்குகிறது",
+    "downloaded": "பதிவிறக்கப்பட்டது",
+    "cancelled": "ரத்து செய்யப்பட்டது",
+    "pruning": "சீரமைக்கிறது",
+    "pruned": "சீரமைக்கப்பட்டது"
+  },
+  "downloaded": {
+    "empty": "பதிவிறக்கப்பட்ட மாதிரிகள் இல்லை"
+  },
+  "results": {
+    "program": "நிரல்",
+    "promptTps": "PROMPT t/s",
+    "decodeTps": "DECODE t/s",
+    "agenticTps": "AGENTIC t/s",
+    "status": "நிலை",
+    "viewAll": "அனைத்து இயக்கங்களையும் காண்க →",
+    "backToBench": "← bench க்கு திரும்பு",
+    "empty": "இன்னும் benchmark இயக்கங்கள் இல்லை.",
+    "runLine": "#{{id}} · {{repo}} · {{n}} கட்டமைப்புகள் · {{status}}"
+  },
+  "fit": {
+    "gpu": "VRAM இல் பொருந்தும் — {{vram}} GB VRAM இல் ~{{needed}} GB (எடைகள் + KV) தேவை",
+    "ramOffload": "RAM க்கு வெளியேற்றுகிறது — ~{{needed}} GB தேவை, {{vram}} GB VRAM ஐ கடந்து {{ram}} GB RAM இல் சிந்துகிறது",
+    "ram": "CPU மட்டும் — GPU VRAM இல்லை, {{ram}} GB RAM இல் ~{{needed}} GB தேவை",
+    "noFit": "பொருந்தாது — {{vram}} GB VRAM + {{ram}} GB RAM உடன் ஒப்பிடும்போது ~{{needed}} GB தேவை",
+    "noFitNotice": "இந்த மாதிரி இந்த இயந்திரத்தின் VRAM/RAM இல் பொருந்தவில்லை — இது LLMBENCH ஆல் ஏற்றப்படாமல் போகலாம்."
+  },
+  "metrics": {
+    "promptProc": "PROMPT PROC · t/s",
+    "decodeStage": "DECODE STAGE · t/s",
+    "agentic": "AGENTIC · t/s",
+    "agenticSteps": "{{count}} படிகள்",
+    "agenticToolCalls": "{{count}} கருவி அழைப்புகள்",
+    "agenticPlanRevs": "{{count}} திட்ட திருத்தங்கள்",
+    "agenticAvg": "சராசரி {{s}}s",
+    "agenticP95": "p95 {{s}}s",
+    "agenticCtx": "ctx {{k}}k"
+  },
+  "confirm": {
+    "removeModel": "{{model}} ஐ HF cache இலிருந்து அகற்றவா?",
+    "clearHistory": "அனைத்து benchmark வரலாற்றையும் அழிக்கவா? இது ஒவ்வொரு இயக்கத்தையும் அதன் மூல speed-bench வெளியீடுகளையும் நீக்கும். பதிவிறக்கப்பட்ட மாதிரிகள் வைக்கப்படும்."
+  },
+  "status": {
+    "running": "இயங்குகிறது",
+    "queued": "வரிசையில்",
+    "completed": "முடிந்தது",
+    "failed": "தோல்வியடைந்தது",
+    "cancelled": "ரத்து செய்யப்பட்டது",
+    "error": "பிழை",
+    "ok": "சரி"
+  }
+}

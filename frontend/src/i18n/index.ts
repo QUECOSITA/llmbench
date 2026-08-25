@@ -18,6 +18,9 @@ import da from "./locales/da/translation.json";
 import fi from "./locales/fi/translation.json";
 import is from "./locales/is/translation.json";
 import lb from "./locales/lb/translation.json";
+import ga from "./locales/ga/translation.json";
+import ms from "./locales/ms/translation.json";
+import ta from "./locales/ta/translation.json";
 
 const stored = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
 const initial = stored && LANGS.some((l) => l.code === stored) ? stored : "en";
@@ -41,6 +44,9 @@ i18n.use(initReactI18next).init({
     fi: { translation: fi },
     is: { translation: is },
     lb: { translation: lb },
+    ga: { translation: ga },
+    ms: { translation: ms },
+    ta: { translation: ta },
   },
   lng: initial,
   fallbackLng: "en",
