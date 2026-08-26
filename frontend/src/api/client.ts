@@ -167,6 +167,7 @@ export const api = {
     model_arch?: ModelArch;
     bench_tool?: string;
     agentic_tier?: string;
+    gguf_filename?: string;
   }) =>
     request<{
       configs: Array<{

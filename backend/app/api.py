@@ -485,8 +485,17 @@ async def generate(payload: dict):
     if resolved_gguf is not None and not isinstance(resolved_gguf, str):
         raise HTTPException(422, "gguf_path must be a string.")
     gguf_filename = os.path.basename(resolved_gguf) if resolved_gguf else None
+    requested_gguf = payload.get("gguf_filename")
+    if requested_gguf is not None:
+        if not isinstance(requested_gguf, str) or not requested_gguf \
+                or os.path.basename(requested_gguf) != requested_gguf:
+            raise HTTPException(422, "'gguf_filename' must be a plain .gguf filename.")
+        gguf_filename = requested_gguf
     if resolved_gguf is None and server_id == "llama.cpp":
-        local_path, name, size = _resolve_download_path(s, repo_id, "llama.cpp", None)
+        local_path, name, size = _resolve_download_path(
+            s, repo_id, "llama.cpp", gguf_filename)
+        if name is None:
+            local_path, name, size = _resolve_download_path(s, repo_id, "llama.cpp", None)
         resolved_gguf = local_path
         gguf_filename = name
         if size is not None:

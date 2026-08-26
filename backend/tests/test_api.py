@@ -409,6 +409,52 @@ def test_generate_configs_llama_resolves_local_gguf(client):
         assert gguf_path not in cfg["serving_command"]
 
 
+def _make_snapshot_ggufs(settings, repo_id: str, names: list[str]) -> str:
+    root = settings.hf_cache_dir
+    snap = root / f"models--{repo_id.replace('/', '--')}" / "snapshots" / "ref1"
+    snap.mkdir(parents=True)
+    for name in names:
+        (snap / name).write_bytes(b"dummy-gguf")
+    return str(snap)
+
+
+def test_generate_configs_targets_requested_gguf_filename(client):
+    from app.api import state
+    _make_snapshot_ggufs(state.settings, "org/model", ["a.gguf", "b.gguf"])
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1,
+        "gguf_filename": "b.gguf",
+        "readme_flags": {"--ctx-size": "4096"},
+    })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert "--hf-file b.gguf" in cfg["serving_command"]
+    assert "--hf-file a.gguf" not in cfg["serving_command"]
+    assert cfg["bench_command"][cfg["bench_command"].index("-hff") + 1] == "b.gguf"
+
+
+def test_generate_configs_gguf_filename_falls_back_when_missing(client):
+    from app.api import state
+    _make_snapshot_ggufs(state.settings, "org/model", ["a.gguf"])
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1,
+        "gguf_filename": "missing.gguf",
+        "readme_flags": {"--ctx-size": "4096"},
+    })
+    assert r.status_code == 200
+    cfg = r.json()["configs"][0]
+    assert "--hf-file a.gguf" in cfg["serving_command"]
+
+
+def test_generate_configs_rejects_non_basename_gguf_filename(client):
+    r = client.post("/api/configs/generate", json={
+        "repo_id": "org/model", "server_id": "llama.cpp", "n": 1,
+        "gguf_filename": "../etc/passwd",
+        "readme_flags": {"--ctx-size": "4096"},
+    })
+    assert r.status_code == 422
+
+
 def test_generate_configs_llama_falls_back_to_repo_id_when_no_gguf(client):
     r = client.post("/api/configs/generate", json={
         "repo_id": "org/model", "server_id": "llama.cpp", "n": 1,
