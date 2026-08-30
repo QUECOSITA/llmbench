@@ -314,10 +314,19 @@ def test_remove_gguf_file_removes_one_row_and_file(tmp_path, monkeypatch):
                      "downloaded", gguf_filename=name)
     monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
 
+    called = []
+
+    async def fail_create(*cmd, **kw):
+        called.append(cmd)
+        raise AssertionError("hf cache rm must not run while other ggufs remain")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fail_create)
+
     asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "a.gguf"))
 
     rows = get_models(conn, "org/model", "llama.cpp")
     assert {r["gguf_filename"] for r in rows} == {"b.gguf"}
+    assert called == []
     assert not (snap_dir / "a.gguf").exists()
     assert (snap_dir / "b.gguf").exists()
 
@@ -385,6 +394,195 @@ def test_remove_gguf_file_does_not_unlink_outside_safe_roots(tmp_path):
 
     assert get_models(conn, "org/model", "llama.cpp") == []
     assert outside.exists()
+
+
+def test_remove_last_gguf_removes_empty_repo_from_cache(tmp_path, monkeypatch):
+    """Removing the only gguf of a repo drops the whole HF cache entry so
+    `hf cache list` no longer shows the org/repo."""
+    settings = _settings(tmp_path)
+    snap = _make_snapshot(settings, "org/model", ggufs=["model.Q4_K_M.gguf"],
+                          readme="# M\n")
+    conn = init_db(tmp_path / "db.sqlite")
+    upsert_model(conn, "org/model", "llama.cpp", "hf",
+                 str(snap / "snapshots" / "main" / "model.Q4_K_M.gguf"),
+                 "downloaded", gguf_filename="model.Q4_K_M.gguf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: None)
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "model.Q4_K_M.gguf"))
+
+    assert get_models(conn, "org/model", "llama.cpp") == []
+    assert not snap.exists()
+
+
+def test_remove_last_gguf_invokes_hf_cache_rm(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    snap = _make_snapshot(settings, "org/model", ggufs=["model.Q4_K_M.gguf"],
+                          readme="# M\n")
+    conn = init_db(tmp_path / "db.sqlite")
+    upsert_model(conn, "org/model", "llama.cpp", "hf",
+                 str(snap / "snapshots" / "main" / "model.Q4_K_M.gguf"),
+                 "downloaded", gguf_filename="model.Q4_K_M.gguf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
+
+    captured: dict = {}
+
+    async def fake_create(*cmd, **kw):
+        captured["cmd"] = list(cmd)
+        return FakeRmProcess(rc=0)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "model.Q4_K_M.gguf"))
+
+    assert captured["cmd"] == [
+        "/usr/bin/hf", "cache", "rm", "hf://models/org/model", "-y",
+        "--cache-dir", str(settings.hf_cache_dir),
+    ]
+    assert get_models(conn, "org/model", "llama.cpp") == []
+    assert not snap.exists()
+
+
+def test_remove_last_gguf_ignores_hf_cache_rm_failure(tmp_path, monkeypatch):
+    """Per-file cleanup: a failing `hf cache rm` must not raise, and the
+    leftover dir is still removed (unlike whole-repo remove's strict=True)."""
+    settings = _settings(tmp_path)
+    snap = _make_snapshot(settings, "org/model", ggufs=["model.Q4_K_M.gguf"],
+                          readme="# M\n")
+    conn = init_db(tmp_path / "db.sqlite")
+    upsert_model(conn, "org/model", "llama.cpp", "hf",
+                 str(snap / "snapshots" / "main" / "model.Q4_K_M.gguf"),
+                 "downloaded", gguf_filename="model.Q4_K_M.gguf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
+
+    async def fail_create(*cmd, **kw):
+        return FakeRmProcess(rc=1)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fail_create)
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "model.Q4_K_M.gguf"))
+
+    assert get_models(conn, "org/model", "llama.cpp") == []
+    assert not snap.exists()
+
+
+def test_remove_gguf_dir_file_with_orphaned_cache_entry(tmp_path, monkeypatch):
+    """Removing the last gguf from the local gguf_dir also drops an orphaned
+    HF cache entry for the same repo when it holds no ggufs."""
+    settings = _settings(tmp_path)
+    gguf = settings.resolved_gguf_dir / "model.gguf"
+    gguf.parent.mkdir(parents=True)
+    gguf.write_bytes(b"x" * 100)
+    snap = _make_snapshot(settings, "org/model", readme="# M\n")
+    conn = init_db(tmp_path / "db.sqlite")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", str(gguf), "downloaded",
+                 gguf_filename="model.gguf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: None)
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "model.gguf"))
+
+    assert get_models(conn, "org/model", "llama.cpp") == []
+    assert not gguf.exists()
+    assert not snap.exists()
+
+
+@pytest.mark.parametrize("weight_file", ["pytorch_model.bin", "model.safetensors"])
+def test_remove_gguf_dir_file_keeps_cache_entry_with_weights(tmp_path, monkeypatch, weight_file):
+    """Safety: a cache entry that still holds non-gguf weights (e.g. an
+    unrelated hf download) must not be wiped, even with no ggufs left."""
+    settings = _settings(tmp_path)
+    gguf = settings.resolved_gguf_dir / "model.gguf"
+    gguf.parent.mkdir(parents=True)
+    gguf.write_bytes(b"x" * 100)
+    snaps_dir = snapshot_dir_for(settings, "org/model") / "snapshots" / "main"
+    snaps_dir.mkdir(parents=True)
+    (snaps_dir / "README.md").write_text("# M\n")
+    (snaps_dir / weight_file).write_bytes(b"x" * 100)
+    conn = init_db(tmp_path / "db.sqlite")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", str(gguf), "downloaded",
+                 gguf_filename="model.gguf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
+
+    called = []
+
+    async def fail_create(*cmd, **kw):
+        called.append(cmd)
+        raise AssertionError("hf cache rm must not run when weights remain")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fail_create)
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "model.gguf"))
+
+    assert called == []
+    assert get_models(conn, "org/model", "llama.cpp") == []
+    assert not gguf.exists()
+    assert snaps_dir.parent.parent.exists()
+
+
+def test_remove_last_gguf_skips_wipe_when_snapshot_repopulated(tmp_path, monkeypatch):
+    """A concurrent download that lands a new gguf while `hf cache rm` runs
+    must keep the cache entry: the per-file cleanup never wipes a repo that
+    started holding a gguf again."""
+    settings = _settings(tmp_path)
+    snap = _make_snapshot(settings, "org/model", ggufs=["model.Q4_K_M.gguf"],
+                          readme="# M\n")
+    conn = init_db(tmp_path / "db.sqlite")
+    upsert_model(conn, "org/model", "llama.cpp", "hf",
+                 str(snap / "snapshots" / "main" / "model.Q4_K_M.gguf"),
+                 "downloaded", gguf_filename="model.Q4_K_M.gguf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
+
+    async def fake_create(*cmd, **kw):
+        return FakeRmProcess(rc=0)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create)
+
+    calls = {"n": 0}
+
+    def fake_ggufs(seen_snap):
+        calls["n"] += 1
+        # First check (cleanup gate) sees no ggufs left; the re-check before
+        # the rmtree sees the gguf a concurrent download just landed.
+        if calls["n"] == 1:
+            return []
+        return [seen_snap / "snapshots" / "main" / "model.Q4_K_M.gguf"]
+
+    monkeypatch.setattr("app.sync._ggufs_in_snapshot", fake_ggufs)
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "model.Q4_K_M.gguf"))
+
+    assert get_models(conn, "org/model", "llama.cpp") == []
+    assert snap.exists()
+
+
+def test_remove_gguf_dir_file_keeps_entry_without_snapshots_dir(tmp_path, monkeypatch):
+    """Safety: a cache dir without a snapshots/ subdir (blobs only / corrupt
+    layout) is never auto-wiped — we can't verify what it holds."""
+    settings = _settings(tmp_path)
+    gguf = settings.resolved_gguf_dir / "model.gguf"
+    gguf.parent.mkdir(parents=True)
+    gguf.write_bytes(b"x" * 100)
+    snap = snapshot_dir_for(settings, "org/model")
+    (snap / "blobs" / "abc").mkdir(parents=True)
+    (snap / "blobs" / "abc" / "x.bin").write_bytes(b"x" * 100)
+    conn = init_db(tmp_path / "db.sqlite")
+    upsert_model(conn, "org/model", "llama.cpp", "hf", str(gguf), "downloaded",
+                 gguf_filename="model.gguf")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: "/usr/bin/hf")
+
+    called = []
+
+    async def fail_create(*cmd, **kw):
+        called.append(cmd)
+        raise AssertionError("hf cache rm must not run without a snapshots dir")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fail_create)
+
+    asyncio.run(remove_gguf_file(conn, settings, "org/model", "llama.cpp", "model.gguf"))
+
+    assert called == []
+    assert get_models(conn, "org/model", "llama.cpp") == []
+    assert not gguf.exists()
+    assert snap.exists()
 
 
 def test_hf_cache_root_falls_back_to_home(tmp_path):

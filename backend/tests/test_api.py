@@ -1175,6 +1175,26 @@ def test_delete_model_removes_single_gguf_row_and_file(client, tmp_path, monkeyp
     assert (snap / "snapshots" / "main" / "model.Q5_K_M.gguf").exists()
 
 
+def test_delete_last_gguf_removes_empty_repo_dir(client, tmp_path, monkeypatch):
+    from app.config import Settings
+    from app.sync import snapshot_dir_for
+    settings = Settings(data_dir=tmp_path, gguf_dir=tmp_path / "gguf",
+                        hf_cache_dir=tmp_path / "hf", workload_file=tmp_path / "prompts.jsonl")
+    snap = snapshot_dir_for(settings, "org/model")
+    (snap / "snapshots" / "main").mkdir(parents=True)
+    (snap / "snapshots" / "main" / "model.Q4_K_M.gguf").write_bytes(b"x")
+    (snap / "snapshots" / "main" / "README.md").write_text("# M\n")
+    monkeypatch.setattr("app.sync.hf_bin", lambda: None)
+
+    assert client.get("/api/models").status_code == 200
+
+    r = client.delete("/api/models/org%2Fmodel%2Fmodel.Q4_K_M.gguf")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert client.get("/api/models").json()["models"] == []
+    assert not snap.exists()
+
+
 def test_delete_model_invalid_ref_returns_422(client):
     r = client.delete("/api/models/garbage!@#")
     assert r.status_code == 422
