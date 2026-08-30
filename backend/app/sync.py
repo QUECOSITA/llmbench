@@ -1,10 +1,13 @@
 import asyncio
+import logging
 import shutil
 from pathlib import Path
 
 from app import db as db_mod
 from app.hf import hf_bin
 from app.readme_parser import detect_serving_programs, top_serving_program
+
+logger = logging.getLogger(__name__)
 
 _CACHE_PREFIX = "models--"
 
@@ -50,6 +53,23 @@ def _ggufs_in_snapshot(snap: Path) -> list[Path]:
         if ref.is_dir():
             out.extend(p for p in ref.rglob("*.gguf") if p.is_file())
     return out
+
+
+_NON_GGUF_WEIGHT_SUFFIXES = (".safetensors", ".bin")
+
+
+def _snapshot_has_non_gguf_weights(snap: Path) -> bool:
+    """True when the snapshot still holds model weights other than .gguf
+    (e.g. an unrelated `hf download`), which must never be wiped."""
+    snaps_dir = snap / "snapshots"
+    if not snaps_dir.is_dir():
+        return False
+    for ref in snaps_dir.iterdir():
+        if ref.is_dir():
+            for p in ref.rglob("*"):
+                if p.is_file() and p.suffix in _NON_GGUF_WEIGHT_SUFFIXES:
+                    return True
+    return False
 
 
 def _readme_in_snapshot(snap: Path) -> str | None:
@@ -122,6 +142,33 @@ def rm_command(repo_id: str, cache_dir: str | None = None) -> list[str]:
     return cmd
 
 
+async def _rm_cache_repo(settings, repo_id: str, snap: Path, strict: bool) -> None:
+    """Delete a repo's whole HF cache entry. Runs ``hf cache rm`` when the CLI
+    is available (strict cleaning of blobs/refs), then removes any leftover
+    directory.
+
+    strict=True (whole-repo removal): a CLI failure raises RuntimeError and the
+    entry is always removed. strict=False (last-file cleanup): a CLI failure is
+    logged, not raised, and the rmtree is skipped if a concurrent download
+    repopulated the snapshot with a .gguf while the CLI was running."""
+    if hf_bin() is not None:
+        cache_dir = str(settings.hf_cache_dir) if settings.hf_cache_dir else None
+        proc = await asyncio.create_subprocess_exec(
+            *rm_command(repo_id, cache_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        out, _ = await proc.communicate()
+        if proc.returncode != 0:
+            detail = out.decode(errors="replace").strip()
+            if strict:
+                raise RuntimeError(f"hf cache rm failed: {detail}")
+            logger.warning("hf cache rm failed for %s (ignored): %s", repo_id, detail)
+    if strict or not _ggufs_in_snapshot(snap):
+        if snap.exists():
+            shutil.rmtree(snap)
+
+
 async def remove_gguf_file(conn, settings, repo_id: str, server_id: str, gguf_filename: str) -> None:
     rows = [r for r in db_mod.get_models(conn, repo_id, server_id)
             if r["gguf_filename"] == gguf_filename]
@@ -134,6 +181,18 @@ async def remove_gguf_file(conn, settings, repo_id: str, server_id: str, gguf_fi
         p.unlink()
     db_mod.delete_model_row(conn, repo_id, server_id, gguf_filename)
 
+    # If the repo's HF cache entry no longer holds any .gguf, drop the whole
+    # entry (README/refs/blobs leftovers included) so `hf cache list` stops
+    # showing it — even when the removed file lived in the local gguf_dir.
+    # Safety: never wipe an entry that still holds non-gguf weights, or whose
+    # layout we can't inspect (no snapshots/ dir).
+    snap = snapshot_dir_for(settings, repo_id)
+    if (snap.exists()
+            and (snap / "snapshots").is_dir()
+            and not _ggufs_in_snapshot(snap)
+            and not _snapshot_has_non_gguf_weights(snap)):
+        await _rm_cache_repo(settings, repo_id, snap, strict=False)
+
 
 async def remove_model(conn, settings, repo_id: str) -> None:
     rows = [r for r in db_mod.list_models(conn) if r["repo_id"] == repo_id]
@@ -142,20 +201,7 @@ async def remove_model(conn, settings, repo_id: str) -> None:
 
     snap = snapshot_dir_for(settings, repo_id)
     if snap.exists():
-        if hf_bin() is not None:
-            cache_dir = str(settings.hf_cache_dir) if settings.hf_cache_dir else None
-            proc = await asyncio.create_subprocess_exec(
-                *rm_command(repo_id, cache_dir),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            out, _ = await proc.communicate()
-            if proc.returncode != 0:
-                raise RuntimeError(f"hf cache rm failed: {out.decode(errors='replace').strip()}")
-            if snap.exists():
-                shutil.rmtree(snap)
-        else:
-            shutil.rmtree(snap)
+        await _rm_cache_repo(settings, repo_id, snap, strict=True)
     else:
         for r in rows:
             if r["server_id"] != "llama.cpp":
